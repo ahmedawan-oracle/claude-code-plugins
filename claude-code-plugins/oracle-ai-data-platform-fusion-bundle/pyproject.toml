@@ -85,6 +85,14 @@ oracle_ai_data_platform_fusion_bundle = [
   "content_packs/**/README.md",
   # JSON Schema artifacts exported from Pydantic models (see schema/medallion_pack.py, schema/dashboard_pack.py).
   "*.schema.json",
+  # `init` scaffold templates. These ship inside the package so a
+  # `pip install` customer gets working `init` (the repo-root examples/
+  # tree is NOT packaged — it lives outside the import package). Kept in
+  # sync with examples/ by tests/unit/test_init_scaffold_packaged.py.
+  # `.env.example` has no extension and a leading dot, so it needs its own
+  # explicit entry — a `*.yaml` glob won't match it.
+  "_scaffold/**/*.yaml",
+  "_scaffold/.env.example",
 ]
 
 [tool.pytest.ini_options]

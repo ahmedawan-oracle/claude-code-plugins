@@ -6,7 +6,6 @@ copying one of the bundled customer-project templates.
 
 from __future__ import annotations
 
-import shutil
 from importlib import resources
 from pathlib import Path
 
@@ -45,10 +44,9 @@ def init(template: str, *, force: bool, console: Console | None = None) -> int:
         )
         return 1
 
-    examples_dir = _examples_dir()
     bundle_source, config_source = TEMPLATES[template]
-    shutil.copy(examples_dir / bundle_source, bundle_target)
-    shutil.copy(examples_dir / config_source, config_target)
+    bundle_target.write_bytes(_read_scaffold(bundle_source))
+    config_target.write_bytes(_read_scaffold(config_source))
 
     console.print(f"[green]wrote[/green] {bundle_target}  ([dim]{bundle_source}[/dim])")
     console.print(f"[green]wrote[/green] {config_target}  ([dim]{config_source}[/dim])")
@@ -57,14 +55,15 @@ def init(template: str, *, force: bool, console: Console | None = None) -> int:
     # one spot. The bundle auto-loads .env at startup via load_dotenv().
     # Never overwrite an existing .env (could contain real secrets) — even
     # with --force, that's too dangerous.
-    env_example = _plugin_root() / ".env.example"
     if env_target.exists():
         console.print(f"[dim]skipped[/dim] {env_target}  ([dim].env already exists; left untouched[/dim])")
-    elif env_example.exists():
-        shutil.copy(env_example, env_target)
-        console.print(f"[green]wrote[/green] {env_target}  ([dim].env.example[/dim])")
     else:
-        console.print(f"[yellow]skipped[/yellow] {env_target}  ([dim].env.example not found[/dim])")
+        env_bytes = _read_scaffold_optional(".env.example")
+        if env_bytes is not None:
+            env_target.write_bytes(env_bytes)
+            console.print(f"[green]wrote[/green] {env_target}  ([dim].env.example[/dim])")
+        else:
+            console.print(f"[yellow]skipped[/yellow] {env_target}  ([dim].env.example not found[/dim])")
     console.print(
         "\n[bold]Next steps:[/bold]\n"
         "  1. Fill in [cyan]variables.team[/cyan] and the Fusion/OAC values in [cyan]bundle.yaml[/cyan]\n"
@@ -78,26 +77,62 @@ def init(template: str, *, force: bool, console: Console | None = None) -> int:
     return 0
 
 
-def _plugin_root() -> Path:
-    """Locate the plugin root (where .env.example, pyproject.toml live)."""
-    here = Path(__file__).resolve()
-    return here.parent.parent.parent.parent
+def _read_scaffold(relpath: str) -> bytes:
+    """Return the bytes of a scaffold template, raising if it's missing.
 
-
-def _examples_dir() -> Path:
-    """Locate the bundled examples directory.
-
-    When installed via pip, examples ship as package data. For editable
-    installs (and test runs), they're at ``../../../examples/`` relative to
-    this file.
+    See :func:`_read_scaffold_optional` for the resolution order.
     """
-    # Editable install: ../../../examples relative to this module
-    here = Path(__file__).resolve()
-    candidate = here.parent.parent.parent.parent / "examples"
-    if candidate.exists():
-        return candidate
-    # Future: package-data fallback once pyproject.toml ships examples in the wheel.
-    raise FileNotFoundError(f"examples directory not found at {candidate}")
+    data = _read_scaffold_optional(relpath)
+    if data is None:
+        raise FileNotFoundError(
+            f"scaffold template {relpath!r} not found in package data "
+            f"(oracle_ai_data_platform_fusion_bundle/_scaffold/) or in the "
+            f"repo examples/ dev fallback. The wheel may be built without "
+            f"the _scaffold package-data — check pyproject.toml."
+        )
+    return data
+
+
+def _read_scaffold_optional(relpath: str) -> bytes | None:
+    """Read a scaffold template's bytes, or ``None`` if it doesn't exist.
+
+    Resolution order:
+
+    1. **Package data** — ``oracle_ai_data_platform_fusion_bundle/_scaffold/``.
+       This is what ships in the wheel, so a ``pip install`` customer gets a
+       working ``init``. Read via :mod:`importlib.resources` so it works
+       regardless of install layout (wheel dir, zipimport).
+    2. **Repo dev fallback** — the repo-root ``examples/`` tree (and
+       ``.env.example``) relative to this module, for editable installs and
+       the test suite. Kept so contributors editing ``examples/`` see their
+       changes without re-syncing ``_scaffold/`` (a drift-guard test pins the
+       two in sync).
+
+    ``relpath`` is the path under the scaffold root, e.g.
+    ``"full-finance-starter/bundle.yaml"`` or ``".env.example"``.
+    """
+    # 1. Package data (the shipped path).
+    try:
+        scaffold = resources.files(
+            "oracle_ai_data_platform_fusion_bundle"
+        ).joinpath("_scaffold", relpath)
+        if scaffold.is_file():
+            return scaffold.read_bytes()
+    except (ModuleNotFoundError, FileNotFoundError):
+        pass
+
+    # 2. Repo dev fallback. ``.env.example`` lives at the repo root; every
+    # other template lives under ``examples/``.
+    repo_root = Path(__file__).resolve().parents[3]
+    candidate = (
+        repo_root / ".env.example"
+        if relpath == ".env.example"
+        else repo_root / "examples" / relpath
+    )
+    if candidate.is_file():
+        return candidate.read_bytes()
+
+    return None
 
 
 __all__ = ["init", "TEMPLATES"]

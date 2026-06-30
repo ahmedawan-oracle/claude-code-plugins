@@ -9,6 +9,11 @@ exercises the v2 content-pack CLI verbs to confirm:
 * `aidp-fusion-bundle content-pack list` finds the starter pack.
 * `aidp-fusion-bundle content-pack validate fusion-finance-starter` passes
   end-to-end (full validation pipeline).
+* The `init` scaffold ships inside the wheel and `init` works for EVERY
+  template from a clean `pip install` — the customer-found regression
+  (``FileNotFoundError: examples directory not found``). The drift/packaging
+  unit guard lives in ``tests/unit/test_init_scaffold_packaged.py``; this is
+  the slow end-to-end half that actually builds + installs the wheel.
 
 Gated opt-in via env var ``AIDP_FUSION_BUNDLE_RUN_WHEEL_TEST=1`` because it
 is slower than unit tests (~30 seconds, builds + creates a venv).
@@ -24,6 +29,8 @@ import sys
 from pathlib import Path
 
 import pytest
+
+from oracle_ai_data_platform_fusion_bundle.commands.init import TEMPLATES
 
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent.parent
 
@@ -137,3 +144,37 @@ def test_wheel_cli_content_pack_info(installed_venv: Path) -> None:
     data = json.loads(result.stdout)
     assert data["id"] == "fusion-finance-starter"
     assert set(data["nodes"]["silver"]) == {"dim_supplier", "dim_account", "dim_calendar"}
+
+
+@pytest.mark.parametrize("template", sorted(TEMPLATES))
+def test_wheel_init_scaffolds_every_template(
+    installed_venv: Path, tmp_path: Path, template: str
+) -> None:
+    """``init`` works for EVERY template from a clean ``pip install``.
+
+    Regression for the customer-found bug: the repo-root ``examples/`` tree was
+    not packaged, so ``init`` crashed with
+    ``FileNotFoundError: examples directory not found``.
+
+    Parametrizing over all templates is deliberate: ``minimal`` and
+    ``full-finance`` resolve the TOP-LEVEL ``_scaffold/*.yaml`` files
+    (``aidp.config.example.yaml``, ``full_finance.yaml``,
+    ``minimal_gl_only.yaml``), which a nested-only ``_scaffold/**/*.yaml``
+    package-data glob silently drops on some setuptools versions. The default
+    template alone (``full-finance-starter``, nested) would not catch that.
+    """
+    cli_path = installed_venv / "bin" / "aidp-fusion-bundle"
+    proj = tmp_path / template
+    proj.mkdir()
+    result = subprocess.run(
+        [str(cli_path), "init", "--template", template],
+        cwd=str(proj),
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, (
+        f"`init --template {template}` failed for a pip-installed customer:\n"
+        f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
+    assert (proj / "bundle.yaml").is_file()
+    assert (proj / "aidp.config.yaml").is_file()

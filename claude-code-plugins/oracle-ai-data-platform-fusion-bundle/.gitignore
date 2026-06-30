@@ -97,6 +97,14 @@ profiles/
 !examples/profiles/
 !examples/profiles/**
 
+# Same story for the `init` scaffold templates shipped INSIDE the package
+# (scripts/.../_scaffold/). These are package-data source — the global
+# bundle.yaml / aidp.config.yaml ignores would drop the full-finance-starter
+# and minimal-bundle templates from the wheel, breaking `init` for pip
+# customers. Re-include them explicitly.
+!**/_scaffold/**/bundle.yaml
+!**/_scaffold/**/aidp.config.yaml
+
 # OAC workbook authoring (workbooks/<name>/) — the generated workbook JSON and
 # any *bound* request carry the OAC host / dataset UUID / session tokens. Keep
 # those raw artifacts local; commit only *.redacted.json (and your request.json
