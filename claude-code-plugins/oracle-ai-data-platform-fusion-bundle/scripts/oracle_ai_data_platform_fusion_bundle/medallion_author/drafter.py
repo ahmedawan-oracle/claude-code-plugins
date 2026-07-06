@@ -29,6 +29,7 @@ from typing import Any, Literal
 
 import yaml
 
+from ..schema.diagnostic_artifact import BronzeTypeMismatchV1
 from ..schema.incremental_impact import IncrementalImpact
 from ..schema.medallion_pack import (
     ColumnAlias,
@@ -225,22 +226,239 @@ def draft_overlay(
     return draft
 
 
+def draft_type_overlay(
+    *,
+    overlay_name: str,
+    base_pack_id: str,
+    base_pack_version: str,
+    mismatch: "BronzeTypeMismatchV1",
+    diagnostic_run_id: str,
+    model_id: str,
+    skill_evidence: dict[str, Any] | None = None,
+) -> OverlayDraft:
+    """Draft a bronze type-overlay from an AIDPF-4070 diagnostic.
+
+    Emits an ``overrides: { bronze/<node>: { outputSchema: { columns: [...] }}}``
+    block that retypes each mismatched column to its live (``materialised``)
+    type — for operator approval (never auto-applied). Validated via
+    :func:`validate_overlay` before return.
+    """
+    validate_path_segment(overlay_name, field="overlay.name")
+    validate_path_segment(diagnostic_run_id, field="overlay.diagnosticRunId")
+
+    if not mismatch.type_mismatches:
+        raise OverlayValidationError(
+            "draft_type_overlay called with no type mismatches — nothing to draft."
+        )
+
+    columns = [
+        {"name": m.column, "type": m.materialised} for m in mismatch.type_mismatches
+    ]
+    pack_data: dict[str, Any] = {
+        "id": overlay_name,
+        "version": "0.1.0",
+        "extends": f"{base_pack_id}@{base_pack_version}",
+        "compatibility": {
+            "pluginMinVersion": "0.3.0",
+            "fusionFamilies": ["ERP"],
+            "aidp": {"requiresDelta": True},
+        },
+        "provenance": _build_provenance(
+            diagnostic_run_id=diagnostic_run_id,
+            model_id=model_id,
+            proposals={},
+            incremental_impact={},
+        ),
+        "overrides": {
+            f"bronze/{mismatch.node}": {"outputSchema": {"columns": columns}}
+        },
+    }
+    pack_yaml = PackYaml.model_validate(pack_data)
+    draft = OverlayDraft(
+        overlay_name=overlay_name,
+        base_pack_id=base_pack_id,
+        base_pack_version=base_pack_version,
+        diagnostic_run_id=diagnostic_run_id,
+        model_id=model_id,
+        proposed=(),
+        pack_yaml=pack_yaml,
+        skill_evidence=skill_evidence or {},
+    )
+    validate_overlay(draft)
+    return draft
+
+
+_COA_ROLE_TO_ALIAS = {
+    "balancing": ("coa_balancing_segment", "coa.balancing"),
+    "cost_center": ("coa_cost_center_segment", "coa.cost_center"),
+    "natural_account": ("coa_natural_account_segment", "coa.natural_account"),
+}
+
+
+def draft_coa_depth_overlay(
+    *,
+    overlay_name: str,
+    base_pack_id: str,
+    base_pack_version: str,
+    base_column_aliases: dict[str, ColumnAlias],
+    segments: list[int],
+    operator_input_id: str,
+    model_id: str,
+    tenant: str | None = None,
+    roles: dict[str, str] | None = None,
+    skill_evidence: dict[str, Any] | None = None,
+) -> OverlayDraft:
+    """Draft a COA-depth overlay from **operator input** (no runtime diagnostic).
+
+    Extends, in ONE coordinated overlay:
+      * the three ``coa_*`` semantic-role candidate lists (inherit + the deep
+        ``CodeCombinationSegment<N>`` columns), and
+      * the ``gl_coa`` bronze ``outputSchema`` (``extendColumns`` the same deep
+        columns) — so the binding is contract-backed (avoids AIDPF-2015).
+
+    Provenance uses operator-input mode (``operatorInputId`` + ``trigger:
+    operator_input``), never a faked ``diagnosticRunId`` — the canonical entry
+    for an ``AIDPF-2015`` content-pack-validate failure, which writes no
+    diagnostic artifact. ``requiredColumns`` is intentionally NOT touched
+    (overlay support for it is the separate ``bronze-required-columns-overlay``).
+    """
+    validate_path_segment(overlay_name, field="overlay.name")
+    validate_path_segment(operator_input_id, field="overlay.operatorInputId")
+
+    bad = [n for n in segments if n < 1 or n > 30]
+    if bad:
+        raise OverlayValidationError(
+            f"COA-depth segments out of range (must be 1..30): {bad!r}."
+        )
+    if not segments:
+        raise OverlayValidationError("draft_coa_depth_overlay needs >=1 segment.")
+
+    deep_cols = [f"CodeCombinationSegment{n}" for n in sorted(set(segments))]
+
+    # Extend each COA role's candidate domain: inherit + deep columns.
+    column_aliases: dict[str, dict[str, Any]] = {}
+    for _role, (alias_name, role_token) in _COA_ROLE_TO_ALIAS.items():
+        base = base_column_aliases.get(alias_name)
+        column_aliases[alias_name] = {
+            "appliesTo": base.appliesTo if base is not None else "bronze.gl_coa",
+            "required": base.required if base is not None else True,
+            "resolution": "semanticRole",
+            "role": role_token,
+            "candidates": ["inherit", *deep_cols],
+        }
+
+    # Extend the gl_coa bronze contract (extendColumns the deep segments).
+    overrides = {
+        "bronze/gl_coa": {
+            "outputSchema": {
+                "extendColumns": True,
+                "columns": [
+                    {"name": c, "type": "string", "pii": "none"} for c in deep_cols
+                ],
+            }
+        }
+    }
+
+    evidence = {
+        "trigger": "operator_input",
+        "tenant": tenant,
+        "segments": sorted(set(segments)),
+        "roles": roles or {},
+    }
+    pack_data: dict[str, Any] = {
+        "id": overlay_name,
+        "version": "0.1.0",
+        "extends": f"{base_pack_id}@{base_pack_version}",
+        "compatibility": {
+            "pluginMinVersion": "0.3.0",
+            "fusionFamilies": ["ERP"],
+            "aidp": {"requiresDelta": True},
+        },
+        "provenance": _build_provenance(
+            operator_input_id=operator_input_id,
+            model_id=model_id,
+            proposals={},
+            incremental_impact={},
+            evidence=evidence,
+        ),
+        "columnAliases": column_aliases,
+        "overrides": overrides,
+    }
+    pack_yaml = PackYaml.model_validate(pack_data)
+    draft = OverlayDraft(
+        overlay_name=overlay_name,
+        base_pack_id=base_pack_id,
+        base_pack_version=base_pack_version,
+        diagnostic_run_id=operator_input_id,  # audit label (operator-input)
+        model_id=model_id,
+        proposed=(),
+        pack_yaml=pack_yaml,
+        skill_evidence=skill_evidence or {},
+    )
+    validate_overlay(draft)
+    return draft
+
+
 def validate_overlay(draft: OverlayDraft) -> None:
     """Enforce skill-authored overlay restrictions.
 
     * Overlay MUST NOT introduce any silver/gold node definitions
       (skill never authors SQL templates).
-    * Overlay MUST NOT use ``overrides`` to change an existing node
-      (out of scope for v0.3; would require SQL template authoring).
+    * Overlay ``overrides`` may carry ONLY one of two sanctioned shapes:
+
+      (a) a **bronze** override (target ``bronze/<id>``) carrying **at least one**
+          of the three sanctioned bronze keys — ``outputSchema`` (type-overlay),
+          ``requiredColumns`` (add a source-column assertion), and/or
+          ``relaxRequiredColumns`` (acknowledged removal of a required column, each
+          entry with a mandatory ``reason``). Any combination of the three is
+          allowed; a bronze entry carrying none of them is a no-op and is rejected.
+          These three are exactly the bronze mechanisms the medallion-author skill
+          is documented to author (see ``skills/medallion-author/SKILL.md`` "Bronze
+          requiredColumns overlay", and the ``/medallion-author`` routing in
+          mart-author / fusion-drift-doctor / aidpf-error-triage). The
+          ``relaxRequiredColumns`` safety is enforced by the schema (mandatory
+          ``reason``) and the engine (AIDPF-2063), not here.
+
+      (b) a **silver/gold** guarded full replacement (target ``silver/<id>`` /
+          ``gold/<id>`` carrying ONLY a ``replaceNode`` block).
+
+      Forbidden in every case: ``sql`` / ``profile`` / ``quality`` (free-form
+      SQL-template authoring) and a bronze ``replaceNode`` (silver/gold-only).
     * Overlay MUST carry a non-empty ``provenance.skill_id``,
       ``skill_version``, ``model_id``, ``diagnostic_run_id``.
     """
     pack = draft.pack_yaml
-    if pack.overrides:
-        raise OverlayValidationError(
-            "Skill-authored overlay declared `overrides`; skill-authored "
-            "SQL templates are forbidden."
+    for key, entry in (pack.overrides or {}).items():
+        # (a) Bronze override: at least one of the three sanctioned bronze keys,
+        # and none of the forbidden ones (sql/profile/quality/replaceNode).
+        sanctioned_bronze = (
+            key.startswith("bronze/")
+            and (
+                entry.output_schema is not None
+                or entry.required_columns is not None
+                or entry.relax_required_columns is not None
+            )
+            and entry.sql is None
+            and entry.profile is None
+            and entry.quality is None
+            and entry.replace_node is None
         )
+        # (b) Silver/gold guarded full replacement: a `replaceNode` block (and
+        # nothing else — the schema already enforces replaceNode mutual-exclusion).
+        sanctioned_replace = (
+            (key.startswith("silver/") or key.startswith("gold/"))
+            and entry.replace_node is not None
+        )
+        if not (sanctioned_bronze or sanctioned_replace):
+            raise OverlayValidationError(
+                f"Skill-authored overlay override {key!r} is not a sanctioned shape. "
+                f"Allowed: a bronze override (`bronze/<id>`) carrying at least one of "
+                f"`outputSchema` / `requiredColumns` / `relaxRequiredColumns`, or a "
+                f"silver/gold `replaceNode` full replacement (`silver|gold/<id>`). "
+                f"Forbidden: `sql` / `profile` / `quality` (free-form SQL authoring), "
+                f"a bronze `replaceNode` (silver/gold-only), and an empty bronze "
+                f"override carrying none of the three bronze keys."
+            )
     if pack.provenance is None:
         raise OverlayValidationError("Overlay missing `provenance` block.")
     missing = [
@@ -249,13 +467,24 @@ def validate_overlay(draft: OverlayDraft) -> None:
             ("skill_id", pack.provenance.skill_id),
             ("skill_version", pack.provenance.skill_version),
             ("model_id", pack.provenance.model_id),
-            ("diagnostic_run_id", pack.provenance.diagnostic_run_id),
         )
         if not v
     ]
     if missing:
         raise OverlayValidationError(
             f"Overlay provenance missing required fields: {missing}"
+        )
+    # Exactly one trigger id: a runtime diagnostic run id (diagnostic-driven
+    # path) XOR an operator-input id (e.g. COA-depth from AIDPF-2015, which
+    # writes no diagnostic). Neither → can't audit the trigger; both →
+    # ambiguous / a faked diagnostic id.
+    has_diag = bool(pack.provenance.diagnostic_run_id)
+    has_op = bool(pack.provenance.operator_input_id)
+    if has_diag == has_op:
+        raise OverlayValidationError(
+            "Overlay provenance must carry exactly one of `diagnosticRunId` "
+            "(diagnostic-driven) or `operatorInputId` (operator-input mode), "
+            f"not {'both' if has_diag else 'neither'}."
         )
     if pack.provenance.skill_id != SKILL_ID:
         raise OverlayValidationError(
@@ -266,17 +495,18 @@ def validate_overlay(draft: OverlayDraft) -> None:
 
 def _build_provenance(
     *,
-    diagnostic_run_id: str,
+    diagnostic_run_id: str | None = None,
+    operator_input_id: str | None = None,
     model_id: str,
     proposals: dict[str, SkillProposalRecord],
     incremental_impact: dict[str, IncrementalImpact],
+    evidence: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    return {
+    block: dict[str, Any] = {
         "skillId": SKILL_ID,
         "skillVersion": SKILL_VERSION,
         "modelId": model_id,
         "generatedAt": datetime.now(tz=timezone.utc).isoformat(),
-        "diagnosticRunId": diagnostic_run_id,
         "proposals": {
             name: {
                 "candidateAdded": p.candidate_added,
@@ -292,6 +522,16 @@ def _build_provenance(
         if incremental_impact
         else None,
     }
+    # Exactly one trigger id (validate_overlay enforces the XOR).
+    if operator_input_id is not None:
+        block["operatorInputId"] = operator_input_id
+        block["trigger"] = "operator_input"
+    else:
+        block["diagnosticRunId"] = diagnostic_run_id
+        block["trigger"] = "diagnostic"
+    if evidence:
+        block["evidence"] = evidence
+    return block
 
 
 # ---------------------------------------------------------------------------
@@ -463,6 +703,7 @@ __all__ = [
     "PickOutcome",
     "ProposedCandidate",
     "draft_overlay",
+    "draft_type_overlay",
     "validate_overlay",
     "write_overlay",
     "write_resolutions",

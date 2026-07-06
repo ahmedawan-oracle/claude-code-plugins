@@ -22,6 +22,7 @@ import pathlib
 
 import pytest
 
+import oracle_ai_data_platform_fusion_bundle as _pkg
 from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack import load_pack
 from oracle_ai_data_platform_fusion_bundle.orchestrator.sql_renderer import (
     AIDPF_5001_IDENTIFIER_ALLOWLIST,
@@ -603,3 +604,88 @@ class TestDisallowedParamTypes:
         from datetime import date, datetime
         for v in ("x", 1, 1.5, True, date(2026, 1, 1), datetime(2026, 1, 1)):
             assert _format_profile_value_for_params(v) == v
+
+
+# ---------------------------------------------------------------------------
+# Real shipped ap_aging.sql — semantic-source aliasing regression
+# ---------------------------------------------------------------------------
+
+
+class TestRealApAgingSemanticSourceShape:
+    """Regression for the `{{ semantic.cancelled_status }}` / FROM-alias clash.
+
+    The semantic fragment substitutes `{table}` with the FULL bronze identifier
+    (catalog.schema.ap_invoices). If the SQL aliases ap_invoices with a
+    correlation name, that full-path qualifier in the rendered predicate becomes
+    unresolvable at execution. The shipped ap_aging.sql therefore keeps
+    ap_invoices UNALIASED (reads qualified by the table name). This test renders
+    the REAL shipped node and asserts that invariant holds end-to-end.
+    """
+
+    STARTER_PACK_ROOT = (
+        pathlib.Path(_pkg.__file__).parent
+        / "content_packs"
+        / "fusion-finance-starter"
+    )
+
+    _PROFILE_YAML = """
+schemaVersion: 1
+tenant: ap-aging-render-test
+pinnedAt: 2026-06-01T00:00:00+00:00
+bronzeSchemaFingerprint: "sha256:abc"
+resolved:
+  column:
+    invoice_currency_code: ApInvoicesInvoiceCurrencyCode
+  semantic:
+    cancelled_status: cancelled_date
+profile: {}
+"""
+
+    def _render(self):
+        pack = load_pack(self.STARTER_PACK_ROOT)
+        profile = load_tenant_profile_from_string(self._PROFILE_YAML)
+        ctx = RunContext(
+            catalog="fusion_catalog",
+            bronze_schema="bronze",
+            silver_schema="silver",
+            gold_schema="gold",
+            run_id="run-test-001",
+            active_profile_name="finance-default",
+            mode="seed",
+            bronze_table_for_source={
+                "ap_invoices": "fusion_catalog.bronze.ap_invoices",
+            },
+        )
+        return render_node_sql(pack.gold["ap_aging"], pack, profile, ctx).sql
+
+    def test_semantic_predicate_uses_full_path_qualifier(self) -> None:
+        sql = self._render()
+        # {table} → full bronze identifier inside the cancelled-date predicate.
+        assert (
+            "fusion_catalog.bronze.ap_invoices.ApInvoicesCancelledDate IS NULL"
+            in sql
+        )
+
+    def test_ap_invoices_source_is_unaliased(self) -> None:
+        # The semantic-consuming source must NOT carry a correlation name, or the
+        # full-path qualifier above cannot resolve. Unaliased → the FROM clause
+        # goes straight from the table identifier to the next keyword (WHERE).
+        sql = self._render()
+        import re
+
+        assert re.search(
+            r"FROM\s+fusion_catalog\.bronze\.ap_invoices\s+WHERE", sql
+        ), "ap_invoices must be referenced unaliased in ap_aging.sql"
+        # And specifically not re-aliased back to `ai` (the broken shape).
+        assert not re.search(
+            r"fusion_catalog\.bronze\.ap_invoices\s+(?:AS\s+)?ai\b", sql, re.IGNORECASE
+        )
+
+    def test_full_path_qualifier_is_in_scope(self) -> None:
+        # The exact table identifier used to qualify the predicate must appear as
+        # a FROM source (so Spark can resolve it) — the core invariant the alias
+        # rewrite violated.
+        sql = self._render()
+        qualifier = "fusion_catalog.bronze.ap_invoices"
+        assert f"{qualifier}.ApInvoicesCancelledDate" in sql
+        assert f"FROM {qualifier}" in sql

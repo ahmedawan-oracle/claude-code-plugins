@@ -28,16 +28,16 @@ profiles:
       startDate: '2020-01-01'
       endDate: '2030-12-31'
       fiscalStartMonth: 1
-    # Documentation of conventional Fusion COA role-to-position
-    # mapping. NOT consumed by any v0.3 SQL template — the three
-    # `coa_*_segment` columnAliases below own the bootstrap-resolved
-    # source-column substitution for the three roles. See
-    # `LIMITS.md P3-L2` entry for the role-positioning architectural
-    # limit and the future `{{ coa.<role> }}` token.
+    # Conventional Fusion COA role->column default. CONSUMED by the COA
+    # semantic-role resolver (feature coa-role-segment-resolution): used as the
+    # `defaulted_convention` fallback when a tenant profile declares no explicit
+    # `chartOfAccounts`. Values are physical bronze column names (not integer
+    # positions) so they survive non-conventional naming and are validated
+    # against the gl_coa bronze contract.
     chartOfAccounts:
-      balancingSegment: segment1
-      costCenterSegment: segment2
-      naturalAccountSegment: segment3
+      balancingSegment: CodeCombinationSegment1
+      costCenterSegment: CodeCombinationSegment2
+      naturalAccountSegment: CodeCombinationSegment3
 
 # Variation points. Bootstrap walks each entry's candidates in priority order
 # and pins the first that exists on the tenant.
@@ -59,42 +59,74 @@ columnAliases:
       - ApInvoicesInvoiceCurrencyCode
       - ApInvoicesCurrencyCode
 
-  # COA role aliases. Each role has a SINGLE-CANDIDATE list pinning
-  # its conventional source column. Bootstrap auto-resolves trivially
-  # on conventional Fusion COA.
+  # COA role aliases — SEMANTIC ROLES, not physical aliases.
+  # `resolution: semanticRole` marks these as tenant-specific business roles
+  # resolved from explicit `profile.chartOfAccounts` config via the COA
+  # resolution ladder — NOT by column existence (every CodeCombinationSegment{N}
+  # coexists on every Fusion gl_coa extract, so existence cannot prove which
+  # segment plays the balancing/cost-center/natural-account role). Bootstrap
+  # records honest per-role provenance (config_resolved / operator_confirmed /
+  # defaulted_convention / legacy_unverified), never auto_resolve.
   #
-  # Honest limit: columnAliases resolve by physical column existence.
-  # CodeCombinationSegment1..6
-  # all coexist on every Fusion gl_coa extract, so a non-conventional
-  # tenant (e.g., balancing role at Segment4) would have bootstrap
-  # auto-resolve to Segment1 anyway — Segment1 still exists, just
-  # not as the balancing column. The recovery path for non-conventional
-  # COA is pre-authored overlay (extending the candidate list with
-  # the role's actual source column) OR hand-edited profile, BEFORE
-  # running bootstrap. A future `{{ coa.<role> }}` renderer token
-  # consuming `profile.chartOfAccounts.<role>Segment` integers is
-  # the proper architectural fix (out of v0.3 scope). Use a skill-authored
-  # overlay for tenant-specific escalation.
+  # `candidates` here is the ALLOWED DOMAIN (the segment columns a role may
+  # bind), which must equal what the gl_coa bronze contract guarantees
+  # (Segment1..6). `role:` binds the alias to its chartOfAccounts mapping.
   coa_balancing_segment:
     appliesTo: bronze.gl_coa
     required: true
+    resolution: semanticRole
+    role: coa.balancing
     candidates:
       - CodeCombinationSegment1
+      - CodeCombinationSegment2
+      - CodeCombinationSegment3
+      - CodeCombinationSegment4
+      - CodeCombinationSegment5
+      - CodeCombinationSegment6
   coa_cost_center_segment:
     appliesTo: bronze.gl_coa
     required: true
+    resolution: semanticRole
+    role: coa.cost_center
     candidates:
+      - CodeCombinationSegment1
       - CodeCombinationSegment2
+      - CodeCombinationSegment3
+      - CodeCombinationSegment4
+      - CodeCombinationSegment5
+      - CodeCombinationSegment6
   coa_natural_account_segment:
     appliesTo: bronze.gl_coa
     required: true
+    resolution: semanticRole
+    role: coa.natural_account
     candidates:
+      - CodeCombinationSegment1
+      - CodeCombinationSegment2
       - CodeCombinationSegment3
+      - CodeCombinationSegment4
+      - CodeCombinationSegment5
+      - CodeCombinationSegment6
 
 
 # Semantic variants. The fragment is substituted into `{{ semantic.<name> }}`
 # at render time after bootstrap resolves which candidate's
 # `detect.columnExists` matches the tenant.
+# Per-candidate bronze-contract rule (declared-inputs / AIDPF-2045+2084): a
+# semantic candidate's `detect.columnExists` column must be guaranteed by the
+# upstream bronze `outputSchema` *on the tenant that resolves to it*. Candidates
+# here are MUTUALLY EXCLUSIVE per tenant (a Fusion env exposes the cancelled
+# state as a date OR a flag, never both), so a single static bronze contract
+# cannot list both columns without AIDPF-4071 failing on a tenant missing one.
+# The shipped contract therefore backs the reference tenant's resolved arm
+# (`cancelled_date` → `ApInvoicesCancelledDate`, present on the reference ERP
+# tenant; the `cancelled_flag` column is absent there). A tenant whose bootstrap
+# resolves
+# `cancelled_flag` extends `bronze/ap_invoices.outputSchema` with
+# `ApInvoicesCancelledFlag` via a bronze type-overlay (medallion-author); until
+# then `content-pack validate --profile <flag-tenant>` correctly reports
+# AIDPF-2045 for `$semantic.cancelled_status` — the honest "extend the contract"
+# signal, not a silent gap.
 semanticVariants:
   cancelled_status:
     appliesTo: bronze.ap_invoices

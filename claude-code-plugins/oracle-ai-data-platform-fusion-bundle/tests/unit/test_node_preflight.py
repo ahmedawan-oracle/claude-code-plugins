@@ -84,15 +84,26 @@ def _fake_describe_spark(columns: list[str]) -> MagicMock:
     return spark
 
 
-def _pack(alias_keys: tuple[str, ...] = ()) -> MagicMock:
+def _pack(
+    alias_keys: tuple[str, ...] = (),
+    bronze_ids: tuple[str, ...] = ("erp_thing",),
+    silver_ids: tuple[str, ...] = (),
+) -> MagicMock:
     """Minimal ResolvedPack-shaped mock.
 
-    Only the fields preflight reads need to be real: ``pack.column_aliases``
-    is used by `_resolve_required_column_entry`'s key-existence check.
-    Defaults to an empty alias map for literal-only tests.
+    Fields preflight reads that must be real:
+    * ``pack.column_aliases`` — `_resolve_required_column_entry`'s key check.
+    * ``pack.bronze`` — the live-DESCRIBE gate is bronze-only; preflight skips a
+      ``requiredColumns`` source whose id is not in ``pack.bronze`` (silver/gold
+      deps are gated statically by AIDPF-2045 + the producer's 4070/4071). Real
+      dicts so the ``in`` membership test behaves (a bare MagicMock would make
+      every source look non-bronze).
     """
     m = MagicMock()
     m.pack.column_aliases = {k: MagicMock() for k in alias_keys}
+    m.bronze = {bid: MagicMock() for bid in bronze_ids}
+    m.silver = {sid: MagicMock() for sid in silver_ids}
+    m.gold = {}
     return m
 
 
@@ -146,6 +157,79 @@ class TestRequiredColumnMissing:
         report = preflight_node(spark, _load_node(), pack=_pack(), profile=_profile(), ctx=_ctx())
         assert report.ok, [e.message for e in report.errors]
 
+
+_NODE_YAML_SEMANTIC = """
+id: dim_thing
+layer: silver
+implementation: { type: sql, sql: silver/dim_thing.sql }
+target: dim_thing
+outputSchema:
+  columns:
+    - { name: thing_id, type: string, nullable: false, pii: none }
+dependsOn:
+  bronze:
+    - id: erp_thing
+      role: primary
+      watermark: { column: _extract_ts }
+requiredColumns:
+  erp_thing:
+    - SEGMENT1
+    - $semantic.cancelled_status
+refresh:
+  seed: { strategy: replace }
+  incremental:
+    strategy: merge
+    naturalKey: [thing_id]
+    watermark: { source: erp_thing, column: _extract_ts }
+"""
+
+
+def _semantic_pack() -> MagicMock:
+    """Pack mock with a `cancelled_status` semanticVariant whose active candidate
+    `cancelled_date` detects `ApInvoicesCancelledDate`."""
+    from types import SimpleNamespace
+    m = MagicMock()
+    m.pack.column_aliases = {}
+    m.bronze = {"erp_thing": MagicMock()}
+    m.silver = {}
+    m.gold = {}
+    cand = SimpleNamespace(id="cancelled_date",
+                           detect=SimpleNamespace(column_exists="ApInvoicesCancelledDate"))
+    m.pack.semantic_variants = {"cancelled_status": SimpleNamespace(candidates=[cand])}
+    return m
+
+
+def _semantic_profile() -> MagicMock:
+    m = MagicMock()
+    m.resolved.column = {}
+    m.resolved.semantic = {"cancelled_status": "cancelled_date"}
+    return m
+
+
+class TestSemanticRequiredColumn:
+    def test_semantic_ref_resolves_and_passes(self) -> None:
+        # $semantic.cancelled_status → ApInvoicesCancelledDate; present in live
+        # schema → preflight passes (regression: it used to false-fail AIDPF-2042
+        # treating the $semantic.* entry as a literal column name).
+        spark = _fake_describe_spark(["SEGMENT1", "ApInvoicesCancelledDate", "_extract_ts"])
+        report = preflight_node(
+            spark, _load_node(_NODE_YAML_SEMANTIC),
+            pack=_semantic_pack(), profile=_semantic_profile(), ctx=_ctx(),
+        )
+        assert report.ok, [e.message for e in report.errors]
+
+    def test_semantic_resolved_column_missing_raises_2042(self) -> None:
+        spark = _fake_describe_spark(["SEGMENT1", "_extract_ts"])  # cancelled date absent
+        report = preflight_node(
+            spark, _load_node(_NODE_YAML_SEMANTIC),
+            pack=_semantic_pack(), profile=_semantic_profile(), ctx=_ctx(),
+        )
+        assert not report.ok
+        assert any(
+            e.code == AIDPF_2042_REQUIRED_COLUMN_MISSING and "ApInvoicesCancelledDate" in e.message
+            for e in report.errors
+        )
+
     def test_unknown_source_id_yields_2042(self) -> None:
         spark = _fake_describe_spark(["SEGMENT1", "VENDORID", "_extract_ts"])
         ctx = RunContext(
@@ -159,6 +243,85 @@ class TestRequiredColumnMissing:
         )
         report = preflight_node(spark, _load_node(), pack=_pack(), profile=_profile(), ctx=ctx)
         assert any(e.code == AIDPF_2042_REQUIRED_COLUMN_MISSING for e in report.errors)
+
+
+# ---------------------------------------------------------------------------
+# Gold node with a SILVER dependency in requiredColumns — the live-DESCRIBE
+# gate is bronze-only (silver sources are pack-built; gated by AIDPF-2045 +
+# the producer's 4070/4071). Regression for the silver-source preflight gap.
+# ---------------------------------------------------------------------------
+
+
+_NODE_YAML_GOLD_SILVER_DEP = """
+id: supplier_spend
+layer: gold
+implementation:
+  type: sql
+  sql: gold/supplier_spend.sql
+target: supplier_spend
+outputSchema:
+  columns:
+    - name: vendor_id
+      type: bigint
+      nullable: true
+      pii: none
+dependsOn:
+  bronze:
+    - id: erp_thing
+      role: primary
+  silver:
+    - id: dim_supplier
+requiredColumns:
+  erp_thing:
+    - SEGMENT1
+  dim_supplier:
+    - supplier_name
+    - vendor_id
+refresh:
+  seed:
+    strategy: replace
+"""
+
+
+class TestGoldNodeWithSilverDependency:
+    """A gold node may declare ``requiredColumns`` on a silver source. The
+    source→table map (``ctx.bronze_table_for_source``) only carries bronze
+    sources, so the live-DESCRIBE gate MUST skip silver deps rather than
+    false-fail AIDPF-2042 (which would block the node before render)."""
+
+    def _pack(self):
+        return _pack(bronze_ids=("erp_thing",), silver_ids=("dim_supplier",))
+
+    def test_silver_dependency_does_not_block_preflight(self) -> None:
+        # Bronze SEGMENT1 present; dim_supplier absent from the source→table map
+        # (mirrors the real orchestrator map, which is bronze-only). Preflight
+        # must pass — the silver columns are owned by AIDPF-2045 + 4070/4071.
+        spark = _fake_describe_spark(["SEGMENT1", "_extract_ts"])
+        report = preflight_node(
+            spark, _load_node(_NODE_YAML_GOLD_SILVER_DEP),
+            pack=self._pack(), profile=_profile(), ctx=_ctx(),
+        )
+        assert report.ok, [e.message for e in report.errors]
+        # Specifically: no AIDPF-2042 naming the silver source.
+        assert not any(
+            "dim_supplier" in (e.message or "") for e in report.errors
+        ), [e.message for e in report.errors]
+
+    def test_bronze_source_still_checked_alongside_silver_dep(self) -> None:
+        # The skip is silver-only — a genuinely missing BRONZE column must still
+        # fail AIDPF-2042 (proves the guard doesn't over-skip).
+        spark = _fake_describe_spark(["_extract_ts"])  # SEGMENT1 missing
+        report = preflight_node(
+            spark, _load_node(_NODE_YAML_GOLD_SILVER_DEP),
+            pack=self._pack(), profile=_profile(), ctx=_ctx(),
+        )
+        assert not report.ok
+        assert any(
+            e.code == AIDPF_2042_REQUIRED_COLUMN_MISSING and "SEGMENT1" in (e.message or "")
+            for e in report.errors
+        )
+        # Still no false-positive on the silver source.
+        assert not any("dim_supplier" in (e.message or "") for e in report.errors)
 
 
 # ---------------------------------------------------------------------------

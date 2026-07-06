@@ -47,6 +47,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from . import plan_hash as plan_hash_module
 from . import state as state_module
 from . import state_phase2
+from .spark_types import _normalise_spark_type, _SPARK_TYPE_SYNONYMS  # noqa: F401
 
 logger = logging.getLogger(__name__)
 from .node_preflight import preflight_node
@@ -422,6 +423,12 @@ def _assert_materialized_matches_declared(
       type; extra raw columns are allowed. AIDPF-4070 fires only on a
       missing or mistyped declared column.
 
+    This gate validates the contract against LIVE data. The companion
+    design-time gate ``validate_column_contracts`` (AIDPF-2045) validates the
+    other side — that downstream consumers only demand columns the upstream
+    ``outputSchema`` actually guarantees — offline at ``content-pack validate``,
+    making the "contract" above load-bearing rather than aspirational.
+
     Returns a sha256 of the canonicalised materialised schema on
     success — the caller threads it into the success state row for
     audit.
@@ -500,21 +507,10 @@ def _assert_materialized_matches_declared(
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-_SPARK_TYPE_SYNONYMS = {
-    "int": "integer",
-    "long": "bigint",
-    "double": "double",
-    "string": "string",
-    "boolean": "boolean",
-    "timestamp": "timestamp",
-    "date": "date",
-}
-
-
-def _normalise_spark_type(type_str: str) -> str:
-    """Map common Spark type synonyms to a canonical form for comparison."""
-    t = type_str.strip().lower()
-    return _SPARK_TYPE_SYNONYMS.get(t, t)
+# ``_SPARK_TYPE_SYNONYMS`` / ``_normalise_spark_type`` now live in the Spark-free
+# :mod:`orchestrator.spark_types` so the design-time column-contract gate
+# (AIDPF-2045) shares the exact comparison used by the AIDPF-4070 runtime gate
+# below. Re-imported here under their original names — the 4070 gate is unchanged.
 
 
 # ---------------------------------------------------------------------------
@@ -1116,6 +1112,33 @@ def _execute_builtin_node(
 # ---------------------------------------------------------------------------
 
 
+def _own_required_columns(
+    node: "NodeYaml",  # noqa: F821
+    pack: "ResolvedPack",  # noqa: F821
+    profile: "TenantProfile | None",  # noqa: F821
+) -> set[str]:
+    """The bronze node's OWN ``requiredColumns`` resolved to physical names.
+
+    A bronze node's ``requiredColumns`` are columns the extract *asserts exist*
+    in the live PVO. Historically they were a subset of ``outputSchema`` (so the
+    AIDPF-4071 gate covered them via the outputSchema check), but the
+    bronze-required-columns overlay can now add a required column that is NOT in
+    ``outputSchema`` — those must still be probed against the live PVO. Resolved
+    via the shared resolver so ``$column.*`` / ``$coa.*`` entries map to the
+    tenant's physical columns (unresolved refs drop, exactly as the run-level
+    gates do). Keys in ``requiredColumns`` are source ids; for a bronze extract
+    they refer to this node's own PVO, so we union across all of them.
+    """
+    from .required_column_resolver import resolve_required_column_entries
+
+    own: set[str] = set()
+    for cols in (getattr(node, "required_columns", None) or {}).values():
+        own |= resolve_required_column_entries(
+            cols, resolved_pack=pack, tenant_profile=profile
+        )
+    return own
+
+
 def _source_schema_miss(
     node: "NodeYaml",  # noqa: F821
     st: "object | None",
@@ -1130,9 +1153,11 @@ def _source_schema_miss(
     all present / nothing to check.
 
     *Wanted* = the node's declared non-audit ``outputSchema`` columns,
-    PLUS ``extra_required`` — the columns in-scope silver/gold nodes need
-    from this bronze source (passed by the batch gate so a downstream
-    need that bronze's PVO can't satisfy fails BEFORE extraction, not
+    PLUS ``extra_required`` — which the callers populate with BOTH the
+    bronze node's OWN resolved ``requiredColumns`` (so an overlay-added
+    required column absent from ``outputSchema`` is still probed) AND the
+    columns in-scope silver/gold nodes need from this bronze source (so a
+    downstream need the PVO can't satisfy fails BEFORE extraction, not
     after a 21-minute pull). Audit columns (``_``-prefixed) are excluded
     from both: they're adapter-generated and always present post-extract.
 
@@ -1299,9 +1324,10 @@ def check_bronze_source_schemas(
         if node is None:
             continue
         st = schemas.get(nid)
+        extra = set(downstream_required.get(nid, frozenset()))
+        extra |= _own_required_columns(node, pack, profile)
         res = _source_schema_miss(
-            node, st, run_id=run_id, tenant=tenant,
-            extra_required=downstream_required.get(nid, frozenset()),
+            node, st, run_id=run_id, tenant=tenant, extra_required=extra,
         )
         if res is None:
             # Names all present → validate declared types against the live
@@ -1349,7 +1375,10 @@ def _bronze_source_schema_gate(
         return None
     st = schemas.get(node.id)
     tenant = getattr(profile, "tenant", None)
-    name_miss = _source_schema_miss(node, st, run_id=ctx.run_id, tenant=tenant)
+    name_miss = _source_schema_miss(
+        node, st, run_id=ctx.run_id, tenant=tenant,
+        extra_required=_own_required_columns(node, pack, profile),
+    )
     if name_miss is not None:
         return name_miss
     # Names present → validate declared types vs the live PVO (hoisted 4070).

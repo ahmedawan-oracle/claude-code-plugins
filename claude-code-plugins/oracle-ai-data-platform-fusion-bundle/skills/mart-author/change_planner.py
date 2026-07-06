@@ -433,26 +433,38 @@ def plan(payload: dict) -> dict:
             "nodeSpecs": [*bronze_specs, downstream],
         }
 
-    # 3. Rung 3: additive column on an existing single table.
+    # 3. Rung 3: change an existing single silver/gold mart in place (add / remove
+    #    / rewrite a column) via a guarded same-id full replacement (replaceNode).
     if add_to:
         return {
             "decision": "rung_3_add_column",
-            "reason": f"all source fields already feed {add_to}; add an additive output column "
-                      "(no grain/key change)",
-            "blastRadius": f"additive column on {add_to} — same grain, no reprocessing of other tables",
+            "reason": f"all source fields already feed {add_to}; ship a guarded same-id "
+                      "full replacement (replaceNode) — id unchanged, identity preserved",
+            "blastRadius": f"same-id replacement of {add_to} — id unchanged so no "
+                           "dependsOn repointing; identity (layer/target/dependsOn/refresh) "
+                           "must equal base",
             "requiresNewBronze": False,
             "missingFields": [],
             "warnings": [
                 *warnings,
-                f"verify the new column's grain matches {add_to}'s existing grain; if it "
-                "would change the grain, author a new node instead (do not alter the existing one).",
+                f"keep {add_to}'s identity (layer, target, dependsOn edge set, refresh) "
+                "equal to base — a replaceNode that changes any of those fails AIDPF-2065; "
+                "author a new node id for an identity change instead.",
             ],
             "pvoClassifications": {},
             "touchesLivingDelta": False,
             "nodeSpecs": [{
-                "addColumnTo": add_to,
+                "replaceNode": add_to,
                 "columns": list(request.get("columns") or []),
-                "note": "ADDITIVE only — extend outputSchema + SELECT; do not change grain or keys.",
+                "mechanism": (
+                    "guarded same-id full replacement: ship a complete new "
+                    f"<layer>/{add_to}.yaml + {add_to}.sql plus an acknowledged "
+                    "`overrides: { <layer>/" + add_to + ": { replaceNode: { reason, "
+                    "forkedFrom: { sqlSha256, contractSha256, packVersion } } } }` "
+                    "block. Compute forkedFrom from the base via "
+                    "`content-pack refresh-fork`. Add/remove/rewrite all use this one "
+                    "shape; identity must equal base (else AIDPF-2065)."
+                ),
             }],
         }
 

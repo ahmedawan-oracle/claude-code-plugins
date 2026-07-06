@@ -183,6 +183,62 @@ raised on the active run.
 > content-pack"). Resume is supported on both inline and REST
 > dispatch paths since Phase 5.
 
+### Design-time column-contract gate (AIDPF-2045)
+
+`content-pack validate` (and run-start) check that every silver/gold node only
+demands columns its upstream nodes actually guarantee in their declared
+`outputSchema`. This is offline and source-independent — it needs no live
+cluster — and complements the live `AIDPF-4070`/`4071` gates that compare the
+contract against live Fusion. A demand absent from (or, for a pass-through
+column, type-incompatible with) the upstream contract fails closed with
+`AIDPF-2045`; the fix is to extend the upstream `outputSchema` or correct the
+consumer's `requiredColumns`.
+
+`$column.*` / `$coa.*` consumer demands resolve against the active tenant
+profile, so to check them at validate time run profile-aware:
+
+```bash
+aidp-fusion-bundle content-pack validate <pack> --profile <profile-name-or-path>
+```
+
+Without `--profile`, validation is profile-less: literal + watermark demands are
+still gated; alias demands are deferred to the live gates. This is the leg that
+catches an overlay which narrows/retypes a bronze contract below what a
+downstream consumer needs — run it after `use-pack`.
+
+### Declared-inputs gate (AIDPF-2084 / AIDPF-2085)
+
+The companion to AIDPF-2045, run at `content-pack validate` (offline): it parses
+each silver/gold node's SQL and asserts every upstream column it reads is
+declared in that node's `requiredColumns`. Together they form an honest chain —
+SQL reads ⊆ `requiredColumns` ⊆ upstream `outputSchema` — so the live
+preflight/drift gates (AIDPF-2042/2071/2072/4071) cover every column the SQL
+actually consumes. Authoring rules (see CLAUDE.md "SQL authoring convention"):
+alias every upstream source, never `SELECT *` from an upstream (hard
+`AIDPF-2084`), qualify every upstream column and declare it. A bare unqualified
+upstream column is a warn-only `AIDPF-2085`. Matching is at the author symbol
+level (literal / `$column.<key>` / `$coa.<role>`), so the gate works on the
+profile-less run-start path too.
+
+### Bronze `requiredColumns` overlay (add / acknowledged relax)
+
+An overlay may adjust a bronze node's `requiredColumns` (the source columns the
+extract asserts exist in the live PVO; these feed the per-node preflight and the
+AIDPF-4071 source-schema gate — they do **not** project the extract, which always
+writes the full raw PVO):
+
+- **Add** (additive, tightens the assertion) — `overrides: { bronze/<id>: {
+  requiredColumns: { <src>: [COL] }}}`, or a same-id `bronze/<id>.yaml` file
+  (add-only). Adds are validated live by the existing gates: requiring a column
+  the PVO lacks fails closed (AIDPF-4071/2042).
+- **Relax** (weakens the assertion, so acknowledged) — block-only: `overrides: {
+  bronze/<id>: { relaxRequiredColumns: { <src>: [{ column: COL, reason: "…" }] }}}`.
+  `reason` is mandatory. Dropping a required column in a same-id file fails closed
+  (AIDPF-2062); relaxing a column the base never required fails closed
+  (AIDPF-2063). Use relax for a tenant whose PVO legitimately lacks a normally-
+  required column — note the column is still written to bronze when present; relax
+  only turns off the existence assertion + drift watch for it.
+
 ## Renderer tokens worth knowing
 
 * `{{ snapshot_date }}` — emits literal `CURRENT_DATE()` when

@@ -32,6 +32,9 @@ outputSchema:
     - { name: RaCustomerTrxCustomerTrxId, type: "decimal(18,0)", nullable: true, pii: low }
     - { name: RaCustomerTrxBillToCustomerId, type: "decimal(18,0)", nullable: true, pii: low }
     - { name: RaCustomerTrxInvoiceCurrencyCode, type: string, nullable: true, pii: none }
+    - { name: RaCustomerTrxBillingDate, type: date, nullable: true, pii: none }
+    - { name: RaCustomerTrxOrgId, type: "decimal(18,0)", nullable: true, pii: none }
+    - { name: RaCustomerTrxBrAmount, type: "decimal(38,30)", nullable: true, pii: low }
     - { name: RaCustomerTrxLastUpdateDate, type: timestamp, nullable: true, pii: none }
     - { name: _extract_ts, type: timestamp, nullable: false, pii: none }
     - { name: _source_pvo, type: string, nullable: false, pii: none }

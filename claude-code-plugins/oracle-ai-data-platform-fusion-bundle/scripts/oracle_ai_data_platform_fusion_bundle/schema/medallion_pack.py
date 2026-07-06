@@ -262,14 +262,128 @@ class CalendarProfile(BaseModel):
         return _validate_iso_date("calendar date", v)
 
 
-class ChartOfAccountsProfile(BaseModel):
-    """Default COA segment role mapping. Overridden per tenant in profiles/<tenant>.yaml."""
+class CoaRoleMapping(BaseModel):
+    """One chart's COA role -> physical-column-name binding.
+
+    Values are physical column names (e.g. ``CodeCombinationSegment4``), not
+    integer positions -- so the binding survives non-conventional column
+    naming and can be existence-validated against the bronze contract.
+    """
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     balancing_segment: str = Field(alias="balancingSegment")
     cost_center_segment: str = Field(alias="costCenterSegment")
     natural_account_segment: str = Field(alias="naturalAccountSegment")
+
+    def columns(self) -> dict[str, str]:
+        """role-name -> physical column, keyed by the canonical role tokens."""
+        return {
+            "balancing": self.balancing_segment,
+            "cost_center": self.cost_center_segment,
+            "natural_account": self.natural_account_segment,
+        }
+
+
+class ChartOfAccountsProfile(BaseModel):
+    """COA segment role->column mapping for a tenant.
+
+    Two shapes are accepted:
+
+    * **Flat / legacy** -- ``balancingSegment`` / ``costCenterSegment`` /
+      ``naturalAccountSegment`` directly on this object (the pre-feature pack
+      default shape, kept back-compat-parseable).
+    * **Nested** -- ``default`` (a :class:`CoaRoleMapping`) plus optional
+      per-chart ``byChart`` arms keyed by ``CodeCombinationChartOfAccountsId``
+      (the multi-COA serving shape).
+
+    The flat and nested ``default`` shapes are mutually exclusive (declaring
+    both is an error). Use :meth:`resolved_default` to read the effective
+    default regardless of which shape was authored.
+    """
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    # Flat / legacy shape (optional now -- a profile may use the nested shape).
+    balancing_segment: str | None = Field(default=None, alias="balancingSegment")
+    cost_center_segment: str | None = Field(default=None, alias="costCenterSegment")
+    natural_account_segment: str | None = Field(
+        default=None, alias="naturalAccountSegment"
+    )
+
+    # Nested shape.
+    default: CoaRoleMapping | None = None
+    by_chart: dict[str, CoaRoleMapping] | None = Field(default=None, alias="byChart")
+
+    # Operator opt-in: all active charts share the default layout (set via
+    # `bootstrap --accept-singleton-coa`). Lets the multi-COA gate pass.
+    singleton_accepted: bool = Field(default=False, alias="singletonAccepted")
+
+    @model_validator(mode="after")
+    def _check_shape(self) -> "ChartOfAccountsProfile":
+        flat_present = any(
+            v is not None
+            for v in (
+                self.balancing_segment,
+                self.cost_center_segment,
+                self.natural_account_segment,
+            )
+        )
+        if flat_present and self.default is not None:
+            raise ValueError(
+                "chartOfAccounts: declare EITHER the flat "
+                "balancing/costCenter/naturalAccount fields OR a nested "
+                "`default` mapping, not both."
+            )
+        if flat_present:
+            missing = [
+                name
+                for name, v in (
+                    ("balancingSegment", self.balancing_segment),
+                    ("costCenterSegment", self.cost_center_segment),
+                    ("naturalAccountSegment", self.natural_account_segment),
+                )
+                if v is None
+            ]
+            if missing:
+                raise ValueError(
+                    f"chartOfAccounts flat shape is missing required fields: {missing}"
+                )
+        if self.by_chart is not None and not flat_present and self.default is None:
+            raise ValueError(
+                "chartOfAccounts: `byChart` requires a `default` mapping (or flat "
+                "fields) for charts not covered by an explicit arm."
+            )
+        return self
+
+    def resolved_default(self) -> CoaRoleMapping | None:
+        """The effective default mapping, from either the nested or flat shape."""
+        if self.default is not None:
+            return self.default
+        if self.balancing_segment is not None:
+            return CoaRoleMapping(
+                balancingSegment=self.balancing_segment,
+                costCenterSegment=self.cost_center_segment,  # type: ignore[arg-type]
+                naturalAccountSegment=self.natural_account_segment,  # type: ignore[arg-type]
+            )
+        return None
+
+    def arms(self) -> dict[str, CoaRoleMapping]:
+        """All effective mappings keyed by arm id (``default`` + each chart id)."""
+        out: dict[str, CoaRoleMapping] = {}
+        default = self.resolved_default()
+        if default is not None:
+            out["default"] = default
+        for chart_id, mapping in (self.by_chart or {}).items():
+            out[chart_id] = mapping
+        return out
+
+    def referenced_columns(self) -> set[str]:
+        """Union of every physical column referenced by any arm (existence scope)."""
+        cols: set[str] = set()
+        for mapping in self.arms().values():
+            cols.update(mapping.columns().values())
+        return cols
 
 
 class PackProfileDefaults(BaseModel):
@@ -300,7 +414,7 @@ class ColumnAlias(BaseModel):
     exists on the tenant.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     appliesTo: str
     """Fully-qualified bronze table this variation point applies to (e.g. `bronze.ap_invoices`)."""
@@ -310,7 +424,34 @@ class ColumnAlias(BaseModel):
 
     candidates: list[str] = Field(min_length=1)
     """Priority-ordered list of physical column names. May include the literal `inherit`
-    in overlay packs to extend the base pack's candidates (resolved at overlay merge)."""
+    in overlay packs to extend the base pack's candidates (resolved at overlay merge).
+
+    For ``resolution: semanticRole`` entries this is the *allowed domain* (the set of
+    physical columns a role may bind), not a priority walk."""
+
+    resolution: Literal["columnExistence", "semanticRole"] = "columnExistence"
+    """Resolution strategy. ``columnExistence`` (default) keeps the existing
+    physical-alias auto-match. ``semanticRole`` marks a tenant-specific business role
+    (e.g. COA balancing segment) resolved from explicit ``profile.chartOfAccounts``
+    config, not column existence -- existence cannot prove *meaning*."""
+
+    role: str | None = None
+    """For ``semanticRole`` entries: the semantic role this alias binds, e.g.
+    ``coa.balancing``. Maps the alias to its ``profile.chartOfAccounts`` mapping."""
+
+    @model_validator(mode="after")
+    def _check_resolution(self) -> "ColumnAlias":
+        if self.resolution == "semanticRole" and not self.role:
+            raise ValueError(
+                f"columnAlias on {self.appliesTo!r}: `resolution: semanticRole` "
+                "requires a `role:` binding (e.g. `role: coa.balancing`)."
+            )
+        if self.resolution == "columnExistence" and self.role is not None:
+            raise ValueError(
+                f"columnAlias on {self.appliesTo!r}: `role:` is only valid with "
+                "`resolution: semanticRole`."
+            )
+        return self
 
 
 class SemanticVariantDetect(BaseModel):
@@ -384,6 +525,109 @@ class PackOverlayRef(BaseModel):
         return f"{self.name}@{self.version}"
 
 
+class RelaxRequiredColumn(BaseModel):
+    """One acknowledged removal of a bronze node's ``requiredColumns`` entry.
+
+    Removing a required column *weakens* a live safety gate (the per-node
+    preflight assertion + PVO-drift watch stop covering it), so it is allowed
+    only behind an explicit, audited acknowledgement: the ``reason`` is
+    mandatory and must be non-blank — it is the *only* control on the
+    gate-weakening op. A missing key, ``""``, or whitespace-only string all fail
+    closed (a bare ``min_length`` would accept ``"   "``).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    column: str = Field(min_length=1)
+    """The base ``requiredColumns`` entry to remove (literal or ``$column.*`` /
+    ``$coa.*`` reference, matched verbatim)."""
+
+    reason: str = Field(min_length=1)
+    """Operator-facing justification for relaxing the assertion. Mandatory,
+    non-blank — the acknowledgement of a deliberate gate relaxation."""
+
+    @field_validator("column", "reason")
+    @classmethod
+    def _reject_blank(cls, v: str, info) -> str:
+        if not v.strip():
+            raise ValueError(
+                f"{AIDPF_2001_ORPHAN_OVERRIDE}: relaxRequiredColumns `{info.field_name}` "
+                f"must be a non-blank string; whitespace-only is not a valid "
+                f"acknowledgement."
+            )
+        return v
+
+
+class ForkedFrom(BaseModel):
+    """Provenance fingerprints a ``replaceNode`` overlay was forked from.
+
+    A same-id silver/gold full replacement *shadows* the base ``<id>.sql`` and
+    the base node YAML contract; silver/gold have no drift gate against the base,
+    so a later starter-pack fix to the base mart would be silently missed. These
+    fingerprints, recomputed at ``content-pack validate``, convert that *silent*
+    staleness into a *loud* one (``AIDPF-2064``):
+
+    * ``sql_sha256`` — the base SQL template text + the referenced
+      ``{{ semantic.* }}`` candidate lists (pack-owned render inputs).
+    * ``contract_sha256`` — the base node YAML contract (``outputSchema`` incl.
+      ``pii``, ``requiredColumns``, ``quality.tests``). A base change that touches
+      only the YAML (e.g. a PII reclassification) trips ``AIDPF-2064`` too.
+    * ``pack_version`` — the base pack version at fork time (recorded provenance).
+
+    Both fingerprints are profile-independent and validate-time computable. Keys
+    are camelCase in YAML (``sqlSha256`` / ``contractSha256`` / ``packVersion``),
+    matching ``outputSchema`` / ``requiredColumns``.
+    """
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    sql_sha256: str = Field(min_length=1, alias="sqlSha256")
+    contract_sha256: str = Field(min_length=1, alias="contractSha256")
+    pack_version: str = Field(min_length=1, alias="packVersion")
+
+    @field_validator("sql_sha256", "contract_sha256", "pack_version")
+    @classmethod
+    def _reject_blank(cls, v: str, info) -> str:
+        if not v.strip():
+            raise ValueError(
+                f"{AIDPF_2001_ORPHAN_OVERRIDE}: forkedFrom `{info.field_name}` "
+                f"must be a non-blank string; whitespace-only is not a valid "
+                f"fingerprint."
+            )
+        return v
+
+
+class ReplaceNode(BaseModel):
+    """Acknowledged same-id silver/gold full replacement (`.yaml` + `.sql`).
+
+    Same-id silver/gold replacement is rejected by default (``AIDPF-2001``); a
+    ``replaceNode`` block makes it legal — opt-in and audited, mirroring the
+    ``relaxRequiredColumns`` precedent. The overlay ships a complete new
+    ``<layer>/<id>.yaml`` + ``<id>.sql`` for a shipped SQL mart, keeping its id so
+    downstream ``dependsOn`` consumers are not re-pointed. Add, remove, and
+    rewrite of columns/logic all go through this one shape; only identity changes
+    (``layer`` / ``target`` / ``dependsOn`` edges / ``refresh``) remain new-mart-id.
+    """
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    reason: str = Field(min_length=1)
+    """Mandatory, non-blank operator justification — the acknowledgement of a
+    deliberate, staleness-incurring fork."""
+
+    forked_from: ForkedFrom = Field(alias="forkedFrom")
+
+    @field_validator("reason")
+    @classmethod
+    def _reject_blank_reason(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError(
+                f"{AIDPF_2001_ORPHAN_OVERRIDE}: replaceNode `reason` must be a "
+                f"non-blank string; whitespace-only is not a valid acknowledgement."
+            )
+        return v
+
+
 class OverrideEntry(BaseModel):
     """Per-node override declared by an overlay pack.
 
@@ -392,17 +636,93 @@ class OverrideEntry(BaseModel):
     * ``profile:`` -- scalar replace.
     * ``sql:`` -- full-file replace; the named SQL path lives in the overlay.
     * ``quality:`` -- nested ``tests:`` list extends base.
-    * ``extendColumns: true`` -- the overlay extends the base node's
-      ``outputSchema.columns`` rather than replacing it.
+    * ``outputSchema:`` -- name-keyed partial merge of a bronze node's
+      output columns (retype matched columns; append with ``extendColumns``).
+      Bronze targets only; enforced at merge.
+    * ``requiredColumns:`` -- additive per-source union into a bronze node's
+      required columns (adds only; never removes). Bronze targets only.
+    * ``relaxRequiredColumns:`` -- acknowledged per-source REMOVAL of a bronze
+      node's required columns (each entry carries a mandatory ``reason``).
+      Bronze targets only; this is the *only* sanctioned removal path.
+    * ``replaceNode:`` -- acknowledged same-id silver/gold full replacement
+      (`.yaml` + `.sql`). Silver/gold targets only; mutually exclusive with every
+      other key (the replacement files carry the new schema/SQL). See
+      :class:`ReplaceNode`.
 
-    Unknown keys default to scalar replace.
+    Unknown keys fail closed (``extra="forbid"``) with an actionable
+    AIDPF-2001 message.
     """
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     profile: str | None = None
     sql: str | None = None
     quality: dict[str, Any] | None = None
+    output_schema: "OutputSchemaOverride | None" = Field(
+        default=None, alias="outputSchema"
+    )
+    required_columns: dict[str, list[str]] | None = Field(
+        default=None, alias="requiredColumns"
+    )
+    """Additive: per-source-id lists unioned into the base node's
+    ``requiredColumns``. Cannot express a removal (use ``relaxRequiredColumns``)."""
+    relax_required_columns: dict[str, list[RelaxRequiredColumn]] | None = Field(
+        default=None, alias="relaxRequiredColumns"
+    )
+    """Acknowledged removal: per-source-id lists of columns to drop from the base
+    node's ``requiredColumns``, each with a mandatory ``reason``."""
+    replace_node: "ReplaceNode | None" = Field(default=None, alias="replaceNode")
+    """Acknowledged same-id silver/gold full replacement. Silver/gold only;
+    mutually exclusive with all other override keys."""
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_unknown_keys_actionably(cls, data: Any) -> Any:
+        """Raise an AIDPF-2001-family, actionable error for unknown override
+        keys *before* the generic ``extra="forbid"`` Pydantic error fires."""
+        if not isinstance(data, dict):
+            return data
+        known = {
+            "profile", "sql", "quality", "output_schema", "outputSchema",
+            "required_columns", "requiredColumns",
+            "relax_required_columns", "relaxRequiredColumns",
+            "replace_node", "replaceNode",
+        }
+        unknown = [k for k in data if k not in known]
+        if unknown:
+            raise ValueError(
+                f"{AIDPF_2001_ORPHAN_OVERRIDE}: unsupported override key(s) "
+                f"{sorted(unknown)!r}. Allowed: profile, sql, quality, "
+                f"outputSchema, requiredColumns, relaxRequiredColumns, replaceNode."
+            )
+        return data
+
+    @model_validator(mode="after")
+    def _replace_node_is_exclusive(self) -> "OverrideEntry":
+        """``replaceNode`` carries its delta in the replacement files, so it must
+        be the ONLY key on the entry — it cannot be combined with
+        ``sql``/``outputSchema``/``requiredColumns``/``relaxRequiredColumns``/
+        ``quality``/``profile``."""
+        if self.replace_node is None:
+            return self
+        siblings = {
+            "profile": self.profile,
+            "sql": self.sql,
+            "quality": self.quality,
+            "outputSchema": self.output_schema,
+            "requiredColumns": self.required_columns,
+            "relaxRequiredColumns": self.relax_required_columns,
+        }
+        present = [k for k, v in siblings.items() if v is not None]
+        if present:
+            raise ValueError(
+                f"{AIDPF_2001_ORPHAN_OVERRIDE}: `replaceNode` is mutually "
+                f"exclusive with other override keys, but found {sorted(present)!r} "
+                f"on the same entry. A full replacement carries its new schema/SQL "
+                f"in the replacement `<layer>/<id>.yaml` + `<id>.sql` files; declare "
+                f"only `replaceNode`."
+            )
+        return self
 
 
 # ---------------------------------------------------------------------------
@@ -467,7 +787,20 @@ class PackProvenance(BaseModel):
     diagnostic_run_id: str | None = Field(default=None, alias="diagnosticRunId")
     """The bootstrap run_id whose diagnostic artifacts triggered the
     skill invocation. Threads the audit trail from failure → draft →
-    commit."""
+    commit. Mutually exclusive with ``operator_input_id`` — exactly one
+    identifies how the overlay was triggered."""
+
+    operator_input_id: str | None = Field(default=None, alias="operatorInputId")
+    """Set for overlays drafted from explicit operator input (no runtime
+    diagnostic) — e.g. the COA-depth mode triggered by an ``AIDPF-2015``
+    content-pack-validate failure, which writes no diagnostic artifact. A
+    path-safe synthetic id like ``operator-input-<id>`` (never a fake bootstrap
+    run id). Mutually exclusive with ``diagnostic_run_id``."""
+
+    trigger: str | None = None
+    """How the overlay was triggered: ``"diagnostic"`` (a runtime
+    ``.aidp/diagnostics`` artifact) or ``"operator_input"`` (explicit operator
+    command, no diagnostic)."""
 
     proposals: dict[str, SkillProposalRecord] | None = Field(
         default=None, alias="proposals"
@@ -733,6 +1066,85 @@ class OutputSchema(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     columns: list[OutputSchemaColumn] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _no_duplicate_column_names(self) -> "OutputSchema":
+        """Reject case-insensitive duplicate column names.
+
+        Spark/Delta resolve column names case-insensitively, so ``VENDORID``
+        and ``vendorid`` in one schema are ambiguous (and make the overlay
+        name-keyed merge non-deterministic). Fail closed.
+        """
+        seen: dict[str, str] = {}
+        for col in self.columns:
+            key = col.name.lower()
+            if key in seen:
+                raise ValueError(
+                    f"{AIDPF_2001_ORPHAN_OVERRIDE}: duplicate column name "
+                    f"(case-insensitive): {col.name!r} collides with "
+                    f"{seen[key]!r}. Column names must be unique."
+                )
+            seen[key] = col.name
+        return self
+
+
+class OutputSchemaColumnOverride(BaseModel):
+    """One column entry in an overlay's ``outputSchema`` override.
+
+    Distinct from :class:`OutputSchemaColumn`: ``name`` is the merge key and is
+    required, while ``type``/``nullable``/``pii`` are **optional** so a *matched*
+    (retype) column may override only the fields it changes and inherit the rest
+    from the base column. A *matched* column must still set at least one mutable
+    field (a name-only entry is a no-op and is rejected). Appended columns (a name
+    absent from the base) must carry full ``type`` + ``pii`` — enforced in the
+    merge step, where base-vs-overlay membership is known.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    type: str | None = None
+    nullable: bool | None = None
+    pii: PiiLevel | None = None
+
+    @model_validator(mode="after")
+    def _require_at_least_one_mutable_field(self) -> "OutputSchemaColumnOverride":
+        if self.type is None and self.nullable is None and self.pii is None:
+            raise ValueError(
+                f"{AIDPF_2001_ORPHAN_OVERRIDE}: override column {self.name!r} "
+                f"provides no mutable field — a name-only override is a no-op. "
+                f"Set at least one of `type`, `nullable`, or `pii`."
+            )
+        return self
+
+
+class OutputSchemaOverride(BaseModel):
+    """An overlay's ``outputSchema`` override: a name-keyed, partial merge into
+    the base node's columns.
+
+    Declare only the columns you change. Matched columns are retyped; with
+    ``extendColumns: true`` a new column may be appended (full ``type`` + ``pii``
+    required, enforced at merge). Base columns not listed are preserved.
+    """
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    columns: list[OutputSchemaColumnOverride] = Field(min_length=1)
+    extend_columns: bool = Field(default=False, alias="extendColumns")
+
+    @model_validator(mode="after")
+    def _no_duplicate_override_names(self) -> "OutputSchemaOverride":
+        seen: dict[str, str] = {}
+        for col in self.columns:
+            key = col.name.lower()
+            if key in seen:
+                raise ValueError(
+                    f"{AIDPF_2001_ORPHAN_OVERRIDE}: duplicate override column "
+                    f"name (case-insensitive): {col.name!r} collides with "
+                    f"{seen[key]!r}."
+                )
+            seen[key] = col.name
+        return self
 
 
 # ---------------------------------------------------------------------------
@@ -1160,6 +1572,11 @@ class ResolvedPack:
         is_merged: True if this is the result of a merge_overlay call.
         chain: list of pack ids in load order (base first, overlays after).
         source_roots: per-artifact pack-root provenance.
+        chain_roots: filesystem roots of every pack in the chain, base-first
+            (``(base.root, …, overlay.root)``). Distinct from ``source_roots``
+            (which root each *artifact* resolves against): ``chain_roots`` is
+            *which packs get staged*, so a pure-metadata overlay that owns no
+            artifact is still staged. Accumulated like ``chain``.
     """
 
     root: Path
@@ -1172,6 +1589,7 @@ class ResolvedPack:
     is_merged: bool = False
     chain: tuple[str, ...] = ()
     source_roots: dict[str, Path] = field(default_factory=dict)
+    chain_roots: tuple[Path, ...] = ()
 
     def all_nodes(self) -> dict[str, "NodeYaml"]:
         """Convenience: bronze, silver, and gold nodes combined."""

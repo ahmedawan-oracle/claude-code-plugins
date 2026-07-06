@@ -39,6 +39,9 @@ class TestNormalisation:
     def test_empty_cli_flag_falls_through(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        # AIDP_OPERATOR is checked before USER in the precedence chain; clear it
+        # so the CI runner's environment can't leak a value into this assertion.
+        monkeypatch.delenv("AIDP_OPERATOR", raising=False)
         monkeypatch.setenv("USER", "fallback")
         # Empty string is treated as "not set"; fall through to USER.
         assert resolve_operator("") == "fallback"
@@ -46,6 +49,7 @@ class TestNormalisation:
     def test_whitespace_cli_flag_falls_through(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        monkeypatch.delenv("AIDP_OPERATOR", raising=False)
         monkeypatch.setenv("USER", "fallback")
         assert resolve_operator("   \t  ") == "fallback"
 

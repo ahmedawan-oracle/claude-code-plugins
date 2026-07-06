@@ -98,6 +98,19 @@ these slash commands in Claude Code:
 /plugin install oracle-ai-data-platform-fusion-bundle@aidp-fusion-bundle
 ```
 
+> **First-run CLI provisioning (automatic).** Claude Code copies the plugin to a
+> cache but never runs an install step, so the bundled `aidp-fusion-bundle` CLI
+> provisions itself on its **first invocation**: it installs its dependencies
+> once into `~/.aidp-fusion-bundle/pylib/<key>` (override the home with
+> `AIDP_FUSION_HOME`) and runs from the plugin's own source thereafter. No
+> `pip install` step is needed for the plugin route. Requirements:
+> **Python ≥ 3.10 on `PATH`, with `pip` available** (the bootstrap installs via
+> `<python> -m pip`; on minimal Debian/Homebrew/custom Pythons make sure pip is
+> present). Set `AIDP_FUSION_NO_AUTOINSTALL=1` to opt out of
+> the auto-install; the manual fallback it prints is
+> `<your python ≥3.10> -m pip install --target <key dir> -r scripts/requirements.txt`
+> (use that interpreter, not bare `pip`).
+
 Create a clean customer project as a sibling of the plugin repo, then open
 Claude Code from that customer directory:
 

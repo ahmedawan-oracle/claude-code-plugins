@@ -11,11 +11,14 @@ from pathlib import Path
 import pytest
 import yaml
 
+from unittest.mock import MagicMock
+
 from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack import load_pack
 from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack_validators import (
     AIDPF_2003_SQL_FILE_MISSING,
     AIDPF_2040_DAG_CYCLE,
     AIDPF_2041_UNRESOLVED_DEPENDENCY,
+    AIDPF_2045_COLUMN_CONTRACT_MISMATCH,
     AIDPF_5002_UNKNOWN_TEMPLATE_VAR,
     AIDPF_5003_UNDECLARED_VARIATION_POINT,
     AIDPF_7001_DASHBOARD_MISSING_NODE,
@@ -23,6 +26,7 @@ from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack_validators 
     AIDPF_7004_DASHBOARD_PACK_INCOMPATIBLE,
     AIDPF_7005_ALLOWED_COLUMNS_NOT_REQUIRED,
     AIDPF_8002_PII_HIGH_DASHBOARD_EXPOSURE,
+    validate_column_contracts,
     validate_dag,
     validate_dashboard_requires,
     validate_dashboard_security_and_compat,
@@ -638,3 +642,235 @@ def test_validate_pack_full_aggregates_errors(tmp_path: Path) -> None:
     assert not report.ok
     codes = {e.code for e in report.errors}
     assert AIDPF_2003_SQL_FILE_MISSING in codes
+
+
+# ---------------------------------------------------------------------------
+# validate_column_contracts (AIDPF-2045) — design-time producer/consumer gate
+# ---------------------------------------------------------------------------
+
+
+def _profile(resolved_column: dict[str, str] | None = None):
+    """Minimal TenantProfile-shaped mock with a real dict at ``resolved.column``
+    (mirrors the helper in test_node_preflight.py)."""
+    m = MagicMock()
+    m.resolved.column = dict(resolved_column or {})
+    m.profile = {}
+    return m
+
+
+def _make_contract_pack(
+    root: Path,
+    *,
+    bronze_columns: list[dict],
+    required: list[str],
+    silver_output: list[dict],
+    column_aliases: dict | None = None,
+    extra_silver: dict | None = None,
+) -> Path:
+    """Build a per-file pack (bronze NodeYaml with outputSchema + a silver
+    consumer) so the producer/consumer contract gate has a real contract to
+    check. Legacy ``bronze.yaml`` datasets carry no outputSchema, so the gate
+    needs per-file ``bronze/<id>.yaml`` nodes."""
+    pack_root = root / "contract-pack"
+    pack_root.mkdir(parents=True, exist_ok=True)
+    _write_yaml(
+        pack_root / "pack.yaml",
+        {
+            "id": "contract-pack",
+            "version": "0.1.0",
+            "compatibility": {"pluginMinVersion": "0.3.0", "fusionFamilies": ["ERP"]},
+            "columnAliases": column_aliases or {},
+        },
+    )
+    _write_yaml(pack_root / "bronze.yaml", {"datasets": []})
+    _write_yaml(
+        pack_root / "bronze" / "erp_suppliers.yaml",
+        {
+            "id": "erp_suppliers",
+            "layer": "bronze",
+            "implementation": {
+                "type": "bronze_extract",
+                "datastore": "FscmTopModelAM.SupplierExtractPVO",
+                "pvo_id": "FscmTopModelAM.SupplierExtractPVO",
+                "biccSchema": "Financial",
+                "incrementalCapable": True,
+                "auditColumnsMode": "bronze_v1",
+            },
+            "target": "erp_suppliers",
+            "dependsOn": {"bronze": [], "silver": []},
+            "refresh": {"seed": {"strategy": "replace"}},
+            "requiredColumns": {"erp_suppliers": ["SEGMENT1"]},
+            "outputSchema": {"columns": bronze_columns},
+        },
+    )
+    _write_yaml(
+        pack_root / "silver" / "dim_supplier.yaml",
+        {
+            "id": "dim_supplier",
+            "layer": "silver",
+            "implementation": {"type": "builtin", "callable": "pkg.dim:build"},
+            "target": "dim_supplier",
+            "dependsOn": {"bronze": [{"id": "erp_suppliers"}]},
+            "refresh": {"seed": {"strategy": "replace"}},
+            "requiredColumns": {"erp_suppliers": required},
+            "outputSchema": {"columns": silver_output},
+        },
+    )
+    if extra_silver is not None:
+        _write_yaml(pack_root / "silver" / f"{extra_silver['id']}.yaml", extra_silver)
+    return pack_root
+
+
+_COL = {"name": "SEGMENT1", "type": "string", "nullable": True, "pii": "low"}
+_OUT = {"name": "supplier_number", "type": "string", "nullable": False, "pii": "low"}
+
+
+def test_column_contract_missing_upstream_column(tmp_path: Path) -> None:
+    """A literal demand absent from the upstream bronze contract → AIDPF-2045."""
+    pack_root = _make_contract_pack(
+        tmp_path,
+        bronze_columns=[_COL],
+        required=["SEGMENT1", "BUSINESSRELATIONSHIP"],  # second is undeclared
+        silver_output=[_OUT],
+    )
+    pack = load_pack(pack_root)
+    errors = validate_column_contracts(pack)
+    assert any(e.code == AIDPF_2045_COLUMN_CONTRACT_MISMATCH for e in errors)
+    msg = next(e.message for e in errors if e.code == AIDPF_2045_COLUMN_CONTRACT_MISMATCH)
+    assert "BUSINESSRELATIONSHIP" in msg
+    assert "erp_suppliers" in msg
+    # A fully-satisfied pack produces no error.
+    ok_root = _make_contract_pack(
+        tmp_path / "ok",
+        bronze_columns=[_COL],
+        required=["SEGMENT1"],
+        silver_output=[_OUT],
+    )
+    assert validate_column_contracts(load_pack(ok_root)) == []
+
+
+def test_column_contract_passthrough_type_mismatch(tmp_path: Path) -> None:
+    """Pass-through column re-declared in consumer outputSchema with an
+    incompatible type → AIDPF-2045 (mistyped); a synonym pair passes."""
+    pack_root = _make_contract_pack(
+        tmp_path,
+        bronze_columns=[{"name": "VENDORID", "type": "bigint", "nullable": True, "pii": "none"}],
+        required=["VENDORID"],
+        # Consumer re-declares VENDORID by the same name as a string → mismatch.
+        silver_output=[{"name": "VENDORID", "type": "string", "nullable": True, "pii": "none"}],
+    )
+    errors = validate_column_contracts(load_pack(pack_root))
+    assert any(
+        e.code == AIDPF_2045_COLUMN_CONTRACT_MISMATCH and "VENDORID" in e.message
+        for e in errors
+    )
+
+    # Synonym (int vs integer) must agree with the 4070 gate → no error.
+    syn_root = _make_contract_pack(
+        tmp_path / "syn",
+        bronze_columns=[{"name": "N", "type": "int", "nullable": True, "pii": "none"}],
+        required=["N"],
+        silver_output=[{"name": "N", "type": "integer", "nullable": True, "pii": "none"}],
+    )
+    assert validate_column_contracts(load_pack(syn_root)) == []
+
+
+def test_column_contract_renamed_demand_is_presence_only(tmp_path: Path) -> None:
+    """A demanded column NOT re-declared by the same name in the consumer's
+    outputSchema (renamed/derived) gets presence-only — no spurious type error."""
+    pack_root = _make_contract_pack(
+        tmp_path,
+        bronze_columns=[{"name": "VENDORID", "type": "bigint", "nullable": True, "pii": "none"}],
+        required=["VENDORID"],
+        # Consumer renames VENDORID → vendor_id; type differs but must NOT fire.
+        silver_output=[{"name": "vendor_id", "type": "string", "nullable": True, "pii": "none"}],
+    )
+    assert validate_column_contracts(load_pack(pack_root)) == []
+
+
+def test_column_contract_silver_to_silver_edge(tmp_path: Path) -> None:
+    """The gate covers silver→silver edges, not just bronze→silver."""
+    pack_root = _make_contract_pack(
+        tmp_path,
+        bronze_columns=[_COL],
+        required=["SEGMENT1"],
+        silver_output=[_OUT],
+        extra_silver={
+            "id": "dim_downstream",
+            "layer": "silver",
+            "implementation": {"type": "builtin", "callable": "pkg.dn:build"},
+            "target": "dim_downstream",
+            "dependsOn": {"silver": [{"id": "dim_supplier"}]},
+            "refresh": {"seed": {"strategy": "replace"}},
+            # dim_supplier's contract has supplier_number, not GHOST_COL.
+            "requiredColumns": {"dim_supplier": ["GHOST_COL"]},
+            "outputSchema": {
+                "columns": [{"name": "x", "type": "string", "nullable": True, "pii": "none"}]
+            },
+        },
+    )
+    errors = validate_column_contracts(load_pack(pack_root))
+    assert any(
+        e.code == AIDPF_2045_COLUMN_CONTRACT_MISMATCH
+        and e.location == "silver/dim_downstream"
+        and "GHOST_COL" in e.message
+        for e in errors
+    )
+
+
+def test_column_contract_narrowed_contract_caught(tmp_path: Path) -> None:
+    """Acceptance: a bronze contract that does not cover a downstream demand is
+    caught at validate time. (Once bronze-column-type-overlay ships, the same
+    gate fires on the *merged* contract; the gate is post-merge and
+    source-independent, so this resolved-pack test exercises that path.)"""
+    pack_root = _make_contract_pack(
+        tmp_path,
+        # Narrow contract: PARTYID has been removed/never declared.
+        bronze_columns=[_COL],
+        required=["SEGMENT1", "PARTYID"],
+        silver_output=[_OUT],
+    )
+    errors = validate_column_contracts(load_pack(pack_root))
+    assert any("PARTYID" in e.message for e in errors)
+
+
+def test_column_contract_alias_demand_profile_aware(tmp_path: Path) -> None:
+    """A `$column.*` demand is checked when a profile pins it, and drops
+    (no false-fail) when no profile is in scope."""
+    pack_root = _make_contract_pack(
+        tmp_path,
+        bronze_columns=[_COL],  # contract has SEGMENT1 only
+        required=["$column.supplier_natural_key"],
+        silver_output=[_OUT],
+        column_aliases={
+            "supplier_natural_key": {
+                "appliesTo": "bronze.erp_suppliers",
+                "required": True,
+                "candidates": ["SEGMENT1", "VENDORID"],
+            }
+        },
+    )
+    pack = load_pack(pack_root)
+
+    # Profile pins the alias to VENDORID, which the contract does NOT guarantee.
+    prof = _profile(resolved_column={"supplier_natural_key": "VENDORID"})
+    errors = validate_column_contracts(pack, profile=prof)
+    assert any("VENDORID" in e.message for e in errors)
+
+    # Profile pins it to SEGMENT1 (present) → no error.
+    prof_ok = _profile(resolved_column={"supplier_natural_key": "SEGMENT1"})
+    assert validate_column_contracts(pack, profile=prof_ok) == []
+
+    # No profile → alias demand drops silently, no false-fail.
+    assert validate_column_contracts(pack, profile=None) == []
+
+
+def test_starter_pack_passes_column_contract_gate() -> None:
+    """Non-regression: the shipped starter pack passes the gate unchanged."""
+    from oracle_ai_data_platform_fusion_bundle.commands.content_pack import (
+        _load_full_chain,
+        resolve_pack_path,
+    )
+
+    pack = _load_full_chain(resolve_pack_path("fusion-finance-starter"))
+    assert validate_column_contracts(pack) == []

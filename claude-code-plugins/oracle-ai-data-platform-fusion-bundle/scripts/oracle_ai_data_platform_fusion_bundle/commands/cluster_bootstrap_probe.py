@@ -290,6 +290,8 @@ def _build_probe_cell(*, tenant: str) -> str:
         f"    fingerprint = compute_bronze_fingerprint(observed=observed)\n"
         f"    walker_results = []\n"
         f"    for name, spec in pack.pack.column_aliases.items():\n"
+        f"        if spec.resolution == 'semanticRole':\n"
+        f"            continue  # COA semantic roles resolve via config ladder, not existence\n"
         f'        ds_id = spec.appliesTo.split(".", 1)[1] if "." in spec.appliesTo else spec.appliesTo\n'
         f"        cols = {{c.name for c in observed.get(ds_id, [])}}\n"
         f"        outcome = walk_column_alias(spec, cols)\n"

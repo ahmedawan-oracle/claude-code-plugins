@@ -25,9 +25,29 @@ refresh:
 requiredColumns:
   gl_coa:
     - CodeCombinationCodeCombinationId
-    - $column.coa_balancing_segment
-    - $column.coa_cost_center_segment
-    - $column.coa_natural_account_segment
+    - CodeCombinationChartOfAccountsId
+    # Segment1-6: the COA semantic-role domain (read explicitly as
+    # segment_01..06 + subaccount/product/intercompany, and the binding targets
+    # of the $coa.* roles below).
+    - CodeCombinationSegment1
+    - CodeCombinationSegment2
+    - CodeCombinationSegment3
+    - CodeCombinationSegment4
+    - CodeCombinationSegment5
+    - CodeCombinationSegment6
+    - CodeCombinationAccountType
+    - CodeCombinationEnabledFlag
+    - CodeCombinationSummaryFlag
+    - CodeCombinationDetailPostingAllowedFlag
+    - CodeCombinationFinancialCategory
+    - CodeCombinationStartDateActive
+    - CodeCombinationEndDateActive
+    # $coa.<role> expands to the UNION of that role's column across the
+    # chartOfAccounts default + every byChart arm (feature
+    # coa-role-segment-resolution). Single-COA tenants resolve to one column.
+    - $coa.balancing
+    - $coa.cost_center
+    - $coa.natural_account
     - _extract_ts
     - _source_pvo
 

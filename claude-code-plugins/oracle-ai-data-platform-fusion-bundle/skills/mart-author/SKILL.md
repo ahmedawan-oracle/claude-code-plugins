@@ -30,6 +30,16 @@ enforces it).
 - The data exists but isn't materialized → `aidp-fusion-bundle run --mode seed`
   (or `/aidp-fusion-seed`); use `oac-dataset-advisor` to confirm.
 - Resolving column-alias / semantic-variant tenant variation → `medallion-author`.
+- A **bronze column-TYPE** bug (a declared `outputSchema` type is wrong vs the
+  live PVO, e.g. `decimal(38,30)` → `decimal(18,0)`) → that's a **bronze
+  type-overlay** via `medallion-author` (AIDPF-4070), **not** a new mart. The PVO
+  source schema you inspect here surfaces the right type; retype in place via the
+  overlay rather than authoring a new node.
+- Changing a **bronze** node's `requiredColumns` (assert/pull an extra source
+  column, or relax a normally-required one a tenant's PVO lacks) → that's a
+  **bronze requiredColumns overlay** via `medallion-author` (add via
+  `requiredColumns`, acknowledged removal via `relaxRequiredColumns`;
+  AIDPF-2062/2063), **not** a new mart.
 - Building the OAC dataset/workbook → `oac-dataset-advisor` + `workbook-authoring`.
 
 ## Non-negotiable safety rules
@@ -47,6 +57,13 @@ enforces it).
 6. **Classify every new bronze PVO before authoring.** A rung-4
    `bronze_extract` must be classified as transaction/change-feed,
    snapshot/config, or period-windowable snapshot before its YAML is accepted.
+7. **Declare your inputs (AIDPF-2084).** In any silver/gold SQL you author:
+   alias every upstream source, **never `SELECT *` from an upstream** (project
+   columns explicitly), qualify every upstream column with its alias, and list
+   every one in the node's `requiredColumns[<source>]` (literal, or
+   `$column.<key>` / `$coa.<role>` for a token). If a consumed column isn't in
+   the upstream's `outputSchema`, add it there too (keeps AIDPF-2045 green). The
+   declared-inputs gate fails closed on an undeclared read or a wildcard.
 
 ## Helpers
 
@@ -60,13 +77,39 @@ enforces it).
 
 | Rung | Build | When |
 |---|---|---|
-| **3 — add column** | additive `outputSchema` + `SELECT` on an existing node | new field derives from columns already in that node's sources, **same grain** |
+| **3 — change a mart in place** | guarded same-id full replacement (`replaceNode`) of an existing silver/gold mart | add / remove / rewrite a column or logic from columns already in that node's sources, **identity unchanged** |
 | **1 — new gold** | new aggregate/business mart over EXISTING bronze/silver | a new metric/grain from already-materialized data |
 | **2 — new silver** | new conformed/typed node over EXISTING bronze | a conformed shape not yet in silver |
 | **4 — new bronze + node** | additive `bronze_extract` + downstream node | a raw field isn't extracted yet (only at the PVO source) |
 
-`change_planner.py` chooses the rung and refuses to mark any existing node for
-alteration.
+`change_planner.py` chooses the rung. Rung 3 keeps the mart's id (no downstream
+`dependsOn` repointing) but ships a complete replacement under an acknowledged
+`replaceNode` block — there is no separate additive mechanism, and add / remove /
+rewrite all use this one shape.
+
+**Rung-3 mechanism (guarded same-id full replacement).** Ship a complete new
+`overlays/<name>/<layer>/<id>.yaml` + `<id>.sql`, plus:
+
+```yaml
+overrides:
+  <layer>/<id>:
+    replaceNode:
+      reason: "Why this fork exists; e.g. TICKET-123."
+      forkedFrom:
+        sqlSha256: "<base SQL + referenced semantic fragments fingerprint>"
+        contractSha256: "<base outputSchema/pii + requiredColumns + quality fingerprint>"
+        packVersion: "<base pack version>"
+```
+
+- Compute/refresh `forkedFrom` with `aidp-fusion-bundle content-pack refresh-fork
+  overlays/<name> --node <layer>/<id>` (don't hand-author the hashes).
+- **Identity must equal base** — `layer`, `target`, the `dependsOn` edge set, and
+  the `refresh` contract. Changing any → `AIDPF-2065`; author a new mart id instead.
+- A bare same-id file with no `replaceNode` → `AIDPF-2001`. SQL marts only (a
+  builtin like `dim_calendar` → `AIDPF-2001`).
+- If the base mart later changes, validate fails closed (`AIDPF-2064`) until you
+  re-reconcile and re-run `refresh-fork`. This is the accepted cost of forking the
+  SQL (the base fix does not flow through automatically).
 
 ---
 

@@ -158,7 +158,7 @@ def _do_initial_bootstrap(bundle_dir: Path) -> None:
         bundle_dir / "bundle.yaml",
         options=VariationPhaseOptions(
             spark_session=_mock_spark(_INITIAL_BRONZE),
-            non_interactive=True,
+            non_interactive=True, accept_coa_convention=True,
         ),
     )
     assert outcome.exit_code == 0
@@ -286,7 +286,7 @@ class TestRefreshScriptedAcceptance:
                 # operator approval. --resolutions supplies that approval.
                 spark_session=_mock_spark(_DRIFTED_BRONZE),
                 refresh=True,
-                non_interactive=True,  # would otherwise refuse silent change
+                non_interactive=True, accept_coa_convention=True,  # would otherwise refuse silent change
                 resolutions_path=resolutions,
                 # No input_fn — prompt must NOT be invoked.
             ),
@@ -341,7 +341,7 @@ class TestRefreshScriptedAcceptance:
                 options=VariationPhaseOptions(
                     spark_session=_mock_spark(_DRIFTED_BRONZE),
                     refresh=True,
-                    non_interactive=True,
+                    non_interactive=True, accept_coa_convention=True,
                     resolutions_path=resolutions,
                 ),
             )
@@ -364,6 +364,6 @@ class TestNonInteractiveStillRefusesWithoutResolutions:
                 options=VariationPhaseOptions(
                     spark_session=_mock_spark(_DRIFTED_BRONZE),
                     refresh=True,
-                    non_interactive=True,
+                    non_interactive=True, accept_coa_convention=True,
                 ),
             )

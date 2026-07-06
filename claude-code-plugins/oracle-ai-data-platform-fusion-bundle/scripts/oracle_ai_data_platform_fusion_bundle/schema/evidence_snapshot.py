@@ -72,9 +72,25 @@ ApprovalMechanism = Literal[
     "non_interactive",
     "cli_flag",
     "skill_proposed",
+    # Semantic-role (COA) mechanisms -- a semantic role is NEVER auto_resolve.
+    "config_resolved",
+    "operator_confirmed",
+    "defaulted_convention",
+    "legacy_unverified",
+    "metadata_resolved",
 ]
 """Recorded under ``provenance.approvedBy.mechanism``. The ``auto_resolve``
-value covers the no-prompt single-candidate path."""
+value covers the no-prompt single-candidate physical-alias path.
+
+The semantic-role values are used for COA role resolution and must never be
+``auto_resolve`` (existence cannot prove a business meaning):
+
+* ``config_resolved`` -- pinned from explicit ``profile.chartOfAccounts`` / CLI.
+* ``operator_confirmed`` -- operator confirmed an interactive prompt / evidence.
+* ``defaulted_convention`` -- pack conventional default, *explicitly accepted*.
+* ``legacy_unverified`` -- back-derived from a legacy silent pin on ``--refresh``;
+  correctness NOT established (emits a remediation warning, never silently upgraded).
+* ``metadata_resolved`` -- reserved for Fusion flexfield-qualifier metadata (spike)."""
 
 
 class ApprovedBy(BaseModel):

@@ -38,11 +38,22 @@ outputSchema:
   columns:
     - { name: CodeCombinationCodeCombinationId, type: "decimal(18,0)", nullable: true, pii: none }
     - { name: CodeCombinationChartOfAccountsId, type: "decimal(18,0)", nullable: true, pii: none }
+    # COA segments 1-6: the supported semantic-role domain (a COA role may bind
+    # any of these). dim_account.sql already projects Segment1-6; the contract
+    # now guarantees them so a role binding to Segment4/5/6 is contract-backed.
     - { name: CodeCombinationSegment1, type: string, nullable: true, pii: none }
     - { name: CodeCombinationSegment2, type: string, nullable: true, pii: none }
     - { name: CodeCombinationSegment3, type: string, nullable: true, pii: none }
+    - { name: CodeCombinationSegment4, type: string, nullable: true, pii: none }
+    - { name: CodeCombinationSegment5, type: string, nullable: true, pii: none }
+    - { name: CodeCombinationSegment6, type: string, nullable: true, pii: none }
     - { name: CodeCombinationAccountType, type: string, nullable: true, pii: none }
     - { name: CodeCombinationEnabledFlag, type: string, nullable: true, pii: none }
+    - { name: CodeCombinationSummaryFlag, type: string, nullable: true, pii: none }
+    - { name: CodeCombinationDetailPostingAllowedFlag, type: string, nullable: true, pii: none }
+    - { name: CodeCombinationFinancialCategory, type: string, nullable: true, pii: none }
+    - { name: CodeCombinationStartDateActive, type: date, nullable: true, pii: none }
+    - { name: CodeCombinationEndDateActive, type: date, nullable: true, pii: none }
     - { name: CodeCombinationLastUpdateDate, type: timestamp, nullable: true, pii: none }
     - { name: _extract_ts, type: timestamp, nullable: false, pii: none }
     - { name: _source_pvo, type: string, nullable: false, pii: none }

@@ -30,7 +30,15 @@ requiredColumns:
     - $column.supplier_natural_key
     - $column.vendor_id
     - PARTYID
+    - PARENTVENDORID
+    - PARENTPARTYID
     - BUSINESSRELATIONSHIP
+    - AlternateNamePartyName
+    - AliasPartyName
+    - TaxReportingName
+    - CREATIONDATE
+    - ENDDATEACTIVE
+    - LASTUPDATEDATE
     - _extract_ts
     - _source_pvo
 

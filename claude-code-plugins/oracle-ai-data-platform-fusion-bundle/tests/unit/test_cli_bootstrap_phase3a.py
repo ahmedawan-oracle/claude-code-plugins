@@ -164,6 +164,9 @@ class TestClickEntryPoint:
                     "--dispatch-mode", "local",
                     "--skip-preonboarding-probes",
                     "--non-interactive",
+                    # Conventional shipped pack, non-interactive CI bootstrap:
+                    # accept the COA convention (else COA resolver fails closed).
+                    "--accept-coa-convention",
                 ],
             )
         assert result.exit_code == 0, result.output

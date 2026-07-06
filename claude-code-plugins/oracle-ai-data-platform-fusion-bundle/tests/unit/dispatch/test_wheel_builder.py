@@ -101,15 +101,6 @@ class TestSourceHash:
 
 
 class TestBuildWheelCache:
-    @pytest.fixture(autouse=True)
-    def _require_build_backend(self) -> None:
-        # ``build_wheel`` fast-fails with DISPATCH_WHEEL_BUILD_FAILED when the
-        # ``build`` package isn't importable (importlib.util.find_spec check),
-        # which fires BEFORE the mocked subprocess. These cache tests assert
-        # on the subprocess-mocked path, so they need ``build`` present; skip
-        # them on a box without the build backend rather than fail.
-        pytest.importorskip("build")
-
     def _patch_build_subprocess(
         self,
         *,

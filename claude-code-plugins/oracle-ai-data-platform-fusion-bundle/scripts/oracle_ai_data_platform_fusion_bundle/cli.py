@@ -209,6 +209,25 @@ def validate(ctx: click.Context) -> None:
     help="JSON file scripting multi-match resolutions (feature #3 / CI use).",
 )
 @click.option(
+    "--accept-coa-convention", is_flag=True,
+    help=(
+        "Accept the pack's conventional COA role->segment default as a deliberate "
+        "convention (records `defaulted_convention`). Required for a non-interactive "
+        "run with no explicit profile.chartOfAccounts; otherwise the COA semantic-role "
+        "resolver fails closed (AIDPF-2013). Also upgrades a legacy back-derived pin "
+        "from `legacy_unverified` to operator-confirmed."
+    ),
+)
+@click.option(
+    "--accept-singleton-coa", is_flag=True,
+    help=(
+        "Assert all active charts of accounts share the COA role->segment layout. "
+        "Persists profile.chartOfAccounts.singletonAccepted so the multi-COA preflight "
+        "gate (AIDPF-2018) passes for a singleton mapping. Use only when every chart "
+        "genuinely uses the same segment positions."
+    ),
+)
+@click.option(
     "--skip-preonboarding-probes", is_flag=True,
     help=(
         "Skip BICC / AIDP pre-onboarding probes; useful for --refresh after initial "
@@ -261,6 +280,8 @@ def bootstrap(
     refresh: bool,
     operator: str | None,
     non_interactive: bool,
+    accept_coa_convention: bool,
+    accept_singleton_coa: bool,
     resolutions_path: Path | None,
     skip_preonboarding_probes: bool,
     dispatch_mode: str,
@@ -279,6 +300,8 @@ def bootstrap(
         refresh=refresh,
         operator=operator,
         non_interactive=non_interactive,
+        accept_coa_convention=accept_coa_convention,
+        accept_singleton_coa=accept_singleton_coa,
         resolutions_path=resolutions_path,
         skip_preonboarding_probes=skip_preonboarding_probes,
         dispatch_mode=dispatch_mode,
@@ -549,11 +572,47 @@ def content_pack_info(name: str, json_output: bool) -> None:
 @content_pack.command("validate")
 @click.argument("name")
 @click.option("--json", "json_output", is_flag=True, help="Emit JSON for tooling.")
-def content_pack_validate(name: str, json_output: bool) -> None:
+@click.option(
+    "--profile",
+    default=None,
+    help="Tenant profile (path to a profile YAML, or a bare name resolved "
+    "against ./profiles/<name>.yaml). Enables the profile-aware leg of the "
+    "column-contract gate (AIDPF-2045) so $column.*/$coa.* consumer demands "
+    "are checked. Omit for profile-less validation (literal demands only).",
+)
+def content_pack_validate(name: str, json_output: bool, profile: str | None) -> None:
     """Validate a content pack against the schema + content validators."""
     from .commands.content_pack import validate_pack_cli
 
-    sys.exit(validate_pack_cli(name, json_output=json_output, console=console))
+    sys.exit(
+        validate_pack_cli(
+            name, json_output=json_output, console=console, profile=profile
+        )
+    )
+
+
+@content_pack.command("refresh-fork")
+@click.argument("name")
+@click.option(
+    "--node",
+    default=None,
+    help="Restrict to a single `<layer>/<id>` replaceNode override (e.g. "
+    "`silver/dim_account`). Omit to re-stamp every replaceNode in the overlay.",
+)
+@click.option("--json", "json_output", is_flag=True, help="Emit JSON for tooling.")
+def content_pack_refresh_fork(name: str, node: str | None, json_output: bool) -> None:
+    """Re-stamp `replaceNode.forkedFrom` fingerprints from the current base.
+
+    The operator's exit from an `AIDPF-2064` (fork-base drift) failure: after
+    re-reconciling a replaceNode overlay against an updated base mart, this
+    recomputes and rewrites all three `forkedFrom` stamps (sqlSha256,
+    contractSha256, packVersion).
+    """
+    from .commands.content_pack import refresh_fork_cli
+
+    sys.exit(
+        refresh_fork_cli(name, node=node, json_output=json_output, console=console)
+    )
 
 
 # ---------------------------------------------------------------------------

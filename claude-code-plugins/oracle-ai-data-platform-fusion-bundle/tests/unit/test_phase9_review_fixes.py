@@ -864,9 +864,8 @@ environments:
             build_notebook,
         )
 
-        # tmp_path, not a hardcoded "/tmp/..." — on Windows the POSIX literal
-        # resolves to "\tmp\..." on the current drive, which doesn't exist
-        # (FileNotFoundError).
+        # Use the tmp_path fixture, not a hardcoded POSIX /tmp path — on Windows
+        # CI `/tmp/...` resolves to `\tmp\...` whose parent dir does not exist.
         wheel = tmp_path / "strict-scope-test.whl"
         wheel.write_bytes(b"PK\x03\x04 fake")
 

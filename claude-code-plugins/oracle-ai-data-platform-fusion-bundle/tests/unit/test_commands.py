@@ -172,10 +172,19 @@ class TestCatalog:
         # Some known ids present
         assert "erp_suppliers" in result.output
 
-    def test_probe_requires_creds(self) -> None:
-        result = CliRunner().invoke(cli.main, [
-            "catalog", "probe", "--pod", "https://example.com",
-        ])
+    def test_probe_requires_creds(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Deterministic "no creds" environment, independent of the dev shell / CI
+        # runner: clear ambient BICC creds AND run in an isolated cwd so the CLI's
+        # auto-loaded `.env` (load_dotenv at startup) can't re-supply them.
+        # Otherwise probe skips the missing-creds branch, hits the network, and
+        # exits 1 instead of 2.
+        monkeypatch.delenv("FUSION_BICC_USER", raising=False)
+        monkeypatch.delenv("FUSION_BICC_PASSWORD", raising=False)
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            result = runner.invoke(cli.main, [
+                "catalog", "probe", "--pod", "https://example.com",
+            ])
         assert result.exit_code == 2
         assert "missing creds" in result.output
 

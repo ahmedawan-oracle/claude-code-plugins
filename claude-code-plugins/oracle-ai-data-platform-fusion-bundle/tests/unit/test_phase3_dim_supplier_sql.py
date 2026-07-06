@@ -79,12 +79,14 @@ class TestDimSupplierSeedSnapshot:
 
     def test_dedup_keeps_most_recent_extract_per_supplier(self) -> None:
         sql, _ = _render()
-        assert "PARTITION BY SEGMENT1 ORDER BY _extract_ts DESC" in sql
+        # Inner subquery now aliases erp_suppliers as `es` and qualifies columns
+        # (declared-inputs convention; behavior unchanged).
+        assert "PARTITION BY es.SEGMENT1 ORDER BY es._extract_ts DESC" in sql
         assert "WHERE _rn = 1" in sql
 
     def test_filters_null_natural_key(self) -> None:
         sql, _ = _render()
-        assert "WHERE SEGMENT1 IS NOT NULL" in sql
+        assert "WHERE es.SEGMENT1 IS NOT NULL" in sql
 
     def test_seed_mode_watermark_is_always_true(self) -> None:
         """Seed mode: {{ watermark_predicate }} expands to 1=1 so the

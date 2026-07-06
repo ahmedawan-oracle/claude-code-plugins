@@ -77,7 +77,16 @@ def compute_affected_nodes(
         sets are valid (the VP is declared but no node consumes it
         — diagnostic surface for the operator).
     """
-    pattern = _token_pattern(kind=kind, vp_name=vp_name)
+    # A COA semantic-role alias is consumed via the `{{ coa.<role> }}` token,
+    # not `{{ column.<vp_name> }}` — map to the role short name.
+    coa_role: str | None = None
+    if kind == "columnAliases":
+        spec = pack.pack.column_aliases.get(vp_name)
+        role = getattr(spec, "role", None) if spec is not None else None
+        if getattr(spec, "resolution", None) == "semanticRole" and isinstance(role, str):
+            coa_role = role.split(".", 1)[1] if "." in role else role
+
+    pattern = _token_pattern(kind=kind, vp_name=vp_name, coa_role=coa_role)
 
     silver: set[str] = set()
     gold: set[str] = set()
@@ -100,17 +109,19 @@ def compute_affected_nodes(
     )
 
 
-def _token_pattern(*, kind: str, vp_name: str) -> re.Pattern[str]:
+def _token_pattern(
+    *, kind: str, vp_name: str, coa_role: str | None = None
+) -> re.Pattern[str]:
     """Build the regex matching ``{{ column.<name> }}`` /
-    ``{{ semantic.<name> }}`` with arbitrary inner whitespace.
+    ``{{ semantic.<name> }}`` / ``{{ coa.<role> }}`` with arbitrary inner
+    whitespace.
 
-    The renderer accepts ``{{column.X}}``, ``{{ column.X }}``,
-    ``{{  column.X  }}`` etc.; the pattern tolerates the same.
-    Escapes the VP name so names with regex special chars are
-    matched literally (defensive — pack names should be
-    alphanumeric per the existing validators, but cheap to
-    harden).
+    When ``coa_role`` is set (a COA semantic-role alias), match the
+    ``{{ coa.<role> }}`` token instead of ``{{ column.<vp_name> }}`` — that
+    is how the role is actually consumed in SQL.
     """
+    if coa_role is not None:
+        return re.compile(r"\{\{\s*coa\." + re.escape(coa_role) + r"\s*\}\}")
     namespace = "column" if kind == "columnAliases" else "semantic"
     return re.compile(
         r"\{\{\s*" + re.escape(namespace) + r"\." + re.escape(vp_name) + r"\s*\}\}"

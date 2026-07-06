@@ -805,6 +805,26 @@ class TestBronzeSourceSchemaGate:
             MagicMock(), node=_bronze_node(), pack=MagicMock(), profile=_gate_profile(), ctx=_gate_ctx()
         ) is None
 
+    def test_overlay_added_required_column_absent_returns_4071(self, monkeypatch):
+        # An overlay added a requiredColumns entry that is NOT in outputSchema
+        # (TENANT_ONLY_COL). The live PVO supplies every outputSchema column but
+        # not TENANT_ONLY_COL — the 4071 gate must still fire on it, proving the
+        # node's own requiredColumns are probed (not just outputSchema).
+        node_dict = yaml.safe_load(_BRONZE_NODE_YAML)
+        node_dict["requiredColumns"]["test_bronze"].append("TENANT_ONLY_COL")
+        from oracle_ai_data_platform_fusion_bundle.schema.medallion_pack import NodeYaml
+        node = NodeYaml.model_validate(node_dict)
+        # PVO has the outputSchema cols but NOT TENANT_ONLY_COL.
+        self._patch(monkeypatch, ["VENDORID", "SEGMENT1"])
+        result = _bronze_source_schema_gate(
+            MagicMock(), node=node, pack=MagicMock(), profile=_gate_profile(), ctx=_gate_ctx()
+        )
+        assert result is not None
+        msg, diag = result
+        assert AIDPF_4071_BRONZE_SOURCE_COLUMN_MISSING in msg
+        assert "TENANT_ONLY_COL" in msg
+        assert diag["missingColumns"] == ["TENANT_ONLY_COL"]
+
     def test_probe_failure_degrades_to_none(self, monkeypatch):
         import oracle_ai_data_platform_fusion_bundle.orchestrator.builtins.bronze_extract_adapter as bea
         import oracle_ai_data_platform_fusion_bundle.orchestrator.runtime as rt

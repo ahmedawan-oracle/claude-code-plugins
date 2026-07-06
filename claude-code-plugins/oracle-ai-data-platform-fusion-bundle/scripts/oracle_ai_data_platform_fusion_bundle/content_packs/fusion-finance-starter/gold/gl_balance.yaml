@@ -36,6 +36,35 @@ refresh:
       (fact-side mutations); silver.dim_account is lookup (re-read fresh each
       cycle). Dimension-only changes propagate on the next fact-side rerun.
 
+# Declared inputs (AIDPF-2084): every upstream column gl_balance.sql reads,
+# alias-qualified in the SQL (b.<col> from gl_period_balances, da.<col> from
+# dim_account).
+requiredColumns:
+  gl_period_balances:
+    - BalanceLedgerId
+    - BalanceCodeCombinationId
+    - BalancePeriodYear
+    - BalancePeriodNum
+    - BalancePeriodName
+    - BalanceCurrencyCode
+    - BalanceActualFlag
+    - BalanceTranslatedFlag
+    - BalancePeriodNetCr
+    - BalancePeriodNetDr
+    - BalanceBeginBalanceCr
+    - BalanceBeginBalanceDr
+    - _extract_ts
+  dim_account:
+    - account_id
+    - code_combination
+    - account_type
+    - company
+    - cost_center
+    - account
+    - subaccount
+    - product
+    - intercompany
+
 # Output schema matches v1 build_gl_balance_sql with DEFAULT_COA_SEGMENT_MAP
 # (transforms/gold/gl_balance.py:225-271) — 24 columns including the
 # six semantic COA aliases sourced via LEFT JOIN dim_account.

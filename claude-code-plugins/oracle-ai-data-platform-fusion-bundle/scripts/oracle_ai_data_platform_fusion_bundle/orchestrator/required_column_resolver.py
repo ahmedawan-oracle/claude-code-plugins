@@ -41,6 +41,44 @@ _COLUMN_REF_PREFIX = "$column."
 duplicated here so the run-level gates don't import the per-node
 preflight module (which has heavier Spark imports)."""
 
+_SEMANTIC_REF_PREFIX = "$semantic."
+"""A ``$semantic.<key>`` reference resolves to the physical column the active
+``semanticVariants.<key>`` candidate detects (``detect.columnExists``), via the
+tenant profile's ``resolved.semantic[<key>]`` pick. So a ``{{ semantic.<key> }}``
+read declared as ``$semantic.<key>`` flows into the live required-column gates."""
+
+_COA_REF_PREFIX = "$coa."
+"""A ``$coa.<role>`` reference expands to the UNION of that COA role's column
+across ``profile.chartOfAccounts.default`` + every ``byChart`` arm. The union
+(not a single column) is what the run-level / preflight gates must validate,
+because the rendered ``{{ coa.<role> }}`` CASE can reference any arm's column."""
+
+_COA_ROLE_FIELD = {
+    "balancing": "balancingSegment",
+    "cost_center": "costCenterSegment",
+    "natural_account": "naturalAccountSegment",
+}
+
+
+def coa_role_union(role: str, tenant_profile: "TenantProfile | None") -> set[str]:
+    """Union of physical columns bound to ``role`` across default + byChart arms."""
+    if tenant_profile is None:
+        return set()
+    coa = (getattr(tenant_profile, "profile", None) or {}).get("chartOfAccounts")
+    if not isinstance(coa, dict):
+        return set()
+    field = _COA_ROLE_FIELD.get(role)
+    if field is None:
+        return set()
+    cols: set[str] = set()
+    default = coa.get("default", coa)
+    if isinstance(default, dict) and isinstance(default.get(field), str):
+        cols.add(default[field])
+    for arm in (coa.get("byChart") or {}).values():
+        if isinstance(arm, dict) and isinstance(arm.get(field), str):
+            cols.add(arm[field])
+    return cols
+
 
 def resolve_required_column_entries(
     entries: "list[str] | set[str] | tuple[str, ...]",
@@ -90,9 +128,35 @@ def resolve_required_column_entries(
     resolved: set[str] = set()
     pack_alias_keys: set[str] = set()
     if resolved_pack is not None:
-        pack_alias_keys = set(resolved_pack.pack.column_aliases.keys())
+        # Guard a missing / non-dict ``column_aliases`` (malformed pack, or a
+        # mock pack in tests) — treat it as "no aliases" rather than crashing.
+        # Literal entries still pass through; ``$column.*`` refs then drop.
+        aliases = getattr(getattr(resolved_pack, "pack", None), "column_aliases", None)
+        if isinstance(aliases, dict):
+            pack_alias_keys = set(aliases.keys())
 
     for entry in entries:
+        if entry.startswith(_COA_REF_PREFIX):
+            # $coa.<role> → union of that role's columns across all arms.
+            # Drop silently when unresolvable (same rationale as $column.*).
+            resolved.update(coa_role_union(entry[len(_COA_REF_PREFIX):], tenant_profile))
+            continue
+        if entry.startswith(_SEMANTIC_REF_PREFIX):
+            # $semantic.<key> → the active candidate's detect.columnExists column.
+            # Drop silently when unresolvable (per-node gate is authoritative).
+            if tenant_profile is None or resolved_pack is None:
+                continue
+            key = entry[len(_SEMANTIC_REF_PREFIX):]
+            variants = getattr(getattr(resolved_pack, "pack", None), "semantic_variants", None)
+            variant = variants.get(key) if isinstance(variants, dict) else None
+            cand_id = (getattr(tenant_profile.resolved, "semantic", None) or {}).get(key)
+            if variant is None or not cand_id:
+                continue
+            for cand in variant.candidates:
+                if cand.id == cand_id and cand.detect and cand.detect.column_exists:
+                    resolved.add(cand.detect.column_exists)
+                    break
+            continue
         if not entry.startswith(_COLUMN_REF_PREFIX):
             resolved.add(entry)
             continue
@@ -109,4 +173,4 @@ def resolve_required_column_entries(
     return resolved
 
 
-__all__ = ["resolve_required_column_entries"]
+__all__ = ["resolve_required_column_entries", "coa_role_union"]

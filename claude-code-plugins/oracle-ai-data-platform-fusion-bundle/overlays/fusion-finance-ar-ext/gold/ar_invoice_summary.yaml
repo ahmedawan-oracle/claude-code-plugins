@@ -23,6 +23,16 @@ refresh:
       cycle until aggregate_merge ships (PLAN §10.8). Authored by mart-author
       (rung-1, additive: reads bronze.ar_invoices, never rewrites it).
 
+# Declared inputs (AIDPF-2084): upstream columns ar_invoice_summary.sql reads,
+# alias-qualified as t.<col> from ar_invoices.
+requiredColumns:
+  ar_invoices:
+    - RaCustomerTrxInvoiceCurrencyCode
+    - RaCustomerTrxBillingDate
+    - RaCustomerTrxOrgId
+    - RaCustomerTrxBrAmount
+    - _extract_ts
+
 outputSchema:
   columns:
     - name: currency_code

@@ -20,10 +20,27 @@ gates only; SQL rendering and execution stay in ``sql_runner``.
 
 from __future__ import annotations
 
+import logging
+import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from ..schema.medallion_pack import NodeYaml
+from . import coa_gate
+from .required_column_resolver import coa_role_union
+
+_log = logging.getLogger(__name__)
+
+_COA_REF_PREFIX = "$coa."
+_SEMANTIC_REF_PREFIX = "$semantic."
+
+AIDPF_5001_IDENTIFIER_ALLOWLIST = "AIDPF-5001"
+"""A COA role column from the tenant profile fails the SQL identifier allowlist.
+Mirrors ``sql_renderer._check_identifier`` so a bad/hand-edited
+``profile.chartOfAccounts`` value is blocked BEFORE it reaches probe SQL."""
+
+# Same allowlist as orchestrator.sql_renderer._IDENTIFIER_RE.
+_COA_IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,62}$")
 
 if TYPE_CHECKING:
     from pyspark.sql import SparkSession
@@ -172,6 +189,11 @@ def preflight_node(
     if _is_replace_partition_strategy(node):
         errors.extend(_check_partition_columns(spark, node, ctx))
 
+    # 4. COA semantic-role plausibility + multi-COA gate (feature
+    #    coa-role-segment-resolution M2). No-ops unless the pack declares COA
+    #    semanticRole aliases on a bronze source this node consumes.
+    errors.extend(_check_coa_gate(spark, node, pack, profile, ctx))
+
     return PreflightReport(errors=tuple(errors))
 
 
@@ -197,21 +219,41 @@ def _check_required_columns(
     profile: "TenantProfile",  # noqa: F821
     ctx: "RunContext",
 ) -> list[PreflightError]:
-    """For each entry in ``node.requiredColumns.<source>``, DESCRIBE the
-    source's bronze table and assert the column exists.
+    """For each entry in ``node.requiredColumns.<source>`` that names a **bronze**
+    source, DESCRIBE the source's live bronze table and assert the column exists.
 
     The ``requiredColumns`` map is keyed by source id (matching
-    ``dependsOn.bronze[*].id``). Each value is a list of column names
-    that MUST be present in the live bronze schema. Entries beginning
-    with ``$column.`` are references into ``pack.columnAliases`` —
-    resolved against the tenant profile's ``resolved.column`` map
-    before the live-column check.
+    ``dependsOn.bronze[*].id`` / ``dependsOn.silver[*].id``). Each value is a list
+    of column names that MUST be present. Entries beginning with ``$column.`` are
+    references into ``pack.columnAliases`` — resolved against the tenant profile's
+    ``resolved.column`` map before the live-column check.
+
+    **Bronze-only live gate.** This live-DESCRIBE check exists to catch drift in
+    Fusion-extracted **bronze** tables — schemas the pack does not control. A
+    silver/gold dependency source (e.g. a gold mart requiring columns from
+    ``dim_supplier``) is *pack-built*: its schema is the producer node's own
+    declared ``outputSchema``, already gated design-time by AIDPF-2045
+    (``requiredColumns`` ⊆ ``outputSchema``, with type-compat) and at runtime by
+    the producer's AIDPF-4070/4071 materialization gate. Re-DESCRIBE-ing it here
+    would be redundant — and ``ctx.bronze_table_for_source`` only carries bronze
+    sources, so a live probe isn't even available. A source is treated as
+    pack-built (and skipped) iff it is a declared ``pack.silver`` / ``pack.gold``
+    node; everything else gets the live DESCRIBE, including a bronze source
+    declared only via the legacy ``bronze.yaml`` datasets path.
     """
     errors: list[PreflightError] = []
     required = getattr(node, "required_columns", None) or {}
     pack_alias_keys = set(pack.pack.column_aliases.keys())
 
     for source_id, required_cols in required.items():
+        # Skip silver/gold dependency sources — pack-built, gated by
+        # AIDPF-2045 (static) + the producer's AIDPF-4070/4071 (runtime). The
+        # discriminator is positive membership in pack.silver / pack.gold (NOT
+        # "absent from pack.bronze"): a bronze source declared only via the
+        # legacy bronze.yaml datasets path lives in ctx.bronze_table_for_source
+        # but not in pack.bronze, and must still get the live-drift DESCRIBE.
+        if source_id in pack.silver or source_id in pack.gold:
+            continue
         table = ctx.bronze_table_for_source.get(source_id)
         if table is None:
             errors.append(
@@ -230,6 +272,81 @@ def _check_required_columns(
         present = _describe_columns(spark, table)
         present_ci = {c.lower(): c for c in present}
         for entry in required_cols:
+            # $coa.<role> expands to the UNION of that role's columns across
+            # default + byChart arms; every one must be present in bronze.
+            if entry.startswith(_COA_REF_PREFIX):
+                union = coa_role_union(entry[len(_COA_REF_PREFIX) :], profile)
+                if not union:
+                    errors.append(
+                        PreflightError(
+                            code=AIDPF_2046_REQUIRED_COLUMN_UNRESOLVED_REF,
+                            source=source_id,
+                            message=(
+                                f"requiredColumns entry {entry!r} could not resolve to "
+                                f"any column: the tenant profile has no "
+                                f"`chartOfAccounts` mapping for this role. Run "
+                                f"`aidp-fusion-bundle bootstrap`."
+                            ),
+                        )
+                    )
+                    continue
+                for col in sorted(union):
+                    if col.lower() not in present_ci:
+                        errors.append(
+                            PreflightError(
+                                code=AIDPF_2042_REQUIRED_COLUMN_MISSING,
+                                source=source_id,
+                                message=(
+                                    f"COA column {col!r} (resolved from {entry!r}) "
+                                    f"missing from live bronze for source {source_id!r} "
+                                    f"(table {table!r}). Extend the gl_coa bronze "
+                                    f"contract / re-seed bronze."
+                                ),
+                            )
+                        )
+                continue
+            # $semantic.<key> resolves to the physical column the ACTIVE
+            # semanticVariants candidate detects (detect.columnExists), via
+            # profile.resolved.semantic — same semantics as the run-level
+            # resolve_required_column_entries, so the per-node gate doesn't treat
+            # it as a literal and false-fail AIDPF-2042.
+            if entry.startswith(_SEMANTIC_REF_PREFIX):
+                key = entry[len(_SEMANTIC_REF_PREFIX) :]
+                variant = pack.pack.semantic_variants.get(key)
+                cand_id = (getattr(profile.resolved, "semantic", None) or {}).get(key)
+                sem_col = None
+                if variant is not None and cand_id:
+                    for cand in variant.candidates:
+                        if cand.id == cand_id and cand.detect and cand.detect.column_exists:
+                            sem_col = cand.detect.column_exists
+                            break
+                if sem_col is None:
+                    errors.append(
+                        PreflightError(
+                            code=AIDPF_2046_REQUIRED_COLUMN_UNRESOLVED_REF,
+                            source=source_id,
+                            message=(
+                                f"requiredColumns entry {entry!r} could not resolve: "
+                                f"semanticVariants key {key!r} has no active candidate "
+                                f"in the tenant profile's `resolved.semantic`. Run "
+                                f"`aidp-fusion-bundle bootstrap`."
+                            ),
+                        )
+                    )
+                    continue
+                if sem_col.lower() not in present_ci:
+                    errors.append(
+                        PreflightError(
+                            code=AIDPF_2042_REQUIRED_COLUMN_MISSING,
+                            source=source_id,
+                            message=(
+                                f"semantic column {sem_col!r} (resolved from {entry!r}) "
+                                f"missing from live bronze for source {source_id!r} "
+                                f"(table {table!r}). Live columns: {sorted(present)!r}."
+                            ),
+                        )
+                    )
+                continue
             resolved, ref_error = _resolve_required_column_entry(
                 entry, profile, source_id, pack_alias_keys
             )
@@ -372,6 +489,229 @@ def _check_partition_columns(
     # closed here — just record a soft warning that the runtime check
     # will repeat once the target materialises.
     return []
+
+
+_COA_DISCRIMINANT = "CodeCombinationChartOfAccountsId"
+_COA_ACCOUNT_TYPE = "CodeCombinationAccountType"
+_COA_ENABLED_FLAG = "CodeCombinationEnabledFlag"
+
+
+def _coa_role_aliases(pack: "ResolvedPack") -> dict[str, tuple[str, str]]:
+    """Return {alias_name: (role_token, applies_to_source)} for COA semanticRole
+    aliases declared in the pack. Empty when the pack has none."""
+    out: dict[str, tuple[str, str]] = {}
+    for name, spec in pack.pack.column_aliases.items():
+        resolution = getattr(spec, "resolution", "columnExistence")
+        role = getattr(spec, "role", None)
+        if resolution != "semanticRole" or not isinstance(role, str):
+            continue
+        applies_to = getattr(spec, "appliesTo", "")
+        source = applies_to.split(".", 1)[1] if "." in applies_to else applies_to
+        out[name] = (role, source)
+    return out
+
+
+def _node_consumes_source(node: NodeYaml, source_id: str) -> bool:
+    deps = getattr(node, "depends_on", None)
+    if deps is None:
+        return False
+    for dep in (getattr(deps, "bronze", None) or []):
+        if dep.id == source_id:
+            return True
+    return False
+
+
+def _check_coa_gate(
+    spark: "SparkSession",
+    node: NodeYaml,
+    pack: "ResolvedPack",  # noqa: F821
+    profile: "TenantProfile",  # noqa: F821
+    ctx: "RunContext",
+) -> list[PreflightError]:
+    """COA plausibility + multi-COA gate. Validate-only (no writes, no render).
+
+    Structural checks (Tier A existence-union + per-arm distinctness) are hard
+    and use ``DESCRIBE``. The multi-COA detection and Tier B natural-account
+    probes run live ``gl_coa`` data queries; a probe that cannot execute (e.g.
+    a constrained session) downgrades to a logged warning rather than crashing
+    this validate-only gate. A probe that DOES run and finds a violation
+    fails closed.
+    """
+    aliases = _coa_role_aliases(pack)
+    if not aliases:
+        return []
+    # All COA roles in the starter share one source (gl_coa). Group by source.
+    sources = {src for (_role, src) in aliases.values()}
+    coa_raw = (profile.profile or {}).get("chartOfAccounts")
+    if not isinstance(coa_raw, dict):
+        return []  # no COA config to validate (M1 fails closed earlier)
+
+    errors: list[PreflightError] = []
+    for source_id in sources:
+        if not _node_consumes_source(node, source_id):
+            continue
+        table = ctx.bronze_table_for_source.get(source_id)
+        if table is None:
+            continue
+
+        arms = _coa_arms(coa_raw)
+        # Tier A.0 — identifier allowlist (HARD, FIRST). The tenant profile's
+        # chartOfAccounts is free-form and hand-editable; pack validation does
+        # NOT cover it. Every COA role column is interpolated into the Tier B
+        # probe SQL (and rendered later), so validate each against the SAME
+        # allowlist the renderer uses BEFORE any SQL is constructed. A bad value
+        # (injection or just an invalid identifier) blocks here — we do NOT run
+        # the data probes when any identifier is invalid.
+        ident_ok = True
+        for arm_id, mapping in arms.items():
+            for role, col in mapping.items():
+                if not _COA_IDENT_RE.match(col or ""):
+                    ident_ok = False
+                    errors.append(
+                        PreflightError(
+                            code=AIDPF_5001_IDENTIFIER_ALLOWLIST,
+                            source=source_id,
+                            message=(
+                                f"COA mapping for arm {arm_id!r} role {role!r} resolves "
+                                f"to {col!r}, which fails the identifier allowlist "
+                                f"`^[A-Za-z_][A-Za-z0-9_]{{0,62}}$`. Fix "
+                                f"`profile.chartOfAccounts` — a COA role must bind a "
+                                f"plain column name."
+                            ),
+                        )
+                    )
+        # Tier A — distinctness (pure).
+        for code, msg in coa_gate.check_distinctness(arms):
+            errors.append(PreflightError(code=code, source=source_id, message=msg))
+        # Tier A — existence union (DESCRIBE).
+        referenced = {c for m in arms.values() for c in m.values()}
+        present = _describe_columns(spark, table)
+        for code, msg in coa_gate.check_existence_union(referenced, present):
+            errors.append(PreflightError(code=code, source=source_id, message=msg))
+
+        # Data probes (multi-COA + Tier B): interpolate COA columns into SQL, so
+        # ONLY run when every identifier passed the allowlist above.
+        if not ident_ok:
+            continue
+        try:
+            errors.extend(
+                _coa_data_probes(spark, table, source_id, coa_raw, arms)
+            )
+        except Exception as exc:  # pragma: no cover — constrained-session guard
+            _log.warning(
+                "COA data probe on %s skipped (%s); structural checks still applied.",
+                table,
+                exc,
+            )
+    return errors
+
+
+def _coa_arms(coa_raw: dict) -> dict[str, dict[str, str]]:
+    """Normalise a profile chartOfAccounts dict to {arm_id: {role_token: col}}."""
+
+    def _mapping(block: dict) -> dict[str, str]:
+        return {
+            role: block[alias]
+            for role, alias in (
+                ("coa.balancing", "balancingSegment"),
+                ("coa.cost_center", "costCenterSegment"),
+                ("coa.natural_account", "naturalAccountSegment"),
+            )
+            if alias in block and block[alias] is not None
+        }
+
+    arms: dict[str, dict[str, str]] = {}
+    default_block = coa_raw.get("default", coa_raw)
+    default = _mapping(default_block)
+    if default:
+        arms["default"] = default
+    for chart_id, block in (coa_raw.get("byChart") or {}).items():
+        arms[str(chart_id)] = _mapping(block)
+    return arms
+
+
+def _coa_data_probes(
+    spark: "SparkSession",
+    table: str,
+    source_id: str,
+    coa_raw: dict,
+    arms: dict[str, dict[str, str]],
+) -> list[PreflightError]:
+    """Run the multi-COA + Tier B natural-account live probes against gl_coa."""
+    errors: list[PreflightError] = []
+
+    # Multi-COA: active rows per chart (enabled only).
+    rows = spark.sql(
+        f"SELECT CAST({_COA_DISCRIMINANT} AS STRING) AS chart_id, COUNT(*) AS n "
+        f"FROM {table} "
+        f"WHERE {_COA_DISCRIMINANT} IS NOT NULL "
+        f"AND COALESCE({_COA_ENABLED_FLAG}, 'Y') <> 'N' "
+        f"GROUP BY CAST({_COA_DISCRIMINANT} AS STRING)"
+    ).collect()
+    chart_active = {str(r[0]): int(r[1]) for r in rows if r[0] is not None}
+
+    by_chart = coa_raw.get("byChart") or {}
+    has_by_chart = bool(by_chart)
+    singleton_accepted = bool(coa_raw.get("singletonAccepted"))
+    for code, msg in coa_gate.check_multi_coa(
+        chart_active,
+        singleton_accepted=singleton_accepted,
+        has_by_chart=has_by_chart,
+    ):
+        errors.append(PreflightError(code=code, source=source_id, message=msg))
+
+    # L3.4 completeness: when byChart is declared, every present (active) chart
+    # must have an arm — an unmapped chart would hit the CASE ELSE raise_error.
+    if has_by_chart:
+        mapped = {str(k) for k in by_chart}
+        for chart_id, n in chart_active.items():
+            if n >= coa_gate.MULTI_COA_MIN_ACTIVE_ROWS and chart_id not in mapped:
+                errors.append(
+                    PreflightError(
+                        code=coa_gate.AIDPF_2018_MULTI_COA_UNCONFIGURED,
+                        source=source_id,
+                        message=(
+                            f"chart_of_accounts_id {chart_id!r} has active gl_coa rows "
+                            f"but no `chartOfAccounts.byChart` arm. Declare it (the "
+                            f"rendered CASE would otherwise raise at runtime)."
+                        ),
+                    )
+                )
+
+    # Tier B per chart: natural-account ambiguity using that chart's NA column.
+    for chart_id, active_rows in chart_active.items():
+        mapping = arms.get(chart_id) or arms.get("default") or {}
+        na_col = mapping.get("coa.natural_account")
+        if not na_col:
+            continue
+        agg = spark.sql(
+            f"SELECT "
+            f"COUNT(*) AS total, "
+            f"SUM(CASE WHEN t > 1 THEN 1 ELSE 0 END) AS ambiguous "
+            f"FROM (SELECT {na_col} AS na, "
+            f"COUNT(DISTINCT {_COA_ACCOUNT_TYPE}) AS t "
+            f"FROM {table} "
+            f"WHERE CAST({_COA_DISCRIMINANT} AS STRING) = '{chart_id}' "
+            f"AND {na_col} IS NOT NULL "
+            f"AND COALESCE({_COA_ENABLED_FLAG}, 'Y') <> 'N' "
+            f"GROUP BY {na_col})"
+        ).collect()
+        if not agg:
+            continue
+        total = int(agg[0][0] or 0)
+        ambiguous = int(agg[0][1] or 0)
+        probe = coa_gate.ChartProbe(
+            chart_id=chart_id,
+            active_row_count=active_rows,
+            natural_account_distinct=total,
+            natural_account_ambiguous=ambiguous,
+        )
+        res = coa_gate.check_natural_account(probe)
+        for code, msg in res.errors:
+            errors.append(PreflightError(code=code, source=source_id, message=msg))
+        for warning in res.warnings:
+            _log.warning("COA gate: %s", warning)
+    return errors
 
 
 def _describe_columns(spark: "SparkSession", table: str) -> set[str]:

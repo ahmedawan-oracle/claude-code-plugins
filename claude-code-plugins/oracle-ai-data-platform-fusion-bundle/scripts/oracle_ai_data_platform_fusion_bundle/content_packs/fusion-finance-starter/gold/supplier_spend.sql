@@ -15,10 +15,10 @@ supplier AS (
   SELECT vendor_id, supplier_number, supplier_name, business_relationship
   FROM (
     SELECT
-      vendor_id, supplier_number, supplier_name, business_relationship,
-      ROW_NUMBER() OVER (PARTITION BY vendor_id ORDER BY supplier_number) AS _rn
-    FROM {{ catalog }}.{{ silver_schema }}.dim_supplier
-    WHERE vendor_id IS NOT NULL
+      ds.vendor_id, ds.supplier_number, ds.supplier_name, ds.business_relationship,
+      ROW_NUMBER() OVER (PARTITION BY ds.vendor_id ORDER BY ds.supplier_number) AS _rn
+    FROM {{ catalog }}.{{ silver_schema }}.dim_supplier ds
+    WHERE ds.vendor_id IS NOT NULL
   )
   WHERE _rn = 1
 )

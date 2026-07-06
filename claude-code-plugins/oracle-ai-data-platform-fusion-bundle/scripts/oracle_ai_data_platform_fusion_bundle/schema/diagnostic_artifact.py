@@ -60,6 +60,11 @@ AIDPF_2012_SCHEMA_DRIFT_DETECTED = "AIDPF-2012"
 Live bronze fingerprint differs from the value pinned in the tenant profile;
 the run blocks until the operator runs ``aidp-fusion-bundle bootstrap --refresh``."""
 
+AIDPF_4070_BRONZE_TYPE_MISMATCH = "AIDPF-4070"
+"""A bronze node's declared outputSchema type differs from the live PVO type,
+detected by the pre-extract / post-write type gate. Skill-recoverable: draft a
+bronze type-overlay retyping each column to the live (materialised) type."""
+
 AIDPF_4071_BRONZE_SOURCE_COLUMN_MISSING = "AIDPF-4071"
 """A column the pack declares for a bronze node is absent from the live PVO,
 detected by the pre-ingest source-schema gate (sql_runner Step 3). Diagnostic
@@ -245,6 +250,42 @@ class BronzeSourceColumnMissingV1(DiagnosticArtifactBase):
     pvo_columns: list[ObservedColumn] = Field(alias="pvoColumns")
     """Every column the live PVO exposes (name + type) — the candidate set
     for resolving each missing column to its real physical name."""
+
+
+class TypeMismatch(BaseModel):
+    """One column whose declared type differs from the live PVO type."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    column: str
+    declared: str
+    """The pack-declared Spark type (e.g. ``decimal(38,30)``)."""
+    materialised: str
+    """The live PVO / materialised type (e.g. ``decimal(18,0)``)."""
+
+
+class BronzeTypeMismatchV1(DiagnosticArtifactBase):
+    """Diagnostic for a bronze node whose declared outputSchema type differs
+    from the live PVO type (AIDPF-4070).
+
+    Emitted by the pre-extract / post-write type gate. ``medallion-author``
+    reads it to draft a bronze type-overlay (an ``outputSchema`` block override
+    or a same-id bronze file) retyping each mismatched column to ``materialised``.
+    """
+
+    error_code: Literal["AIDPF-4070"] = Field(alias="errorCode")
+    node: str
+    """Bronze node id (e.g. ``erp_suppliers``)."""
+
+    datastore: str
+    """Full BICC PVO datastore path the node extracts from."""
+
+    type_mismatches: list[TypeMismatch] = Field(alias="typeMismatches")
+    """Declared-vs-live type mismatches; the type-overlay retypes each to
+    ``materialised``."""
+
+    pvo_columns: list[ObservedColumn] = Field(alias="pvoColumns")
+    """Every column the live PVO exposes (name + type)."""
 
 
 # ---------------------------------------------------------------------------
@@ -646,6 +687,34 @@ def write_bronze_source_column_missing_diagnostic(
     validate_path_segment(artifact.node, field="node")
     diag_dir = _diagnostics_dir(workdir, run_id).resolve()
     target = diag_dir / f"AIDPF-4071__{artifact.node}.json"
+    assert_within_root(target, diag_dir, field="node")
+    payload = artifact.model_dump_json(by_alias=True, indent=2) + "\n"
+    _atomic_write_json(target, payload)
+    return target
+
+
+def write_bronze_type_mismatch_diagnostic(
+    workdir: Path,
+    run_id: str,
+    artifact: BronzeTypeMismatchV1,
+) -> Path:
+    """Write an AIDPF-4070 bronze type-mismatch diagnostic.
+
+    Path = ``<workdir>/.aidp/diagnostics/<run_id>/AIDPF-4070__<node>.json``.
+    One artifact per failing bronze node so ``medallion-author`` can draft a
+    type-overlay per node independently. Mirrors
+    :func:`write_bronze_source_column_missing_diagnostic` (AIDPF-4071).
+
+    Raises:
+        UnsafePathSegmentError: ``run_id`` or ``artifact.node`` is not a safe
+            filesystem segment.
+    """
+    from .path_segment import assert_within_root, validate_path_segment
+
+    validate_path_segment(run_id, field="run_id")
+    validate_path_segment(artifact.node, field="node")
+    diag_dir = _diagnostics_dir(workdir, run_id).resolve()
+    target = diag_dir / f"AIDPF-4070__{artifact.node}.json"
     assert_within_root(target, diag_dir, field="node")
     payload = artifact.model_dump_json(by_alias=True, indent=2) + "\n"
     _atomic_write_json(target, payload)

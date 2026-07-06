@@ -211,7 +211,7 @@ class TestAidpf1020IdentityGate:
             bundle_dir / "bundle.yaml",
             options=VariationPhaseOptions(
                 spark_session=_mock_spark(SAASFADEMO_BRONZE),
-                non_interactive=True,
+                non_interactive=True, accept_coa_convention=True,
             ),
         )
         assert outcome.exit_code == 1
@@ -284,7 +284,7 @@ class TestNonInteractiveMultiMatch:
             bundle_dir / "bundle.yaml",
             options=VariationPhaseOptions(
                 spark_session=_mock_spark(SAASFADEMO_BRONZE),
-                non_interactive=True,
+                non_interactive=True, accept_coa_convention=True,
             ),
         )
         assert outcome.exit_code == 0
@@ -320,7 +320,7 @@ class TestWorkdirAnchor:
             bundle_dir / "bundle.yaml",
             options=VariationPhaseOptions(
                 spark_session=_mock_spark(SAASFADEMO_BRONZE),
-                non_interactive=True,
+                non_interactive=True, accept_coa_convention=True,
             ),
         )
         assert outcome.exit_code == 0
@@ -376,7 +376,7 @@ class TestPhase3dInitialPinWritesSnapshot:
             bundle_dir / "bundle.yaml",
             options=VariationPhaseOptions(
                 spark_session=_mock_spark(SAASFADEMO_BRONZE),
-                non_interactive=True,
+                non_interactive=True, accept_coa_convention=True,
             ),
         )
         assert outcome.exit_code == 0
@@ -411,7 +411,7 @@ class TestPhase3dInitialPinWritesSnapshot:
             bundle_dir / "bundle.yaml",
             options=VariationPhaseOptions(
                 spark_session=_mock_spark(SAASFADEMO_BRONZE),
-                non_interactive=True,
+                non_interactive=True, accept_coa_convention=True,
             ),
         )
         # Refresh against a DIFFERENT bronze shape → full re-pin path.
@@ -429,7 +429,7 @@ class TestPhase3dInitialPinWritesSnapshot:
             bundle_dir / "bundle.yaml",
             options=VariationPhaseOptions(
                 spark_session=_mock_spark(drifted_bronze),
-                non_interactive=True,
+                non_interactive=True, accept_coa_convention=True,
                 refresh=True,
             ),
         )
@@ -462,7 +462,7 @@ class TestPhase3dRefreshBackfill:
             bundle_dir / "bundle.yaml",
             options=VariationPhaseOptions(
                 spark_session=_mock_spark(SAASFADEMO_BRONZE),
-                non_interactive=True,
+                non_interactive=True, accept_coa_convention=True,
             ),
         )
         assert outcome.exit_code == 0
@@ -490,7 +490,7 @@ class TestPhase3dRefreshBackfill:
             bundle_dir / "bundle.yaml",
             options=VariationPhaseOptions(
                 spark_session=_mock_spark(SAASFADEMO_BRONZE),
-                non_interactive=True,
+                non_interactive=True, accept_coa_convention=True,
                 refresh=True,
             ),
         )
@@ -522,7 +522,7 @@ class TestPhase3dRefreshBackfill:
             bundle_dir / "bundle.yaml",
             options=VariationPhaseOptions(
                 spark_session=_mock_spark(SAASFADEMO_BRONZE),
-                non_interactive=True,
+                non_interactive=True, accept_coa_convention=True,
             ),
         )
         assert outcome.exit_code == 0
@@ -540,7 +540,7 @@ class TestPhase3dRefreshBackfill:
             bundle_dir / "bundle.yaml",
             options=VariationPhaseOptions(
                 spark_session=_mock_spark(SAASFADEMO_BRONZE),
-                non_interactive=True,
+                non_interactive=True, accept_coa_convention=True,
                 refresh=True,
             ),
         )
@@ -574,7 +574,7 @@ class TestPhase3dRefreshBackfill:
             bundle_dir / "bundle.yaml",
             options=VariationPhaseOptions(
                 spark_session=_mock_spark(SAASFADEMO_BRONZE),
-                non_interactive=True,
+                non_interactive=True, accept_coa_convention=True,
             ),
         )
         snapshot_path = resolve_snapshot_path(
@@ -595,7 +595,7 @@ class TestPhase3dRefreshBackfill:
             bundle_dir / "bundle.yaml",
             options=VariationPhaseOptions(
                 spark_session=_mock_spark(SAASFADEMO_BRONZE),
-                non_interactive=True,
+                non_interactive=True, accept_coa_convention=True,
                 refresh=True,
             ),
         )
@@ -622,7 +622,7 @@ class TestPhase3dRefreshBackfill:
             bundle_dir / "bundle.yaml",
             options=VariationPhaseOptions(
                 spark_session=_mock_spark(SAASFADEMO_BRONZE),
-                non_interactive=True,
+                non_interactive=True, accept_coa_convention=True,
             ),
         )
         snapshot_path = resolve_snapshot_path(
@@ -635,7 +635,7 @@ class TestPhase3dRefreshBackfill:
             bundle_dir / "bundle.yaml",
             options=VariationPhaseOptions(
                 spark_session=_mock_spark(SAASFADEMO_BRONZE),
-                non_interactive=True,
+                non_interactive=True, accept_coa_convention=True,
                 refresh=True,
             ),
         )
@@ -672,7 +672,7 @@ class TestPhase3dRefreshBackfill:
             bundle_dir / "bundle.yaml",
             options=VariationPhaseOptions(
                 spark_session=_mock_spark(SAASFADEMO_BRONZE),
-                non_interactive=True,
+                non_interactive=True, accept_coa_convention=True,
             ),
         )
         # Simulate a hand-authored pre-3d profile shape: rewrite the
@@ -697,7 +697,7 @@ class TestPhase3dRefreshBackfill:
             bundle_dir / "bundle.yaml",
             options=VariationPhaseOptions(
                 spark_session=_mock_spark(SAASFADEMO_BRONZE),
-                non_interactive=True,
+                non_interactive=True, accept_coa_convention=True,
                 refresh=True,
             ),
         )
@@ -770,7 +770,7 @@ class TestPhase3dRefreshBackfill:
             bundle_dir / "bundle.yaml",
             options=VariationPhaseOptions(
                 spark_session=_mock_spark(SAASFADEMO_BRONZE),
-                non_interactive=True,
+                non_interactive=True, accept_coa_convention=True,
             ),
         )
         snapshot_path = resolve_snapshot_path(
@@ -783,7 +783,7 @@ class TestPhase3dRefreshBackfill:
             bundle_dir / "bundle.yaml",
             options=VariationPhaseOptions(
                 spark_session=_mock_spark(SAASFADEMO_BRONZE),
-                non_interactive=True,
+                non_interactive=True, accept_coa_convention=True,
                 refresh=True,
             ),
         )

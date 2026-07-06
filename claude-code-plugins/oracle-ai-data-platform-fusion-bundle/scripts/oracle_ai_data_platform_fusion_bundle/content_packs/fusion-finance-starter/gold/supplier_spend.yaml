@@ -25,6 +25,23 @@ refresh:
       deferred until `replace` hits a wall-clock or cost ceiling. Until then,
       `replace` is the safe default.
 
+# Declared inputs (AIDPF-2084): upstream columns supplier_spend.sql reads —
+# inv.<col> from ap_invoices, ds.<col> from dim_supplier.
+requiredColumns:
+  ap_invoices:
+    - ApInvoicesVendorId
+    - $column.invoice_currency_code
+    - ApInvoicesApprovalStatus
+    - ApInvoicesInvoiceAmount
+    - ApInvoicesAmountPaid
+    - ApInvoicesInvoiceDate
+    - _extract_ts
+  dim_supplier:
+    - vendor_id
+    - supplier_number
+    - supplier_name
+    - business_relationship
+
 # Output schema matches v1 build_supplier_spend_sql
 # (transforms/gold/supplier_spend.py:125-167) — 14 columns including
 # invoice_count, total_paid, last_invoice_date, bronze_extract_ts.

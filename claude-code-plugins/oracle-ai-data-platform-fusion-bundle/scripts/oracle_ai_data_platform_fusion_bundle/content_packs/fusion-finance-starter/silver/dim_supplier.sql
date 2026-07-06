@@ -21,10 +21,25 @@ SELECT
   {{ run_id_literal }}                                             AS silver_run_id
 FROM (
   SELECT
-    *,
-    ROW_NUMBER() OVER (PARTITION BY {{ column.supplier_natural_key }} ORDER BY _extract_ts DESC) AS _rn
-  FROM {{ catalog }}.{{ bronze_schema }}.erp_suppliers
-  WHERE {{ column.supplier_natural_key }} IS NOT NULL
+    es.{{ column.supplier_natural_key }}   AS {{ column.supplier_natural_key }},
+    es.{{ column.vendor_id }}              AS {{ column.vendor_id }},
+    es.AlternateNamePartyName              AS AlternateNamePartyName,
+    es.AliasPartyName                      AS AliasPartyName,
+    es.TaxReportingName                    AS TaxReportingName,
+    es.PARTYID                             AS PARTYID,
+    es.PARENTVENDORID                      AS PARENTVENDORID,
+    es.PARENTPARTYID                       AS PARENTPARTYID,
+    es.BUSINESSRELATIONSHIP                AS BUSINESSRELATIONSHIP,
+    es.ENDDATEACTIVE                       AS ENDDATEACTIVE,
+    es.CREATIONDATE                        AS CREATIONDATE,
+    es.LASTUPDATEDATE                      AS LASTUPDATEDATE,
+    es._extract_ts                         AS _extract_ts,
+    es._source_pvo                         AS _source_pvo,
+    ROW_NUMBER() OVER (
+      PARTITION BY es.{{ column.supplier_natural_key }} ORDER BY es._extract_ts DESC
+    ) AS _rn
+  FROM {{ catalog }}.{{ bronze_schema }}.erp_suppliers es
+  WHERE es.{{ column.supplier_natural_key }} IS NOT NULL
     AND {{ watermark_predicate }}
 )
 WHERE _rn = 1

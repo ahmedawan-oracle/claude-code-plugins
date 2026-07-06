@@ -37,6 +37,7 @@ from oracle_ai_data_platform_fusion_bundle.schema.dashboard_pack import Dashboar
 from oracle_ai_data_platform_fusion_bundle.schema.medallion_pack import (
     AIDPF_2001_ORPHAN_OVERRIDE,
     NodeYaml,
+    OutputSchemaOverride,
     PackOverlayRef,
     PackYaml,
     # ResolvedPack lives in schema/medallion_pack.py to honor the
@@ -49,6 +50,10 @@ from oracle_ai_data_platform_fusion_bundle.schema.medallion_pack import (
 # Error codes used by this module.
 AIDPF_2001 = AIDPF_2001_ORPHAN_OVERRIDE  # orphan override / extends cycle
 AIDPF_2004_EXTENDS_VERSION_MISMATCH = "AIDPF-2004"
+AIDPF_2064_FORK_BASE_DRIFT = "AIDPF-2064"  # replaceNode fork is stale vs the base it forked from
+AIDPF_2065_REPLACE_NODE_IDENTITY = "AIDPF-2065"  # replaceNode changes an identity field (re-contract)
+AIDPF_2062_SAMEID_DROPS_REQUIRED_COLUMN = "AIDPF-2062"  # same-id bronze file drops a required column
+AIDPF_2063_RELAX_REQUIRED_COLUMN_ORPHAN = "AIDPF-2063"  # relaxRequiredColumns names a non-base column
 
 
 # ---------------------------------------------------------------------------
@@ -74,6 +79,41 @@ class OrphanOverrideError(PackLoaderError):
 
 class OverlayCycleError(PackLoaderError):
     code = AIDPF_2001
+
+
+class ForkBaseDriftError(PackLoaderError):
+    """A ``replaceNode`` fork is stale: the base SQL or YAML contract it forked
+    from has changed since the fingerprint was stamped (AIDPF-2064).
+
+    Re-review the base and re-stamp with ``content-pack refresh-fork``."""
+
+    code = AIDPF_2064_FORK_BASE_DRIFT
+
+
+class ReplaceNodeIdentityError(PackLoaderError):
+    """A ``replaceNode`` replacement changes an identity field — ``layer`` /
+    ``target`` / ``dependsOn`` edge set / a ``refresh`` field / the
+    ``implementation.type`` (AIDPF-2065).
+
+    That is a re-contract, not a rewrite; create a new mart id instead."""
+
+    code = AIDPF_2065_REPLACE_NODE_IDENTITY
+
+
+class RequiredColumnDropError(PackLoaderError):
+    """A same-id bronze file drops a base required column (AIDPF-2062).
+
+    Removal must go through the acknowledged ``relaxRequiredColumns`` block
+    override; a same-id file is add-only for ``requiredColumns``."""
+
+    code = AIDPF_2062_SAMEID_DROPS_REQUIRED_COLUMN
+
+
+class RelaxRequiredColumnOrphanError(PackLoaderError):
+    """``relaxRequiredColumns`` names a column absent from the base
+    ``requiredColumns`` for that source (AIDPF-2063)."""
+
+    code = AIDPF_2063_RELAX_REQUIRED_COLUMN_ORPHAN
 
 
 class ExtendsVersionMismatchError(PackLoaderError):
@@ -215,6 +255,17 @@ def load_pack(root: Path) -> ResolvedPack:
         for p in sorted(d.glob("*.yaml")):
             raw_node = _read_yaml(p) or {}
             node = NodeYaml.model_validate(raw_node)
+            # Filename stem must equal node.id. The loader keys nodes by id, so
+            # a mismatched filename would silently mis-target — in particular an
+            # overlay's same-id replacement file `bronze/<id>.yaml` carrying a
+            # different `id` would become a new node and leave the base node
+            # untouched (a silent no-op). Fail closed.
+            if p.stem != node.id:
+                raise PackLoaderError(
+                    f"{AIDPF_2001}: node file {p.name!r} declares id "
+                    f"{node.id!r} — the filename stem must equal the node id "
+                    f"(rename the file to {node.id}.yaml or fix the id)."
+                )
             nodes[node.id] = node
         return nodes
 
@@ -252,6 +303,7 @@ def load_pack(root: Path) -> ResolvedPack:
         bronze_yaml=bronze_yaml,
         chain=(pack.id,),
         source_roots=source_roots,
+        chain_roots=(root,),
     )
 
 
@@ -337,6 +389,22 @@ def resolve_overlay_chain(
 # ---------------------------------------------------------------------------
 # Overlay merge
 # ---------------------------------------------------------------------------
+
+
+def _split_override_key(key: str) -> tuple[str | None, str]:
+    """Split an ``overrides:`` key into ``(layer, id)``.
+
+    A layer-qualified key (``silver/dim_account``) returns ``("silver",
+    "dim_account")``; a bare key (``dim_account``) returns ``(None,
+    "dim_account")``. Keying conflict checks on ``(layer, id)`` instead of the
+    bare id prevents a `silver/foo` override from false-colliding with a
+    `bronze/foo` / `gold/foo` same-id file when ids overlap.
+    """
+    for lyr in ("bronze", "silver", "gold"):
+        prefix = f"{lyr}/"
+        if key.startswith(prefix):
+            return lyr, key[len(prefix) :]
+    return None, key
 
 
 def merge_overlay(base: ResolvedPack, overlay: ResolvedPack) -> ResolvedPack:
@@ -434,9 +502,14 @@ def merge_overlay(base: ResolvedPack, overlay: ResolvedPack) -> ResolvedPack:
     merged_silver = _apply_node_overrides(base.silver, overlay, "silver/")
     merged_gold = _apply_node_overrides(base.gold, overlay, "gold/")
 
-    # Mark every override target's source root as the overlay root,
-    # since the override declared by the overlay points at overlay-side files.
-    for override_key in overlay.pack.overrides:
+    # Reassign source root to the overlay ONLY for `sql:` overrides — the new
+    # SQL file lives in the overlay, so `root_for` must resolve there. A pure
+    # metadata/schema override (outputSchema / quality / profile) keeps the base
+    # root so the node's inherited `implementation.sql` still resolves in
+    # validate_sql_paths (a relocated root would raise a spurious AIDPF-2003).
+    for override_key, override_entry in overlay.pack.overrides.items():
+        if override_entry.sql is None:
+            continue
         normalized = override_key.replace("bronze/", "").replace(
             "silver/", ""
         ).replace("gold/", "")
@@ -447,19 +520,102 @@ def merge_overlay(base: ResolvedPack, overlay: ResolvedPack) -> ResolvedPack:
         elif normalized in base.gold:
             merged_source_roots[f"gold/{normalized}"] = overlay.root
 
-    # Overlay's own bronze/silver/gold (not declared as overrides) are additions.
+    # Node ids the overlay block-overrides (for the file/block conflict guard).
+    # Layer-aware: a qualified key contributes (layer, id); a bare key contributes
+    # an unqualified id. Keying on (layer, id) prevents a `silver/foo` override
+    # from false-colliding with a `bronze/foo` / `gold/foo` same-id file.
+    block_overridden_qualified: set[tuple[str, str]] = set()
+    block_overridden_bare: set[str] = set()
+    for k in overlay.pack.overrides:
+        lyr, bid = _split_override_key(k)
+        if lyr is None:
+            block_overridden_bare.add(bid)
+        else:
+            block_overridden_qualified.add((lyr, bid))
+
+    def _is_block_overridden(layer: str, node_id: str) -> bool:
+        return (
+            (layer, node_id) in block_overridden_qualified
+            or node_id in block_overridden_bare
+        )
+
+    # ----- replaceNode pre-pass: validate shape, build the (layer, id) set -----
+    # A `replaceNode` block is the ONLY sanctioned same-id silver/gold path. It
+    # must be layer-qualified silver/gold, target a SHIPPED base node in that
+    # layer, and carry the matching same-id replacement file (else a silent
+    # no-op). Build the (layer, id) → ReplaceNode map the merge loop consumes.
+    replace_node_keys: dict[tuple[str, str], "ReplaceNode"] = {}
+    for key, entry in overlay.pack.overrides.items():
+        if entry.replace_node is None:
+            continue
+        lyr, bid = _split_override_key(key)
+        if lyr not in ("silver", "gold"):
+            raise OrphanOverrideError(
+                f"{AIDPF_2001}: replaceNode override key {key!r} must be "
+                f"`silver/<id>` or `gold/<id>`-qualified — replaceNode is "
+                f"silver/gold-only; a bronze-prefixed or bare key is not allowed."
+            )
+        base_layer_nodes = base.silver if lyr == "silver" else base.gold
+        if bid not in base_layer_nodes:
+            raise OrphanOverrideError(
+                f"{AIDPF_2001}: replaceNode for {key!r} targets {bid!r}, which is "
+                f"not a shipped {lyr} node. replaceNode replaces a shipped mart in "
+                f"place; for a new node add a brand-new mart id instead."
+            )
+        overlay_layer_nodes = overlay.silver if lyr == "silver" else overlay.gold
+        if bid not in overlay_layer_nodes:
+            raise OrphanOverrideError(
+                f"{AIDPF_2001}: replaceNode for {key!r} has no matching "
+                f"`{lyr}/{bid}.yaml` replacement file in the overlay. A replaceNode "
+                f"override requires the same-id node file in that exact layer "
+                f"(otherwise the replacement is a silent no-op)."
+            )
+        replace_node_keys[(lyr, bid)] = entry.replace_node
+
+    # Overlay's own bronze nodes: a brand-new id is an addition; a same id as a
+    # base node is a full-node *replacement* (bronze only), guarded.
     for nid, node in overlay.bronze.items():
-        if nid not in merged_bronze:
+        if nid not in base.bronze:
             merged_bronze[nid] = node
             merged_source_roots[f"bronze/{nid}"] = overlay.root
-    for nid, node in overlay.silver.items():
-        if nid not in merged_silver:
-            merged_silver[nid] = node
-            merged_source_roots[f"silver/{nid}"] = overlay.root
-    for nid, node in overlay.gold.items():
-        if nid not in merged_gold:
-            merged_gold[nid] = node
-            merged_source_roots[f"gold/{nid}"] = overlay.root
+            continue
+        # Same-id replacement.
+        if _is_block_overridden("bronze", nid):
+            raise OrphanOverrideError(
+                f"{AIDPF_2001}: node {nid!r} is overridden two ways — a same-id "
+                f"file `bronze/{nid}.yaml` AND a `pack.yaml` overrides entry. "
+                f"The two mechanisms are mutually exclusive; declare only one."
+            )
+        _validate_same_id_bronze_replacement(base.bronze[nid], node)
+        merged_bronze[nid] = node
+        merged_source_roots[f"bronze/{nid}"] = overlay.root
+
+    # Silver/gold: a brand-new id is an addition; a same id is allowed ONLY via an
+    # acknowledged, layer-qualified `replaceNode` block (guarded full replacement).
+    for layer, overlay_nodes, base_nodes in (
+        ("silver", overlay.silver, base.silver),
+        ("gold", overlay.gold, base.gold),
+    ):
+        target = merged_silver if layer == "silver" else merged_gold
+        for nid, node in overlay_nodes.items():
+            if nid not in base_nodes:
+                target[nid] = node
+                merged_source_roots[f"{layer}/{nid}"] = overlay.root
+                continue
+            replace_node = replace_node_keys.get((layer, nid))
+            if replace_node is None:
+                raise OrphanOverrideError(
+                    f"{AIDPF_2001}: same-id {layer} file `{layer}/{nid}.yaml` would "
+                    f"replace shipped node {nid!r}. A bare same-id file is not "
+                    f"supported; declare an acknowledged `overrides: {{ "
+                    f"{layer}/{nid}: {{ replaceNode: {{ reason, forkedFrom }} }} }}` "
+                    f"block, or create a new mart id for a structural change."
+                )
+            _validate_same_id_silver_gold_replacement(
+                base_nodes[nid], node, replace_node, base
+            )
+            target[nid] = node
+            merged_source_roots[f"{layer}/{nid}"] = overlay.root
 
     # Dashboards: overlay can add or replace (replace-only,
     # no field-level merge). Inherited dashboards keep base root; overlay
@@ -484,6 +640,10 @@ def merge_overlay(base: ResolvedPack, overlay: ResolvedPack) -> ResolvedPack:
         is_merged=True,
         chain=tuple(list(base.chain) + [overlay.pack.id]),
         source_roots=merged_source_roots,
+        # Accumulate like `chain` (ids) — NOT (base.root, overlay.root), which
+        # would drop middle/base layers in an overlay-of-overlay chain because a
+        # merged base's `.root` is already the top overlay root.
+        chain_roots=tuple(list(base.chain_roots) + [overlay.root]),
     )
 
 
@@ -584,5 +744,326 @@ def _apply_node_overrides(
             new_tests = override_entry.quality.get("tests", [])
             node_data.setdefault("quality", {})["tests"] = existing_tests + new_tests
 
+        if override_entry.output_schema is not None:
+            # Bronze-only: a silver/gold outputSchema override is out of scope
+            # (those are SQL nodes with exact-match post-write assertions).
+            if prefix != "bronze/":
+                raise OrphanOverrideError(
+                    f"{AIDPF_2001}: outputSchema override on node "
+                    f"{override_key!r} is bronze-only. Silver/gold schema "
+                    f"changes go through `overrides: {{ sql }}` or a new mart id."
+                )
+            node_data["outputSchema"]["columns"] = _merge_output_schema_columns(
+                node_data["outputSchema"]["columns"],
+                override_entry.output_schema,
+                node_id,
+            )
+
+        if (
+            override_entry.required_columns is not None
+            or override_entry.relax_required_columns is not None
+        ):
+            # Bronze-only: requiredColumns feeds the bronze source/preflight
+            # gates; a silver/gold requiredColumns override is out of scope.
+            if prefix != "bronze/":
+                raise OrphanOverrideError(
+                    f"{AIDPF_2001}: requiredColumns override on node "
+                    f"{override_key!r} is bronze-only. Silver/gold required-"
+                    f"column changes go through `overrides: {{ sql }}` or a new "
+                    f"mart id."
+                )
+            node_data["requiredColumns"] = _merge_required_columns(
+                node_data.get("requiredColumns") or {},
+                override_entry.required_columns,
+                override_entry.relax_required_columns,
+                node_id,
+            )
+
         out[node_id] = NodeYaml.model_validate(node_data)
     return out
+
+
+def _validate_same_id_bronze_replacement(
+    base_node: NodeYaml, new_node: NodeYaml
+) -> None:
+    """Guard a same-id bronze full-file replacement.
+
+    The file may differ from base ONLY in ``outputSchema``, ``quality.tests``,
+    and ``requiredColumns`` — a whitelist, so a new/unanticipated extraction
+    field can't slip through. Identity fields (layer/grain, target, datastore/
+    pvo, refresh incl. naturalKey, …) must equal base → else a new node id.
+    ``outputSchema`` is retain-only (every base column kept; retype/append only),
+    ``quality.tests`` is superset-only (extend, never drop), and
+    ``requiredColumns`` is **add-only** (every base column kept; new columns
+    allowed) — none may silently narrow the contract. Dropping a required column
+    is a gate relaxation and must go through the acknowledged
+    ``relaxRequiredColumns`` block override, not a same-id file (AIDPF-2062).
+    Fail closed (AIDPF-2001 / 2062 family).
+    """
+    b = base_node.model_dump(by_alias=True)
+    n = new_node.model_dump(by_alias=True)
+    allowed = {"outputSchema", "quality", "requiredColumns"}
+    for key in sorted(set(b) | set(n)):
+        if key in allowed:
+            continue
+        if b.get(key) != n.get(key):
+            raise OrphanOverrideError(
+                f"{AIDPF_2001}: same-id bronze file for {base_node.id!r} changes "
+                f"{key!r} (identity field). Only `outputSchema`, "
+                f"`quality.tests`, and `requiredColumns` may differ; for an "
+                f"identity change create a new node id. base={b.get(key)!r} "
+                f"overlay={n.get(key)!r}."
+            )
+    # requiredColumns add-only (retain every base column per source; removal is a
+    # gate relaxation → relaxRequiredColumns block override, never a silent drop).
+    base_req = b.get("requiredColumns") or {}
+    new_req = n.get("requiredColumns") or {}
+    for src, base_cols in base_req.items():
+        kept = set(new_req.get(src, []))
+        dropped = [c for c in base_cols if c not in kept]
+        if dropped:
+            raise RequiredColumnDropError(
+                f"{AIDPF_2062_SAMEID_DROPS_REQUIRED_COLUMN}: same-id bronze file "
+                f"for {base_node.id!r} drops required column(s) {sorted(dropped)!r} "
+                f"from source {src!r}. A same-id file is add-only for "
+                f"requiredColumns; to remove a required column use a "
+                f"`relaxRequiredColumns` block override (with a reason)."
+            )
+    # outputSchema retain-only (no contract narrowing; subset assertion wouldn't catch a drop).
+    base_cols = {c["name"].lower(): c["name"] for c in b["outputSchema"]["columns"]}
+    new_cols = {c["name"].lower() for c in n["outputSchema"]["columns"]}
+    dropped = [orig for low, orig in base_cols.items() if low not in new_cols]
+    if dropped:
+        raise OrphanOverrideError(
+            f"{AIDPF_2001}: same-id bronze file for {base_node.id!r} drops base "
+            f"outputSchema column(s) {sorted(dropped)!r}. A replacement must "
+            f"retain every base column (retype/append only), incl. audit columns."
+        )
+    # quality.tests superset-only.
+    base_tests = (b.get("quality") or {}).get("tests", []) or []
+    new_tests = (n.get("quality") or {}).get("tests", []) or []
+    for t in base_tests:
+        if t not in new_tests:
+            raise OrphanOverrideError(
+                f"{AIDPF_2001}: same-id bronze file for {base_node.id!r} drops "
+                f"base quality test {t!r}. quality.tests may extend but not drop."
+            )
+
+
+def _normalize_depends_on_edges(node: NodeYaml) -> frozenset:
+    """Normalize a node's ``dependsOn`` into an order-independent set of
+    ``(layer, id, role, watermark.column)`` tuples.
+
+    The ``layer`` is in the tuple so moving an edge from ``bronze/foo`` to
+    ``silver/foo`` (overlapping id) is detected as a change, not a no-op.
+    """
+    edges = set()
+    for layer in ("bronze", "silver"):
+        for src in getattr(node.depends_on, layer, []) or []:
+            wm = src.watermark.column if src.watermark is not None else None
+            edges.add((layer, src.id, src.role, wm))
+    return frozenset(edges)
+
+
+def _validate_same_id_silver_gold_replacement(
+    base_node: NodeYaml,
+    overlay_node: NodeYaml,
+    replace_node: "ReplaceNode",  # noqa: F821
+    base_pack: ResolvedPack,
+) -> None:
+    """Guard a same-id silver/gold full replacement (``replaceNode``).
+
+    Three checks, fail-closed:
+
+    1. **SQL-mart-only.** ``replaceNode`` fingerprints a SQL template; a builtin/
+       non-SQL **base** mart has none → ``AIDPF-2001``. (An overlay that flips
+       ``implementation.type`` is caught by the identity guard → ``AIDPF-2065``.)
+    2. **Identity preserved.** ``layer`` / ``target`` / ``implementation.type`` /
+       the ``dependsOn`` edge set / the full ``refresh`` contract must equal base;
+       any change is a re-contract → ``AIDPF-2065`` (use a new mart id). Only
+       ``implementation.sql`` / ``outputSchema`` / ``requiredColumns`` / ``quality``
+       may differ — that is the point of a rewrite.
+    3. **Fork is current.** The stamped ``forkedFrom.sqlSha256`` /
+       ``contractSha256`` must equal the freshly recomputed base fingerprints;
+       drift → ``AIDPF-2064`` (re-review + ``refresh-fork``).
+    """
+    from .sql_renderer import compute_contract_fingerprint, compute_fork_fingerprint
+
+    nid = base_node.id
+
+    # 1. SQL-mart-only — base must be a SQL node to fingerprint.
+    if base_node.implementation.type != "sql":
+        raise OrphanOverrideError(
+            f"{AIDPF_2001}: replaceNode targets a builtin/non-SQL base mart "
+            f"{nid!r} (implementation.type={base_node.implementation.type!r}); "
+            f"guarded replacement supports SQL marts only — use a new mart id, or "
+            f"a builtin fingerprint strategy (out of scope for this build)."
+        )
+
+    # 2. Identity preserved — everything except sql/outputSchema/requiredColumns/
+    #    quality must equal base.
+    if overlay_node.layer != base_node.layer:
+        raise ReplaceNodeIdentityError(
+            f"{AIDPF_2065_REPLACE_NODE_IDENTITY}: replaceNode for {nid!r} changes "
+            f"`layer` ({base_node.layer!r} → {overlay_node.layer!r}); that is a "
+            f"re-contract, not a rewrite. Create a new mart id."
+        )
+    if overlay_node.target != base_node.target:
+        raise ReplaceNodeIdentityError(
+            f"{AIDPF_2065_REPLACE_NODE_IDENTITY}: replaceNode for {nid!r} changes "
+            f"`target` ({base_node.target!r} → {overlay_node.target!r}); that is a "
+            f"re-contract, not a rewrite. Create a new mart id."
+        )
+    if overlay_node.implementation.type != base_node.implementation.type:
+        raise ReplaceNodeIdentityError(
+            f"{AIDPF_2065_REPLACE_NODE_IDENTITY}: replaceNode for {nid!r} changes "
+            f"`implementation.type` ({base_node.implementation.type!r} → "
+            f"{overlay_node.implementation.type!r}); that is a re-contract. Create "
+            f"a new mart id."
+        )
+    if _normalize_depends_on_edges(overlay_node) != _normalize_depends_on_edges(
+        base_node
+    ):
+        raise ReplaceNodeIdentityError(
+            f"{AIDPF_2065_REPLACE_NODE_IDENTITY}: replaceNode for {nid!r} changes "
+            f"the `dependsOn` edge set; that is a re-contract, not a rewrite. "
+            f"Create a new mart id."
+        )
+    if overlay_node.refresh.model_dump(by_alias=True) != base_node.refresh.model_dump(
+        by_alias=True
+    ):
+        raise ReplaceNodeIdentityError(
+            f"{AIDPF_2065_REPLACE_NODE_IDENTITY}: replaceNode for {nid!r} changes "
+            f"the `refresh` contract (seed/incremental strategy, watermark, "
+            f"naturalKey, partitionColumns, affectedPartitionsFrom, or "
+            f"trackedColumns); that is a re-contract. Create a new mart id."
+        )
+
+    # 3. Fork-base drift — recompute the base fingerprints and compare.
+    expected = replace_node.forked_from
+    actual_sql = compute_fork_fingerprint(base_node, base_pack)
+    if actual_sql != expected.sql_sha256:
+        raise ForkBaseDriftError(
+            f"{AIDPF_2064_FORK_BASE_DRIFT}: base mart **logic** for {nid!r} changed "
+            f"since this fork was taken (base SQL / referenced semantic fragments). "
+            f"Re-review the base and re-stamp with `content-pack refresh-fork`. "
+            f"stamped sqlSha256={expected.sql_sha256!r}, current={actual_sql!r}."
+        )
+    actual_contract = compute_contract_fingerprint(base_node)
+    if actual_contract != expected.contract_sha256:
+        raise ForkBaseDriftError(
+            f"{AIDPF_2064_FORK_BASE_DRIFT}: base mart **contract** for {nid!r} "
+            f"changed since this fork was taken (outputSchema/PII, requiredColumns, "
+            f"or quality.tests). Re-review the base and re-stamp with "
+            f"`content-pack refresh-fork`. stamped contractSha256="
+            f"{expected.contract_sha256!r}, current={actual_contract!r}."
+        )
+
+
+def _merge_output_schema_columns(
+    base_columns: list[dict],
+    override: "OutputSchemaOverride",
+    node_id: str,
+) -> list[dict]:
+    """Name-keyed (case-insensitive) partial merge of override columns into base.
+
+    * Matched column → override only the provided `type`/`nullable`/`pii`;
+      the rest inherit from base. Position preserved.
+    * New column + `extendColumns: true` → appended; full `type` + `pii`
+      required (no column may enter outputSchema without a PII level).
+    * New column without `extendColumns` → orphan-column override, fail closed.
+
+    Base columns not mentioned are retained (no narrowing). The re-validation
+    via `NodeYaml` then enforces the no-duplicate-name invariant on the result.
+    """
+    by_lower = {c["name"].lower(): i for i, c in enumerate(base_columns)}
+    merged = [dict(c) for c in base_columns]
+    for ov in override.columns:
+        key = ov.name.lower()
+        if key in by_lower:
+            col = merged[by_lower[key]]
+            if ov.type is not None:
+                col["type"] = ov.type
+            if ov.nullable is not None:
+                col["nullable"] = ov.nullable
+            if ov.pii is not None:
+                col["pii"] = ov.pii
+        else:
+            if not override.extend_columns:
+                raise OrphanOverrideError(
+                    f"{AIDPF_2001}: outputSchema override for node {node_id!r} "
+                    f"names column {ov.name!r} which is absent from the base "
+                    f"node. Set `extendColumns: true` to append a new column, "
+                    f"or fix the name. Known base columns: "
+                    f"{[c['name'] for c in base_columns]!r}."
+                )
+            if ov.type is None or ov.pii is None:
+                raise OrphanOverrideError(
+                    f"{AIDPF_2001}: appended column {ov.name!r} on node "
+                    f"{node_id!r} must declare both `type` and `pii` "
+                    f"(no column may enter outputSchema without a PII level)."
+                )
+            merged.append(
+                {
+                    "name": ov.name,
+                    "type": ov.type,
+                    "nullable": ov.nullable if ov.nullable is not None else True,
+                    "pii": ov.pii,
+                }
+            )
+    return merged
+
+
+def _merge_required_columns(
+    base: dict[str, list[str]],
+    adds: "dict[str, list[str]] | None",
+    relaxes: "dict[str, list[RelaxRequiredColumn]] | None",
+    node_id: str,
+) -> dict[str, list[str]]:
+    """Merge an overlay's bronze ``requiredColumns`` change into the base.
+
+    Two asymmetric operations, source-id keyed:
+
+    * **adds** (``requiredColumns``) — additive union per source, order-stable
+      (base entries first, then new entries not already present). Entries are
+      opaque strings (literal columns and ``$column.*`` / ``$coa.*`` refs alike);
+      resolution stays with the run-time resolver. Adds only — cannot remove.
+    * **relaxes** (``relaxRequiredColumns``) — acknowledged removal. Each entry's
+      ``column`` must be present in the **base** for that source (exact match);
+      an entry that isn't is an orphan relaxation → AIDPF-2063, fail closed. The
+      mandatory ``reason`` is enforced at the schema layer.
+
+    A source whose list becomes empty after relaxation is dropped (an empty
+    required-column list is equivalent to declaring no source key).
+    """
+    result: dict[str, list[str]] = {src: list(cols) for src, cols in base.items()}
+
+    # Relax orphan-check is against the BASE (a relax of a column that base never
+    # required is a misconfiguration, even if an add in the same overlay names it).
+    if relaxes:
+        for src, entries in relaxes.items():
+            base_cols = set(base.get(src, []))
+            for entry in entries:
+                if entry.column not in base_cols:
+                    raise RelaxRequiredColumnOrphanError(
+                        f"{AIDPF_2063_RELAX_REQUIRED_COLUMN_ORPHAN}: "
+                        f"relaxRequiredColumns for node {node_id!r} names column "
+                        f"{entry.column!r} on source {src!r} which is not in the "
+                        f"base requiredColumns. Known base columns for {src!r}: "
+                        f"{sorted(base_cols)!r}."
+                    )
+
+    if adds:
+        for src, cols in adds.items():
+            existing = result.setdefault(src, [])
+            for col in cols:
+                if col not in existing:
+                    existing.append(col)
+
+    if relaxes:
+        for src, entries in relaxes.items():
+            drop = {e.column for e in entries}
+            result[src] = [c for c in result.get(src, []) if c not in drop]
+
+    # Drop any source whose required-column list is now empty.
+    return {src: cols for src, cols in result.items() if cols}

@@ -66,7 +66,12 @@ def test_missing_literal_routes_to_investigate():
     })
     f = out["findings"][0]
     assert f["status"] == "missing_literal"
+    # Primary route stays investigate (human decides legitimacy) ...
     assert out["routes"]["investigate"] == ["ApInvoicesVendorId"]
+    # ... and the legitimate-absence remediation is surfaced machine-readably
+    # (relaxRequiredColumns overlay via /medallion-author) without auto-routing.
+    assert f["relax_route"] == "medallion_author"
+    assert out["routes"]["relax_overlay"] == ["ApInvoicesVendorId"]
 
 
 def test_case_insensitive_match():

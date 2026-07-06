@@ -18,6 +18,10 @@ a route:
   missing_literal    — a declared literal (non-alias) required column vanished
                        from the PVO → investigate (pack/source mismatch).
 
+(This classifier is column-NAME drift only. A column-TYPE drift — AIDPF-4070 —
+is routed separately to `/medallion-author` to draft a bronze type-overlay
+retyping the column to the live type; see the SKILL.md routing table.)
+
 Input JSON (stdin or --input):
     {
       "live": {"ap_invoices": ["ApInvoicesInvoiceId", "ApInvoicesCurrencyCode", ...], ...},
@@ -96,9 +100,19 @@ def classify(payload: dict) -> dict:
         if not _present(column, live.get(source) or []):
             findings.append({
                 "source": source, "column": column, "status": "missing_literal",
+                # Primary route stays `investigate`: the classifier cannot decide
+                # whether the absence is a real pack/source bug or a legitimate
+                # tenant variation — a human must. `relax_route` is the
+                # machine-readable hint for the legitimate-absence remediation so
+                # automation can surface (never auto-apply) it.
                 "route": "investigate",
-                "detail": (f"declared literal column {column!r} missing from live {source} PVO — "
-                           "not a variation point; pack/source mismatch needs a human."),
+                "relax_route": "medallion_author",
+                "detail": (f"declared literal column {column!r} missing from live {source} PVO. "
+                           "Two cases — decide with the operator: (a) it SHOULD exist (real "
+                           "pack/source mismatch) → investigate/fix; (b) it is LEGITIMATELY "
+                           "absent for this tenant → relax the requiredColumns assertion via a "
+                           "`relaxRequiredColumns` block overlay (with a reason) through "
+                           "/medallion-author (AIDPF-2062/2063 guard the mechanism)."),
             })
 
     routes: dict[str, list[str]] = {"bootstrap_refresh": [], "medallion_author": [], "investigate": []}
@@ -106,6 +120,12 @@ def classify(payload: dict) -> dict:
         r = f["route"]
         if r in routes:
             routes[r].append(f.get("alias") or f.get("column"))
+    # missing_literal findings carry an optional relax remediation (operator
+    # decides). Surface it in a dedicated bucket without removing them from
+    # `investigate` (their primary, judgment-required route).
+    routes["relax_overlay"] = [
+        f.get("column") for f in findings if f.get("relax_route") == "medallion_author"
+    ]
     summary: dict[str, int] = {}
     for f in findings:
         summary[f["status"]] = summary.get(f["status"], 0) + 1

@@ -22,6 +22,7 @@ from oracle_ai_data_platform_fusion_bundle.commands.bronze_probe import (
 )
 from oracle_ai_data_platform_fusion_bundle.commands.variation_resolver import (
     AutoResolved,
+    MultiMatch,
     walk_column_alias,
     walk_semantic_variant,
 )
@@ -107,9 +108,19 @@ class TestSaasfademoFixtureResolvesAllStarterVariationPoints:
             dataset = applies_to.split(".", 1)[1]
             return {c.name for c in observed[dataset]}
 
-        # 6 columnAliases.
+        # 3 existence-based columnAliases. The 3 COA roles are now
+        # `resolution: semanticRole` and resolved from explicit
+        # profile.chartOfAccounts config via the COA ladder, NOT by column
+        # existence — so they are skipped here (see test_coa_resolution.py).
         resolutions: dict[str, str] = {}
         for name, spec in pack.pack.column_aliases.items():
+            if spec.resolution == "semanticRole":
+                # Existence cannot prove a business role; over the full
+                # Segment1..6 allowed domain the walk would MultiMatch.
+                assert isinstance(
+                    walk_column_alias(spec, cols_for(spec.appliesTo)), MultiMatch
+                )
+                continue
             result = walk_column_alias(spec, cols_for(spec.appliesTo))
             assert isinstance(result, AutoResolved), (
                 f"variation point {name!r} did not auto-resolve on saasfademo1 "
@@ -126,14 +137,12 @@ class TestSaasfademoFixtureResolvesAllStarterVariationPoints:
             )
             resolutions[name] = result.chosen
 
-        # Round-trip target — finance-default.yaml's resolved values.
+        # Round-trip target — the existence-resolved values (COA roles are
+        # resolved separately by the COA ladder).
         assert resolutions == {
             "supplier_natural_key": "SEGMENT1",
             "vendor_id": "VENDORID",
             "invoice_currency_code": "ApInvoicesInvoiceCurrencyCode",
-            "coa_balancing_segment": "CodeCombinationSegment1",
-            "coa_cost_center_segment": "CodeCombinationSegment2",
-            "coa_natural_account_segment": "CodeCombinationSegment3",
             "cancelled_status": "cancelled_date",
         }
 

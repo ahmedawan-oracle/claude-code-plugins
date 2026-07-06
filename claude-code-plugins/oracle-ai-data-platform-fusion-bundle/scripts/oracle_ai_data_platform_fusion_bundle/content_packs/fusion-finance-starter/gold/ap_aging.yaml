@@ -24,6 +24,37 @@ refresh:
       incremental refresh would go stale by one day every day.
       Hence `replace`. A future snapshot strategy is the right long-term fit.
 
+# Declared inputs (AIDPF-2084): upstream columns ap_aging.sql reads —
+# ap_invoices.<col> from ap_invoices, ds.<col> from dim_supplier. Columns
+# referenced only inside the `{{ semantic.cancelled_status }}` predicate are
+# profile-resolved and out of scope for the gate (backstopped by the live source
+# gates).
+#
+# NOTE — ap_invoices stays UNALIASED in ap_aging.sql (reads qualified by the
+# table name `ap_invoices.<col>`, not a correlation name). The
+# `{{ semantic.cancelled_status }}` fragment substitutes `{table}` with the full
+# bronze identifier (catalog.schema.ap_invoices); an alias would hide that name
+# and the rendered predicate's full-path qualifier would fail to resolve at
+# execution. dim_supplier carries no `{table}` fragment, so it keeps its `ds`
+# alias. See test_ap_aging_render_keeps_semantic_source_unaliased.
+requiredColumns:
+  ap_invoices:
+    - ApInvoicesVendorId
+    - $column.invoice_currency_code
+    - ApInvoicesInvoiceAmount
+    - ApInvoicesAmountPaid
+    - ApInvoicesInvoiceDate
+    # $semantic.cancelled_status → the active candidate's column
+    # (cancelled_date → ApInvoicesCancelledDate on this tenant); read via the
+    # `{{ semantic.cancelled_status }}` predicate in ap_aging.sql.
+    - $semantic.cancelled_status
+    - _extract_ts
+  dim_supplier:
+    - vendor_id
+    - supplier_number
+    - supplier_name
+    - business_relationship
+
 # INTENTIONAL SCOPE DECISION — AP aging ships in **proxy mode only**.
 # v1's auto/real-mode behaviour (transforms/gold/ap_aging.py
 # defaults to `due_date_mode='auto'`, probes ApInvoicesTermsDate /

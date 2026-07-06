@@ -246,14 +246,58 @@ def info_pack(name: str, *, json_output: bool, console) -> int:
 # ---------------------------------------------------------------------------
 
 
-def validate_pack_cli(name: str, *, json_output: bool, console) -> int:
+def validate_pack_cli(
+    name: str, *, json_output: bool, console, profile: str | None = None
+) -> int:
     """Run schema + content validation; surface AIDPF codes.
 
     Resolves the full ``extends:`` chain via ``resolve_overlay_chain`` +
     ``merge_overlay`` before validating, so overlay failures (orphan
     overrides → AIDPF-2001, inherited dashboard / SQL errors, etc.) are
     surfaced to the operator.
+
+    ``profile`` (optional) enables the profile-aware leg of the
+    column-contract gate (AIDPF-2045): ``$column.*`` / ``$coa.*`` consumer
+    demands resolve against the active tenant profile. Accepts either a direct
+    path to a profile YAML or a bare profile name resolved against
+    ``./profiles/<name>.yaml`` in the current bundle. When omitted, validation
+    is profile-less (literal + watermark demands still gate).
     """
+    loaded_profile = None
+    if profile is not None:
+        from ..schema.tenant_profile import (
+            load_tenant_profile,
+            resolve_profile_path,
+        )
+
+        profile_path = Path(profile)
+        if not profile_path.exists():
+            # Bare name → resolve against the current bundle's profiles/ dir.
+            try:
+                profile_path = resolve_profile_path(Path.cwd() / "bundle.yaml", profile)
+            except Exception as exc:  # UnsafePathSegmentError etc.
+                msg = f"AIDPF-1033: could not resolve --profile {profile!r}: {exc}"
+                if json_output:
+                    print(json.dumps({"errors": [{"code": "AIDPF-1033", "message": msg}]}, indent=2))
+                else:
+                    console.print(f"[red]{msg}[/red]")
+                return 2
+        if not profile_path.exists():
+            msg = f"AIDPF-1033: profile YAML not found for --profile {profile!r} (looked at {profile_path})."
+            if json_output:
+                print(json.dumps({"errors": [{"code": "AIDPF-1033", "message": msg}]}, indent=2))
+            else:
+                console.print(f"[red]{msg}[/red]")
+            return 2
+        try:
+            loaded_profile = load_tenant_profile(profile_path)
+        except Exception as exc:
+            if json_output:
+                print(json.dumps({"errors": [{"code": "AIDPF-2000", "message": str(exc)}]}, indent=2))
+            else:
+                console.print(f"[red]profile load failed:[/red] {exc}")
+            return 2
+
     try:
         pack_path = resolve_pack_path(name)
     except FileNotFoundError as exc:
@@ -301,7 +345,7 @@ def validate_pack_cli(name: str, *, json_output: bool, console) -> int:
                 console.print(f"  - {e.get('msg', '')} (at {e.get('loc')})")
         return 2
 
-    report: ValidationReport = validate_pack_full(pack)
+    report: ValidationReport = validate_pack_full(pack, profile=loaded_profile)
     if json_output:
         print(
             json.dumps(
@@ -336,3 +380,190 @@ def validate_pack_cli(name: str, *, json_output: bool, console) -> int:
                 console.print(f"  [red]{e.code}[/red]{loc_part}: {e.message}")
 
     return 0 if report.ok else 2
+
+
+# ---------------------------------------------------------------------------
+# Verb: content-pack refresh-fork
+# ---------------------------------------------------------------------------
+
+
+def _resolve_base_path(overlay_path: Path, extends: str) -> Path | None:
+    """Resolve the parent base pack a `replaceNode` overlay forked from.
+
+    Mirrors :func:`_make_cli_base_resolver`: sibling directory first, then the
+    installed content-packs dir. Returns ``None`` if not found.
+    """
+    base_name = str(extends).split("@")[0]
+    sibling = overlay_path.parent / base_name
+    if sibling.exists() and (sibling / "pack.yaml").exists():
+        return sibling.resolve()
+    installed = INSTALLED_CONTENT_PACKS_DIR / base_name
+    if installed.exists() and (installed / "pack.yaml").exists():
+        return installed.resolve()
+    return None
+
+
+def refresh_fork_cli(
+    name: str, *, node: str | None, json_output: bool, console
+) -> int:
+    """Re-stamp ``replaceNode.forkedFrom`` fingerprints from the current base.
+
+    Recomputes **all three** stamps (``sqlSha256`` / ``contractSha256`` /
+    ``packVersion``) — using the SAME helpers the validate-time gate uses — and
+    rewrites them in the leaf overlay's ``pack.yaml``. Re-stamping only the SQL
+    fingerprint would leave an operator stuck after a contract-only ``AIDPF-2064``.
+
+    Load sequencing (must fingerprint the PARENT base, not the merged/replaced
+    node): read the leaf overlay raw ``pack.yaml`` for the ``replaceNode`` block,
+    resolve the ancestor chain **excluding** the leaf to get the base node + root,
+    compute the stamps from that parent base, then rewrite only the leaf file.
+    """
+    import yaml
+
+    from ..orchestrator.content_pack import (
+        AIDPF_2004_EXTENDS_VERSION_MISMATCH,
+        _split_override_key,
+        load_full_chain,
+    )
+    from ..orchestrator.sql_renderer import (
+        compute_contract_fingerprint,
+        compute_fork_fingerprint,
+    )
+
+    def _emit_error(code: str, message: str, exit_code: int) -> int:
+        if json_output:
+            print(json.dumps({"errors": [{"code": code, "message": message}]}, indent=2))
+        else:
+            console.print(f"[red]{code}:[/red] {message}")
+        return exit_code
+
+    try:
+        overlay_path = resolve_pack_path(name)
+    except FileNotFoundError as exc:
+        return _emit_error("AIDPF-2000", str(exc), 1)
+
+    raw = yaml.safe_load((overlay_path / "pack.yaml").read_text()) or {}
+    overrides = raw.get("overrides") or {}
+    targets = {
+        k: v
+        for k, v in overrides.items()
+        if isinstance(v, dict) and isinstance(v.get("replaceNode"), dict)
+    }
+    if node is not None:
+        targets = {k: v for k, v in targets.items() if k == node}
+        if not targets:
+            return _emit_error(
+                "AIDPF-2000",
+                f"no replaceNode override for --node {node!r} in {name!r}.",
+                1,
+            )
+    if not targets:
+        return _emit_error(
+            "AIDPF-2000",
+            f"pack {name!r} has no replaceNode overrides to refresh.",
+            1,
+        )
+
+    extends = raw.get("extends")
+    if not extends:
+        return _emit_error(
+            "AIDPF-2000", f"pack {name!r} is not an overlay (no `extends:`).", 1
+        )
+    try:
+        ref = PackOverlayRef.parse(extends) if isinstance(extends, str) else None
+    except Exception:
+        ref = None
+    if ref is None:
+        return _emit_error(
+            "AIDPF-2000", f"pack {name!r} has a malformed `extends:` value {extends!r}.", 1
+        )
+    base_path = _resolve_base_path(overlay_path, extends)
+    if base_path is None:
+        return _emit_error(
+            "AIDPF-2000",
+            f"base pack for `extends: {extends}` not found beside {overlay_path} "
+            f"or in {INSTALLED_CONTENT_PACKS_DIR}.",
+            1,
+        )
+
+    # Guard the `extends` version (AIDPF-2004) against the leaf's DIRECT parent.
+    # resolve_overlay_chain enforces this while walking the chain, but refresh-fork
+    # resolves the parent by NAME, so the version is otherwise unchecked — an
+    # overlay declaring `extends: pack@0.1.0` against an installed pack@0.2.0 would
+    # re-stamp forkedFrom from a base it does not extend, corrupting provenance.
+    # Validate against the RAW candidate pack.yaml (its own declared id/version),
+    # NOT a merged ResolvedPack: when the direct parent is itself an overlay,
+    # merge_overlay keeps the ROOT base's identity, so the merged id/version would
+    # not match the (overlay) parent's ref. Check the raw candidate before merging.
+    raw_base = yaml.safe_load((base_path / "pack.yaml").read_text()) or {}
+    base_id, base_version = raw_base.get("id"), raw_base.get("version")
+    if base_id != ref.name or base_version != ref.version:
+        return _emit_error(
+            AIDPF_2004_EXTENDS_VERSION_MISMATCH,
+            f"overlay {name!r} declares `extends: {ref.to_string()}` but the resolved "
+            f"parent pack at {base_path} is {base_id}@{base_version}. Refusing to "
+            f"re-stamp forkedFrom from a base the overlay does not extend — align the "
+            f"versions first.",
+            2,
+        )
+
+    # Now merge the parent chain (excluding the leaf) for fingerprint computation.
+    try:
+        base = load_full_chain(base_path, base_resolver=_make_cli_base_resolver(base_path))
+    except (PackLoaderError, ValidationError, FileNotFoundError) as exc:
+        return _emit_error("AIDPF-2000", f"could not load base pack: {exc}", 1)
+
+    changes: list[dict[str, Any]] = []
+    for key, entry in targets.items():
+        layer, nid = _split_override_key(key)
+        base_nodes = base.silver if layer == "silver" else base.gold
+        base_node = base_nodes.get(nid) if layer in ("silver", "gold") else None
+        if base_node is None:
+            return _emit_error(
+                "AIDPF-2000",
+                f"replaceNode key {key!r} does not resolve to a shipped "
+                f"silver/gold base node.",
+                1,
+            )
+        old = dict(entry["replaceNode"].get("forkedFrom") or {})
+        new = {
+            "sqlSha256": compute_fork_fingerprint(base_node, base),
+            "contractSha256": compute_contract_fingerprint(base_node),
+            "packVersion": base.pack.version,
+        }
+        entry["replaceNode"]["forkedFrom"] = new
+        changes.append(
+            {
+                "node": key,
+                "changed": old != new,
+                "sqlSha256": {"old": old.get("sqlSha256"), "new": new["sqlSha256"]},
+                "contractSha256": {
+                    "old": old.get("contractSha256"),
+                    "new": new["contractSha256"],
+                },
+                "packVersion": {"old": old.get("packVersion"), "new": new["packVersion"]},
+            }
+        )
+
+    (overlay_path / "pack.yaml").write_text(yaml.safe_dump(raw, sort_keys=False))
+
+    if json_output:
+        print(json.dumps({"pack": raw.get("id", name), "refreshed": changes}, indent=2))
+    else:
+        any_changed = any(c["changed"] for c in changes)
+        if not any_changed:
+            console.print("[green]✓[/green] all forkedFrom stamps already current.")
+        for c in changes:
+            if not c["changed"]:
+                console.print(f"  {c['node']}: unchanged")
+                continue
+            sql_moved = c["sqlSha256"]["old"] != c["sqlSha256"]["new"]
+            contract_moved = c["contractSha256"]["old"] != c["contractSha256"]["new"]
+            what = ", ".join(
+                w for w, moved in (("logic", sql_moved), ("contract", contract_moved)) if moved
+            ) or "version"
+            console.print(
+                f"  [yellow]re-stamped[/yellow] {c['node']} (base {what} changed) — "
+                f"review your overlay against the new base before seeding."
+            )
+    return 0

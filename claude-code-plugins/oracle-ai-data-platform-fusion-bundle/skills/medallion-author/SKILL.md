@@ -37,7 +37,10 @@ and never writes profile resolutions directly.
   LLM dependency at runtime. This skill is operator-initiated and runs between
   bootstraps.
 - When the diagnostic artifact is missing — the skill refuses to
-  invent context (no synthesised proposals from thin air).
+  invent context (no synthesised proposals from thin air). **Exception: the
+  COA-depth mode** (below) is explicitly **operator-input driven** and runs with
+  NO diagnostic artifact — its trigger (`AIDPF-2015`, a `content-pack validate`
+  failure) writes none.
 - When `AIDPF-1020` is present — operator-identity gate is unrelated
   to overlay drafting; fix the identity environment first.
 - To author NEW silver/gold nodes (a SQL template the pack doesn't declare).
@@ -111,6 +114,104 @@ carries:
 3. **Never edit `profiles/` or hand-write `resolved.*`** — same rule as
    the bootstrap variation-point path. The columnAlias goes
    in the overlay; bootstrap pins the resolved value on `--refresh`.
+
+## AIDPF-4070 — bronze type mismatch (runtime type gate)
+
+A bronze node's declared `outputSchema` **type** differs from the live PVO
+type (e.g. the `decimal(38,30)` → `decimal(18,0)` supplier-ID overflow). The
+run persists `AIDPF-4070__<node>.json` (read it via the diagnostic reader's
+`type_mismatch_failures`). The sanctioned fix is a **bronze type-overlay** —
+non-destructive, the shipped pack stays immutable. Two equivalent shapes:
+
+- **`overrides:` block** (preferred for a small retype) — declare only the
+  changed columns:
+  ```yaml
+  overrides:
+    bronze/erp_suppliers:
+      outputSchema:
+        columns:
+          - { name: VENDORID, type: "decimal(18,0)" }   # retype to live type
+  ```
+- **Same-id bronze file** `overlays/<name>/bronze/erp_suppliers.yaml` — a full
+  `NodeYaml` (filename stem **must** equal `id`); may differ from base only in
+  `outputSchema` (retain every base column; retype/append) and `quality.tests`
+  (extend, never drop).
+
+`draft_type_overlay()` builds the block shape from the diagnostic for operator
+approval (it does **not** auto-apply/seed). **Off-limits to both shapes:** grain,
+`naturalKey`, `target`, `datastore`/PVO, `refresh` — an identity change is a
+**new node id**, not an override. (`requiredColumns` is now adjustable via its own
+overlay — see the next section.) Type-overlays are **bronze-only**; a silver/gold
+type fix is `overrides: { sql }` or a new mart id.
+
+## Bronze `requiredColumns` overlay — add / acknowledged relax
+
+`requiredColumns` lists the source columns the extract **asserts exist** in the
+live PVO (feeding the per-node preflight + the `AIDPF-4071` source-schema gate).
+It does **not** project the extract — bronze always writes the full raw PVO; an
+add tightens the assertion, a removal turns the assertion + drift-watch off for
+that column (the column still lands when present). A tenant may need to **add** a
+required column (assert/pull an extra source field) or **relax** one its PVO
+legitimately lacks. Both are non-destructive overlays; the shipped pack stays
+immutable.
+
+- **Add** (additive — allowed in **both** the `overrides:` block and a same-id
+  `bronze/<id>.yaml` file, which is add-only):
+  ```yaml
+  overrides:
+    bronze/erp_suppliers:
+      requiredColumns:
+        erp_suppliers: [BUSINESSRELATIONSHIP]   # unioned into the base list
+  ```
+- **Relax / remove** (weakens a gate → **block override only**, with a mandatory
+  `reason` as the acknowledgement):
+  ```yaml
+  overrides:
+    bronze/erp_suppliers:
+      relaxRequiredColumns:
+        erp_suppliers:
+          - { column: PARTYID, reason: "tenant pod does not expose PARTYID" }
+  ```
+
+Guards (fail closed): a same-id file that **drops** a base required column →
+`AIDPF-2062` (use `relaxRequiredColumns` instead); a relax naming a column the
+base never required → `AIDPF-2063`; a blank/missing `reason` → schema validation
+error. **Bronze-only** (a silver/gold `requiredColumns` override is rejected). The
+block and same-id-file mechanisms are mutually exclusive per node. This is the
+path `/fusion-drift-doctor` routes a `missing_literal` to when the column is
+legitimately absent for the tenant.
+
+## COA-depth mode — operator-input (no diagnostic)
+
+For a tenant whose chart of accounts uses COA role segments beyond the starter
+pack's `Segment1–6` (up to `CodeCombinationSegment30`), `content-pack validate`
+rejects a binding to e.g. `Segment10` with **AIDPF-2015** (out of contract) — a
+validate failure that writes **no** `.aidp/diagnostics` artifact. So COA-depth is
+driven by **explicit operator input**, not a diagnostic:
+
+```
+/medallion-author coa-depth --tenant <tenant> --segments 7-10 \
+    [--role natural_account=CodeCombinationSegment10] [--chart <id>=...]
+```
+
+`draft_coa_depth_overlay()` drafts ONE **coordinated** overlay that extends:
+
+1. the three `coa_*` semantic-role **candidate lists** (`inherit` + the deep
+   `CodeCombinationSegment<N>`), re-declaring `resolution: semanticRole` + `role:`
+   (overlay merge keeps the overlay entry's fields; only `candidates` inherit), and
+2. the **`gl_coa` bronze `outputSchema`** (`extendColumns` the same deep segments)
+   — so the binding is contract-backed (no AIDPF-2015 / Tier-A AIDPF-2042).
+
+It does **not** touch `gl_coa.requiredColumns` (out of scope — see
+`bronze-required-columns-overlay`); it surfaces that dependency instead. The skill
+drafts a **profile runbook fragment** for `profile.chartOfAccounts` (operator
+authors the meaning; the skill never writes `resolved.column.coa_*` — bootstrap
+does). Segments are capped 1..30 (Fusion GL flexfield max).
+
+**Provenance (operator-input):** the overlay carries `trigger: operator_input` +
+`operatorInputId: operator-input-<id>` (NOT a faked `diagnosticRunId`) +
+`evidence: { trigger, tenant, segments, roles }`. `validate_overlay` requires
+exactly one of `diagnosticRunId` XOR `operatorInputId`.
 
 ## Required overlay rules
 

@@ -39,6 +39,11 @@ import yaml
 from rich.console import Console
 
 from ..orchestrator.content_pack import ResolvedPack, load_full_chain, load_pack
+from .coa_resolution import (
+    CoaResolutionError,
+    CoaResolutionInput,
+    resolve_coa_roles,
+)
 from ..schema.bronze_fingerprint import ColumnInfo, compute_bronze_fingerprint
 from ..schema.bronze_schema_snapshot import (
     BronzeSchemaSnapshotSchemaError,
@@ -127,6 +132,19 @@ class VariationPhaseOptions:
     """Test injection for the interactive y/N confirmation prompt during
     ``--refresh`` when a pinned value would change. ``None`` falls back
     to stdlib ``input()``. Tests pass a lambda to drive accept/decline."""
+
+    accept_coa_convention: bool = False
+    """``--accept-coa-convention``: operator accepts the pack's conventional
+    COA role->segment default (or upgrades a legacy back-derived pin) as a
+    deliberate convention. Without it, a non-interactive run with no explicit
+    ``profile.chartOfAccounts`` config fails closed (AIDPF-2013), and a legacy
+    back-derived pin is recorded as ``legacy_unverified`` with a warning."""
+
+    accept_singleton_coa: bool = False
+    """``--accept-singleton-coa``: operator asserts all active charts of accounts
+    share the COA role->segment layout. Persists
+    ``profile.chartOfAccounts.singletonAccepted: true`` so the multi-COA preflight
+    gate (AIDPF-2018) passes for a singleton mapping."""
 
     # --- Cluster-side bootstrap dispatcher knobs ---
     dispatch_mode: Literal["cluster", "local"] = "local"
@@ -543,6 +561,21 @@ def run_variation_phase(
         existing_profile=prior_profile,
         run_id=run_id,
     )
+    # Resolve COA semantic roles from explicit config (NOT column existence) and
+    # fold the derived columns + per-role provenance into the profile. Fails
+    # closed (AIDPF-2013) in a non-interactive run with no accepted convention.
+    try:
+        profile = _apply_coa_resolution(
+            profile=profile,
+            pack=pack,
+            options=options,
+            prior_profile=prior_profile,
+            tenant_name=tenant_name,
+            console=console,
+        )
+    except CoaResolutionError as exc:
+        console.print(f"[red]{exc}[/red]")
+        return VariationPhaseOutcome(exit_code=1, summary=str(exc))
     _write_profile_yaml(profile_path, profile)
 
     # Thread skill_version from the entry overlay, when
@@ -966,6 +999,93 @@ def _build_profile(
     )
 
 
+def _pack_coa_default(pack: ResolvedPack, tenant_name: str) -> dict | None:
+    """The pack's conventional COA default mapping, as a dict, or None.
+
+    Indexes ``pack.profiles`` by the active profile name; falls back to the sole
+    profile when there is exactly one.
+    """
+    profiles = pack.pack.profiles or {}
+    chosen = None
+    if tenant_name in profiles:
+        chosen = profiles[tenant_name]
+    elif len(profiles) == 1:
+        chosen = next(iter(profiles.values()))
+    if chosen is None or chosen.chart_of_accounts is None:
+        return None
+    return chosen.chart_of_accounts.model_dump(by_alias=True, exclude_none=True)
+
+
+def _apply_coa_resolution(
+    *,
+    profile: TenantProfile,
+    pack: ResolvedPack,
+    options: "VariationPhaseOptions",
+    prior_profile: TenantProfile | None,
+    tenant_name: str,
+    console: Console,
+) -> TenantProfile:
+    """Resolve COA semantic-role aliases and fold the result into ``profile``.
+
+    Returns the profile with ``resolved.column.coa_*`` derived,
+    ``profile.chartOfAccounts`` canonical, and
+    ``provenance.chartOfAccounts.roles`` recorded per role. Raises
+    :class:`CoaResolutionError` (fail-closed) when no safe value exists.
+    """
+    semantic_role_aliases = {
+        name: spec.role
+        for name, spec in pack.pack.column_aliases.items()
+        if spec.resolution == "semanticRole" and spec.role
+    }
+    if not semantic_role_aliases:
+        return profile
+
+    prior_coa = None
+    prior_role_prov = None
+    prior_resolved_col = None
+    if prior_profile is not None:
+        prior_coa = prior_profile.profile.get("chartOfAccounts")
+        prior_role_prov = (prior_profile.provenance.get("chartOfAccounts") or {}).get(
+            "roles"
+        )
+        prior_resolved_col = dict(prior_profile.resolved.column)
+
+    # A pre-authored chartOfAccounts on a fresh (non-refresh) bootstrap is
+    # explicit operator config; on --refresh it's the carried-forward pin.
+    explicit_config = None
+    existing_coa = None
+    if prior_coa is not None:
+        if options.refresh:
+            existing_coa = prior_coa
+        else:
+            explicit_config = prior_coa
+
+    inp = CoaResolutionInput(
+        semantic_role_aliases=semantic_role_aliases,
+        existing_chart_of_accounts=existing_coa,
+        existing_role_provenance=prior_role_prov,
+        existing_resolved_column=prior_resolved_col,
+        explicit_config=explicit_config,
+        pack_default=_pack_coa_default(pack, tenant_name),
+        interactive=not options.non_interactive,
+        accept_convention=options.accept_coa_convention,
+        accept_singleton=options.accept_singleton_coa,
+        is_refresh=options.refresh,
+    )
+    result = resolve_coa_roles(inp)
+
+    for warning in result.warnings:
+        console.print(f"[yellow]COA: {warning}[/yellow]")
+
+    # Fold into the profile: resolved.column (derived), profile.chartOfAccounts
+    # (canonical), provenance.chartOfAccounts.roles (per-role).
+    profile.resolved.column.update(result.column_map)
+    profile.profile["chartOfAccounts"] = result.chart_of_accounts
+    coa_prov = profile.provenance.setdefault("chartOfAccounts", {})
+    coa_prov["roles"] = result.role_provenance
+    return profile
+
+
 def _write_profile_yaml(path: Path, profile: TenantProfile) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = profile.model_dump(mode="json", by_alias=True, exclude_none=True)
@@ -1211,6 +1331,10 @@ def _acquire_probe_result(
 
     walker_results: dict[tuple[str, str], CandidateWalkResult] = {}
     for name, spec in pack.pack.column_aliases.items():
+        # Semantic-role aliases (e.g. COA balancing) are resolved from explicit
+        # config via the COA ladder, NOT by column-existence -- skip the walk.
+        if spec.resolution == "semanticRole":
+            continue
         cols = _columns_for_applies_to(observed, spec.appliesTo)
         walker_results[(name, "columnAliases")] = walk_column_alias(spec, cols)
     for name, spec in pack.pack.semantic_variants.items():

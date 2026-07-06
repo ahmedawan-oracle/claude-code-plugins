@@ -24,7 +24,7 @@ diagnoses and hands off; it never edits packs/profiles or runs the pipeline.
 |---|---|---|
 | **AIDPF-2072** | Live Fusion PVO schema drifted vs the bootstrap-pinned snapshot (a source column renamed/removed). | classify → `bootstrap --refresh` or `/medallion-author` |
 | **AIDPF-4071** | A declared `outputSchema` column is **missing** from the live PVO. | classify (same as 2072) |
-| **AIDPF-4070** | A live PVO column's **type changed** vs declared. | **investigate** (type change — pack/profile fix by a human) |
+| **AIDPF-4070** | A live PVO column's **type changed** vs declared. | **`/medallion-author`** — draft a bronze type-overlay (retype `outputSchema` to the live type) from the persisted `AIDPF-4070__<node>.json` |
 | **AIDPF-2012** | Bronze **table** fingerprint drifted vs the pinned profile fingerprint. | confirm the change is legit → `bootstrap --refresh` to re-pin |
 | **AIDPF-4040** | **Plan-hash drift** — the node's plan-hash differs from the seed-pinned one. | classify the *cause* (below) — **re-seed only fixes a genuine plan-shape change** |
 
@@ -37,7 +37,7 @@ diagnoses and hands off; it never edits packs/profiles or runs the pipeline.
 
 | File | Role | Invoked via |
 |---|---|---|
-| `drift_classify.py` | Classify each columnAlias against the **live PVO** columns → `present` / `renamed_resolvable` (→ bootstrap --refresh) / `needs_overlay` (→ medallion-author) / `missing_literal` (→ investigate). | `Bash`, JSON in/out |
+| `drift_classify.py` | Classify each columnAlias against the **live PVO** columns → `present` / `renamed_resolvable` (→ bootstrap --refresh) / `needs_overlay` (→ medallion-author) / `missing_literal` (→ investigate if it should exist, OR — if *legitimately absent* for this tenant — relax the `requiredColumns` assertion via a `relaxRequiredColumns` overlay through `/medallion-author`; AIDPF-2062/2063 guard it). | `Bash`, JSON in/out |
 
 ## Workflow
 1. **Get the failure context.** Either read the failed run's diagnostic artifact
@@ -65,9 +65,15 @@ diagnoses and hands off; it never edits packs/profiles or runs the pipeline.
      the pack never anticipated; draft an overlay extending
      `columnAliases.<name>.candidates` with the observed live column (surfaced in
      `liveColumns`).
-   - **`missing_literal` / AIDPF-4070 (type change)** → **investigate**: a
-     declared literal column vanished or changed type — a pack/source mismatch a
-     human resolves (no mechanical fix).
+   - **`missing_literal`** → **investigate**: a declared literal column vanished
+     — a pack/source mismatch a human resolves (no mechanical fix).
+   - **AIDPF-4070 (type change)** → **`/medallion-author`** (bronze type-overlay):
+     a declared bronze `outputSchema` type differs from the live PVO. The fix is a
+     non-destructive **type-overlay** — a `bronze/<node>` `outputSchema` block
+     override (or a same-id bronze file) retyping the column to the live type. The
+     run persists an `AIDPF-4070__<node>.json` diagnostic that `/medallion-author`
+     drafts the overlay from. (Identity fields stay off-limits — a PVO/key/target
+     change is still a new node id.)
    - **AIDPF-4040** → identify *which* of two causes before recommending a fix.
      (Row-grain MERGE nodes increment cleanly after a seed as of 2026-06-15 —
      the plan-hash is mode-normalized, `LIMITS.md` P-incr-L1 resolved — so the

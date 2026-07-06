@@ -4,20 +4,13 @@
 # the saasfademo1 demo pod's PVO shapes.
 #
 # COA segments: dim_account.sql substitutes three role-aliased columns
-# (`balancing` / `cost_center` / `natural_account`) via
-# {{ column.coa_*_segment }} tokens; the resolved values below pin each
-# role to its conventional source column (Segment1/2/3). The other three
-# roles (`subaccount` / `product` / `intercompany`) stay positional in
-# the SQL — documented in LIMITS.md P3-L2 (gap 1).
-#
-# Honest limit: `columnAliases` resolution is existence-based; a
-# non-conventional tenant where balancing actually lives at e.g.
-# CodeCombinationSegment4 cannot be detected by bootstrap because
-# Segment1 still exists in bronze. Such tenants must pre-author an
-# overlay (or hand-edit `resolved.column.coa_*_segment`) BEFORE running
-# bootstrap. A future `{{ coa.<role> }}` renderer token consuming
-# `profile.chartOfAccounts.<role>Segment` integers is the proper
-# architectural fix (out of v0.3 scope). See LIMITS.md P3-L2 (gap 2).
+# (`balancing` / `cost_center` / `natural_account`) via {{ coa.<role> }}
+# tokens, which read `profile.chartOfAccounts` (canonical). bootstrap also
+# derives `resolved.column.coa_*` from it. A non-conventional tenant (e.g.
+# balancing at CodeCombinationSegment4) declares its own `chartOfAccounts`
+# here; the COA resolver records honest provenance and the M2 preflight gate
+# data-checks the binding. The other three roles (`subaccount` / `product` /
+# `intercompany`) stay positional in the SQL.
 #
 # Field aliases match scripts/oracle_ai_data_platform_fusion_bundle/schema/tenant_profile.py.
 schemaVersion: 1
@@ -68,3 +61,11 @@ profile:
     startDate: '2020-01-01'
     endDate: '2030-12-31'
     fiscalStartMonth: 1
+  # COA role->column mapping (canonical). {{ coa.<role> }} reads this;
+  # bootstrap derives resolved.column.coa_* above from it. Conventional
+  # Segment1/2/3 layout for saasfademo1.
+  chartOfAccounts:
+    default:
+      balancingSegment: CodeCombinationSegment1
+      costCenterSegment: CodeCombinationSegment2
+      naturalAccountSegment: CodeCombinationSegment3

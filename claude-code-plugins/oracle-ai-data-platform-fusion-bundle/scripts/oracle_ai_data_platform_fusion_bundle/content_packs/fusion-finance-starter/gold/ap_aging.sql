@@ -1,28 +1,28 @@
 WITH open_invoices AS (
   SELECT
-    CAST(ApInvoicesVendorId AS BIGINT)                              AS vendor_id,
-    UPPER(CAST({{ column.invoice_currency_code }} AS STRING))       AS currency_code,
-    CAST(ApInvoicesInvoiceAmount AS DECIMAL(28, 2))                 AS invoice_amount,
-    CAST(COALESCE(ApInvoicesAmountPaid, 0) AS DECIMAL(28, 2))       AS amount_paid,
-    CAST(ApInvoicesInvoiceAmount AS DECIMAL(28, 2))
-      - CAST(COALESCE(ApInvoicesAmountPaid, 0) AS DECIMAL(28, 2))   AS open_amount,
-    CAST(ApInvoicesInvoiceDate AS DATE)                             AS invoice_date,
-    _extract_ts                                                     AS bronze_extract_ts
+    CAST(ap_invoices.ApInvoicesVendorId AS BIGINT)                 AS vendor_id,
+    UPPER(CAST(ap_invoices.{{ column.invoice_currency_code }} AS STRING)) AS currency_code,
+    CAST(ap_invoices.ApInvoicesInvoiceAmount AS DECIMAL(28, 2))    AS invoice_amount,
+    CAST(COALESCE(ap_invoices.ApInvoicesAmountPaid, 0) AS DECIMAL(28, 2)) AS amount_paid,
+    CAST(ap_invoices.ApInvoicesInvoiceAmount AS DECIMAL(28, 2))
+      - CAST(COALESCE(ap_invoices.ApInvoicesAmountPaid, 0) AS DECIMAL(28, 2)) AS open_amount,
+    CAST(ap_invoices.ApInvoicesInvoiceDate AS DATE)               AS invoice_date,
+    ap_invoices._extract_ts                                       AS bronze_extract_ts
   FROM {{ catalog }}.{{ bronze_schema }}.ap_invoices
-  WHERE ApInvoicesVendorId IS NOT NULL
-    AND ApInvoicesInvoiceDate IS NOT NULL
+  WHERE ap_invoices.ApInvoicesVendorId IS NOT NULL
+    AND ap_invoices.ApInvoicesInvoiceDate IS NOT NULL
     AND {{ semantic.cancelled_status }}
-    AND CAST(ApInvoicesInvoiceAmount AS DECIMAL(28, 2))
-      - CAST(COALESCE(ApInvoicesAmountPaid, 0) AS DECIMAL(28, 2)) <> 0
+    AND CAST(ap_invoices.ApInvoicesInvoiceAmount AS DECIMAL(28, 2))
+      - CAST(COALESCE(ap_invoices.ApInvoicesAmountPaid, 0) AS DECIMAL(28, 2)) <> 0
 ),
 supplier AS (
   SELECT vendor_id, supplier_number, supplier_name, business_relationship
   FROM (
     SELECT
-      vendor_id, supplier_number, supplier_name, business_relationship,
-      ROW_NUMBER() OVER (PARTITION BY vendor_id ORDER BY supplier_number) AS _rn
-    FROM {{ catalog }}.{{ silver_schema }}.dim_supplier
-    WHERE vendor_id IS NOT NULL
+      ds.vendor_id, ds.supplier_number, ds.supplier_name, ds.business_relationship,
+      ROW_NUMBER() OVER (PARTITION BY ds.vendor_id ORDER BY ds.supplier_number) AS _rn
+    FROM {{ catalog }}.{{ silver_schema }}.dim_supplier ds
+    WHERE ds.vendor_id IS NOT NULL
   )
   WHERE _rn = 1
 )

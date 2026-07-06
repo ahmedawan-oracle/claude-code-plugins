@@ -4,6 +4,63 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+### Added — COA semantic-role resolution (feature `coa-role-segment-resolution`)
+- **COA role segments now resolve from explicit config, not column existence.**
+  `coa_balancing_segment` / `coa_cost_center_segment` / `coa_natural_account_segment`
+  are tagged `resolution: semanticRole` and resolved from
+  `profile.chartOfAccounts` (physical column **names**) via a fail-closed ladder
+  (config → `--refresh` carry-forward → legacy back-derive → accepted convention →
+  fail closed `AIDPF-2013`), with honest **per-role** provenance — never
+  `auto_resolve`. This fixes a silent correctness bug where every tenant was pinned
+  to `Segment1/2/3` regardless of its actual chart-of-accounts layout.
+- **`{{ coa.<role> }}` renderer token + `$coa.<role>` required-column refs.**
+  Single-COA renders a bare column; multi-COA renders a per-row, **parameterized**
+  `CASE` over `CodeCombinationChartOfAccountsId` (chart-id WHEN values are bound
+  params, never inlined). `$coa.<role>` expands to the union of arm columns.
+- **Preflight COA gate (validate-only, per `chart_of_accounts_id`):** Tier A
+  union-existence + per-arm distinctness; Tier B natural-account↔account_type
+  contradiction (sample-floor guarded); **multi-COA fail-closed gate** (`AIDPF-2018`)
+  cleared by `--accept-singleton-coa` (persisted via bootstrap) or a `byChart` map.
+- **`content-pack validate`** rejects a COA role modeled as a bare existence alias
+  (`AIDPF-2014`) or bound outside the `gl_coa` bronze contract (`AIDPF-2015`); the
+  `gl_coa` contract was extended to `Segment1–6`.
+- **BEHAVIOR CHANGE:** a **non-interactive** bootstrap of a tenant with no explicit
+  `profile.chartOfAccounts` now **fails closed** (`AIDPF-2013`) instead of silently
+  defaulting — pass `--accept-coa-convention` to accept the pack default, or declare
+  `chartOfAccounts`. A **multi-COA** tenant fails closed at `dim_account` preflight
+  (cascade-skips only `gl_balance`; supplier marts still seed) until
+  `--accept-singleton-coa` or `byChart` is provided.
+- **Remediation for existing pinned profiles:** add/edit
+  `profile.chartOfAccounts` (or accept the convention), run `bootstrap --refresh`
+  (legacy pins back-derive as `legacy_unverified` with a warning until verified),
+  then reseed affected silver/gold. See **LIMITS.md §Resolved-CoaSemanticRole**.
+- New tests: `test_coa_resolution`, `test_coa_gate`, `test_coa_validators`,
+  `test_coa_renderer`, `test_coa_preflight_gate` (+ updated bootstrap/render suites).
+
+### Added — COA depth via tenant overlay (Segment7–30)
+- **Tenants with deep COA layouts (role at `CodeCombinationSegment7–30`) are now
+  supported by a tenant overlay — no starter-pack fork.** An overlay extends the
+  COA role candidate domain (`inherit` + deep segments) **and** the `gl_coa` bronze
+  `outputSchema` (`extendColumns`) together; the tenant pins meaning in
+  `profile.chartOfAccounts`; `bootstrap --refresh` derives `resolved.column.coa_*`.
+  Ships `examples/coa-deep-overlay/` as a product sample (+ a profile fragment).
+- **Validator domain cap:** COA role candidates must be `CodeCombinationSegment(1–30)`
+  (Fusion GL flexfield max) — `Segment31`+/non-segment rejected (**AIDPF-2019**);
+  binding a deep segment still requires the overlay to extend `gl_coa.outputSchema`
+  (**AIDPF-2015**), so depth is gated by the contract, not a hardcoded 6.
+- **medallion-author COA-depth mode** (`/medallion-author coa-depth --tenant <t>
+  --segments 7-10`): drafts the coordinated overlay (candidates + `gl_coa.outputSchema`)
+  + a `profile.chartOfAccounts` runbook fragment, from **operator input with no runtime
+  diagnostic** (the AIDPF-2015 trigger writes none). Honest provenance: `trigger:
+  operator_input` + `operatorInputId` (never a faked `diagnosticRunId`);
+  `validate_overlay` now requires `diagnosticRunId` **XOR** `operatorInputId`.
+- **Gate ordering:** a deep segment declared in the extended `outputSchema` but absent
+  from the live PVO fails closed at the **`gl_coa` bronze** source gate (AIDPF-4071),
+  before `dim_account` preflight; the `$coa.*` union existence check (AIDPF-2042) is the
+  silver-side backstop. `gl_coa.requiredColumns` extension is deferred to
+  `bronze-required-columns-overlay` (not load-bearing — the full PVO lands regardless).
+- New tests: `test_coa_depth_overlay`, `test_coa_depth_drafter`.
+
 ### Security & correctness — maintainer review (2026-06-17, PR #4)
 - **SQL-identifier allowlisting at pack-load (AIDPF-2082).** `RefreshIncremental.naturalKey` / `partitionColumns` / `trackedColumns` and `watermark.column` are now validated against `^[A-Za-z_][A-Za-z0-9_]*$` when a pack loads. These names interpolate unquoted into `MERGE ON` / partition / watermark SQL; validation rejects both injection and cryptic Spark parse errors from typos. Defense-in-depth checks were added at the MERGE-helper layer (`_natural_key_join_sql`, `_payload_diff_predicate_sql`), the bronze-extract adapter (live PVO column names), and the state schema-reconcile `ADD COLUMNS` path.
 - **Calendar-date validation (AIDPF-2083).** `CalendarProfile.startDate`/`endDate` must be real ISO-8601 (`YYYY-MM-DD`) dates; `dim_calendar` builder re-validates at the SQL-builder layer so the tenant-override path (which bypasses Pydantic) can't interpolate raw strings into `sequence(DATE'...')`.

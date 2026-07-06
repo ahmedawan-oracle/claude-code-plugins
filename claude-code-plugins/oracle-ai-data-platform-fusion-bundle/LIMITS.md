@@ -59,6 +59,10 @@ is the "we handle it" half, but the underlying patch requirement remains:
   **AIDPF-4070 / 4071** catch source-schema mismatches at/after extract.
 - Zero-match variation points escalate to `/medallion-author` (overlay a new
   candidate the pack never anticipated).
+- A bronze column-**type** mismatch (**AIDPF-4070**) now has a non-destructive fix
+  path: a **bronze type-overlay** retyping the node's `outputSchema` (block
+  override or same-id bronze file), drafted by `/medallion-author` from the
+  persisted `AIDPF-4070__<node>.json`. See **§Resolved-BronzeTypeOverlay**.
 
 **Remaining mitigations (backlog)**: Fusion release-version detection +
 support-matrix warning at install time; CI live-PVO regression (see **L4**).
@@ -300,12 +304,16 @@ extending the role's `candidates` with the actual source column (or hand-edit
 use `/medallion-author` to draft an overlay declaring them and extending
 `dim_account.sql` via `{{ column.* }}` tokens. Either way, before `bootstrap`.
 
-**Architectural fix (future)**: a `{{ coa.<role> }}` renderer token consuming
-`profile.chartOfAccounts.<role>Segment` integers — bootstrap prompts for each
-role's position and the renderer emits `CodeCombinationSegment<N>`. Makes
-role-positioning explicit rather than existence-based.
+**Architectural fix**: shipped — see **§Resolved-CoaSemanticRole**. The
+`{{ coa.<role> }}` renderer token now reads `profile.chartOfAccounts` (physical
+column **names**, not integers); COA roles resolve from explicit config via a
+fail-closed ladder with honest provenance, plus a preflight plausibility +
+multi-COA gate.
 
-**Status**: tracked-by-design; future renderer feature reserved.
+**Status (gap 2 — role-positioning)**: **RESOLVED** by feature
+`coa-role-segment-resolution`. **Status (gap 1 — only three of six roles
+aliased)**: still open; `subaccount`/`product`/`intercompany` remain positional
+(add them as semantic roles the same way when a tenant needs them).
 
 ---
 
@@ -364,6 +372,79 @@ collides across the varied prefixes); use core-exact / semantic matching.
 ---
 
 ## Resolved limits
+
+### §Resolved-CoaSemanticRole — COA role segments silently mis-bound by existence auto-match
+
+**Symptom:** COA role segments (`balancing` / `cost_center` / `natural_account`)
+were `columnAliases` resolved by physical column *existence*. Since every
+`CodeCombinationSegment{N}` coexists on every Fusion `gl_coa` extract, bootstrap
+silently pinned `Segment1/2/3` on every tenant with `mechanism: auto_resolve` —
+correct for conventional charts, silently **wrong** for a non-conventional tenant
+(e.g. balancing at `Segment4`). Green pipeline, wrong GL/segment analytics.
+
+**Fix (feature `coa-role-segment-resolution`):**
+
+* COA `columnAliases` tagged `resolution: semanticRole` + `role:`; resolved from
+  explicit `profile.chartOfAccounts` (physical column **names**) via a fail-closed
+  ladder (config → refresh-carry → legacy back-derive → accepted convention → fail
+  closed AIDPF-2013), with honest **per-role** provenance (`config_resolved` /
+  `operator_confirmed` / `defaulted_convention` / `legacy_unverified`) — never
+  `auto_resolve`. Legacy pins back-derive as `legacy_unverified` (+ warning), never
+  silently relabeled a convention.
+* `{{ coa.<role> }}` renderer token: bare column (single-COA) or a per-row,
+  parameterized `CASE` over `CodeCombinationChartOfAccountsId` (multi-COA `byChart`);
+  `$coa.<role>` required-column refs expand to the union of arm columns.
+* Preflight plausibility gate (per `chart_of_accounts_id`): Tier A union-existence +
+  per-arm distinctness, Tier B natural-account↔account_type contradiction (guarded by
+  a sample floor), and a **multi-COA fail-closed gate** (AIDPF-2018) unblockable by
+  `--accept-singleton-coa` or a `byChart` mapping. `node_preflight` is validate-only;
+  acceptance persists via `bootstrap`. `gl_coa` bronze contract extended to
+  `Segment1–6`. `content-pack validate` rejects a COA role modeled as a bare
+  existence alias (AIDPF-2014) or bound out-of-contract (AIDPF-2015).
+
+**Deep COA (Segment7–30):** supported via a **tenant overlay** (no starter-pack
+fork) — extend the COA candidate domain (`inherit` + deep segments) **and** the
+`gl_coa` bronze `outputSchema` together, then pin `profile.chartOfAccounts`; see
+`examples/coa-deep-overlay/` and `/medallion-author coa-depth`. Candidates capped at
+`CodeCombinationSegment(1–30)` (AIDPF-2019); a deep binding without the matching
+`outputSchema` extension is rejected (AIDPF-2015). `gl_coa.requiredColumns` extension
+is deferred to `[[bronze-required-columns-overlay]]` (not load-bearing — BICC lands the
+full PVO).
+
+**Residual:** balancing↔cost-center swap can't be proven from `gl_coa` data alone
+(needs Fusion flexfield-qualifier metadata — a deferred spike); `byChart` keys are
+discovered from data but role *meaning* is operator/metadata-sourced; gap 1 of
+**P3-L2** (only three of six roles aliased) remains; deep segments surface as COA
+*roles* but not as positional `segment_07..30` columns (additive, separate).
+
+### §Resolved-BronzeTypeOverlay — no overlay path to fix a bronze outputSchema column type
+
+**Symptom:** the AIDPF-4070 gate's own message told operators to "author a
+columnAlias/type overlay", but no such mechanism existed. The overlay engine's
+node-override surface applied only `sql` / `quality.tests` / `profile`; a same-id
+overlay bronze file was *silently dropped* (additions-only). So a wrong bronze
+column type (e.g. `erp_suppliers` IDs declared `decimal(38,30)`, overflowing
+15-digit Fusion surrogate IDs to NULL and breaking the `supplier_spend` join) had
+no per-tenant, non-destructive fix — only patching the immutable shipped pack or a
+source-pack PR.
+
+**Fix:** overlays can now retype (and additively extend) a **bronze** node's
+`outputSchema` columns via **two** equivalent, fail-closed mechanisms:
+
+* `overrides: { bronze/<id>: { outputSchema: { columns: [...] } } }` — a partial,
+  name-keyed merge (declare only changed columns; the rest inherited).
+* a same-id `overlays/<name>/bronze/<id>.yaml` full-node file — diff-guarded so it
+  can only retype/extend (identity fields and dropped columns/tests fail closed).
+
+Both converge on the same merged `NodeYaml`; the retype flows unchanged through the
+AIDPF-4070 gate, post-write assertion, and `plan_hash`. Guardrails: identity fields
+(grain / naturalKey / target / PVO / refresh / `requiredColumns`) are off-limits to
+both (→ new node id); `requiredColumns` override is out of scope
+(`bronze-required-columns-overlay`); type-overlays are bronze-only (silver/gold →
+`overrides: { sql }` or a new mart id). `/medallion-author` drafts the overlay from
+the persisted `AIDPF-4070__<node>.json` for operator approval (never auto-applied).
+Worked examples: `overlays/fix-supplier-id-types-block/` and
+`overlays/fix-supplier-id-types-file/`.
 
 ### §Resolved-FreshTenant — seed assumed medallion schemas + a clean state-table location already existed
 

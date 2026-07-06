@@ -106,9 +106,68 @@ Allowed overlay changes:
 - Override shipped mart SQL while preserving the mart contract.
 - Add tenant-specific column aliases or semantic variants through
   `/medallion-author`.
+- Retype (or additively extend) a **bronze** node's `outputSchema` columns via a
+  bronze type-overlay — either an `overrides: { bronze/<id>: { outputSchema: … }}`
+  block or a same-id `overlays/<name>/bronze/<id>.yaml` file. Use this for a
+  bronze column-type bug (e.g. `decimal(38,30)` → `decimal(18,0)`). The two
+  mechanisms are mutually exclusive per node (declaring both is an error).
+- Adjust a **bronze** node's `requiredColumns` (the source columns the extract
+  asserts exist in the PVO) via overlay — **adding** is additive: `overrides: {
+  bronze/<id>: { requiredColumns: { <src>: [COL, …] }}}` (or a same-id
+  `bronze/<id>.yaml` file, which is **add-only**). **Removing/relaxing** a
+  required column weakens a live safety gate, so it is allowed **only** through an
+  acknowledged block override: `overrides: { bronze/<id>: { relaxRequiredColumns:
+  { <src>: [{ column: COL, reason: "…" }] }}}` — the `reason` is mandatory.
+  A same-id file that drops a base required column fails closed (AIDPF-2062); a
+  relax of a column the base never required fails closed (AIDPF-2063). Bronze-only.
+- Change a shipped **silver/gold** SQL mart in place — **add, remove, or rewrite
+  columns/logic** — via a guarded same-id full replacement. Ship a complete new
+  `overlays/<name>/<layer>/<id>.yaml` + `<id>.sql`, keeping the id (so downstream
+  `dependsOn` consumers are not re-pointed), under an **acknowledged** block:
+  `overrides: { <layer>/<id>: { replaceNode: { reason: "…", forkedFrom: {
+  sqlSha256, contractSha256, packVersion } } } }`. The `reason` is mandatory; the
+  `forkedFrom` fingerprints pin the base you forked from. A bare same-id silver/gold
+  file (no `replaceNode`) is still rejected (AIDPF-2001). If the base mart later
+  changes, validation fails closed (AIDPF-2064, logic or contract variant) until
+  you re-reconcile and re-stamp with `aidp-fusion-bundle content-pack refresh-fork
+  overlays/<name> --node <layer>/<id>`. SQL marts only — a builtin (e.g.
+  `dim_calendar`) is rejected (AIDPF-2001). There is **no** separate additive
+  mechanism; adding a column is just a replacement whose new `outputSchema`/SQL
+  carries the extra column.
 
-Do not change grain, natural key, target table, or output schema of a shipped
-mart in place. Create a new mart id instead.
+Do not change identity via overlay — `layer`, `target`, the `dependsOn` edge set,
+or the `refresh` contract of a shipped node are off-limits to every mechanism
+(block, same-id file, and `replaceNode`, all diff-/identity-guarded). A
+`replaceNode` that changes any of these fails closed (AIDPF-2065); create a new
+node / mart id instead. The bronze `outputSchema` type-overlay and
+`requiredColumns` overlay are **bronze-only**; a silver/gold column/logic change
+goes through `replaceNode` (above) or a new mart id.
+
+### SQL authoring convention (declared-inputs gate, AIDPF-2084)
+
+Any silver/gold node SQL you author or edit MUST:
+
+1. **Alias every upstream source** in FROM/JOIN
+   (`{{ catalog }}.{{ silver_schema }}.dim_account da`).
+2. **Never `SELECT *` / `<alias>.*` from an upstream** — project columns
+   explicitly. A wildcard read from a declared upstream is a hard `AIDPF-2084`
+   error (it can't be proven declared).
+3. **Qualify every upstream column** with its alias (`da.code_combination`) and
+   **declare it in `requiredColumns[<source>]`** (literal name, or
+   `$column.<key>` / `$coa.<role>` matching the token used). A read not declared
+   fails `AIDPF-2084`; a bare (unqualified) upstream column warns (`AIDPF-2085`).
+
+**Exception — a source consumed by a `{{ semantic.<name> }}` `{table}` fragment
+MUST stay UNALIASED.** The renderer substitutes `{table}` with the source's
+**full** bronze identifier (`catalog.schema.table`); a correlation name (alias)
+would hide that identifier and the rendered predicate's full-path qualifier
+would fail to resolve at execution. Keep the source unaliased and qualify its
+reads by the table name (`ap_invoices.<col>`) — the extractor attributes those
+exactly like an alias, so the gate still passes. Only the semantic-consuming
+source is affected; alias every other source normally.
+
+This keeps `requiredColumns` an honest record of what the SQL actually consumes,
+so the live preflight/drift gates (AIDPF-2042/2071/2072/4071) cover every read.
 
 Wire overlays with:
 

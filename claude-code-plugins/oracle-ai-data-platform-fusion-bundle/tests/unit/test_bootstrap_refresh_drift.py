@@ -129,7 +129,7 @@ def _do_initial_bootstrap(bundle_dir: Path, bronze: dict[str, list[str]]) -> dic
         bundle_dir / "bundle.yaml",
         options=VariationPhaseOptions(
             spark_session=_mock_spark(bronze),
-            non_interactive=True,
+            non_interactive=True, accept_coa_convention=True,
         ),
     )
     assert outcome.exit_code == 0, "initial bootstrap should succeed"
@@ -151,7 +151,7 @@ class TestNoDriftNoOp:
             bundle_dir / "bundle.yaml",
             options=VariationPhaseOptions(
                 spark_session=_mock_spark(SAASFADEMO_BRONZE_BASELINE),
-                non_interactive=True,
+                non_interactive=True, accept_coa_convention=True,
                 refresh=True,
             ),
         )
@@ -183,7 +183,7 @@ class TestCosmeticDriftReWritesEvidence:
             bundle_dir / "bundle.yaml",
             options=VariationPhaseOptions(
                 spark_session=_mock_spark(drifted),
-                non_interactive=True,
+                non_interactive=True, accept_coa_convention=True,
                 refresh=True,
             ),
         )
@@ -216,7 +216,7 @@ class TestPinnedRemovedNoFallback:
             bundle_dir / "bundle.yaml",
             options=VariationPhaseOptions(
                 spark_session=_mock_spark(drifted),
-                non_interactive=True,
+                non_interactive=True, accept_coa_convention=True,
                 refresh=True,
             ),
         )
@@ -268,7 +268,7 @@ class TestRefreshChangePinnedValueRefusedInNonInteractive:
                 bundle_dir / "bundle.yaml",
                 options=VariationPhaseOptions(
                     spark_session=_mock_spark(drifted),
-                    non_interactive=True,
+                    non_interactive=True, accept_coa_convention=True,
                     refresh=True,
                 ),
             )
@@ -352,7 +352,7 @@ class TestBootstrapNeverEmits2012:
             bundle_dir / "bundle.yaml",
             options=VariationPhaseOptions(
                 spark_session=_mock_spark(drifted),
-                non_interactive=True,
+                non_interactive=True, accept_coa_convention=True,
                 refresh=True,
             ),
         )
@@ -375,7 +375,7 @@ class TestBootstrapNeverEmits2012:
             bundle_dir / "bundle.yaml",
             options=VariationPhaseOptions(
                 spark_session=_mock_spark(drifted),
-                non_interactive=True,
+                non_interactive=True, accept_coa_convention=True,
                 refresh=True,
             ),
         )

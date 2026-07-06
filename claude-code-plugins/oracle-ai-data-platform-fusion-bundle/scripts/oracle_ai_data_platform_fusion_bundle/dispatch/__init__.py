@@ -45,9 +45,11 @@ _RUNTIME_ENV_PASSTHROUGH_KEYS = (
 from ..schema.bundle import AidpConfig, EnvSpec
 from ..schema.diagnostic_artifact import (
     BronzeSourceColumnMissingV1,
+    BronzeTypeMismatchV1,
     DiagnosticArtifactAlreadyExistsError,
     SchemaDriftDiagnosticV1,
     write_bronze_source_column_missing_diagnostic,
+    write_bronze_type_mismatch_diagnostic,
     write_schema_drift_diagnostic,
 )
 from ..schema.errors import SchemaDriftDetectedError
@@ -577,16 +579,23 @@ def dispatch_via_rest(
         ) from exc
 
     # Persist any structured per-node diagnostics the run carried (e.g.
-    # AIDPF-4071 bronze source-column-missing) under the laptop's
-    # .aidp/diagnostics/<run_id>/ so `/medallion-author` can resolve them.
-    # Best-effort: a malformed/partial diagnostic must never mask a
-    # successful run's summary.
+    # AIDPF-4071 bronze source-column-missing, AIDPF-4070 bronze type-mismatch)
+    # under the laptop's .aidp/diagnostics/<run_id>/ so `/medallion-author` can
+    # resolve them. Best-effort: a malformed/partial diagnostic must never mask
+    # a successful run's summary.
     _workdir = bundle_path.resolve().parent
     for _diag in summary.diagnostics:
         try:
-            if _diag.get("errorCode") == "AIDPF-4071":
+            _code = _diag.get("errorCode")
+            if _code == "AIDPF-4071":
                 _artifact = BronzeSourceColumnMissingV1.model_validate(_diag)
                 _path = write_bronze_source_column_missing_diagnostic(
+                    _workdir, summary.run_id, _artifact
+                )
+                log(f"wrote diagnostic {_path}")
+            elif _code == "AIDPF-4070":
+                _artifact = BronzeTypeMismatchV1.model_validate(_diag)
+                _path = write_bronze_type_mismatch_diagnostic(
                     _workdir, summary.run_id, _artifact
                 )
                 log(f"wrote diagnostic {_path}")

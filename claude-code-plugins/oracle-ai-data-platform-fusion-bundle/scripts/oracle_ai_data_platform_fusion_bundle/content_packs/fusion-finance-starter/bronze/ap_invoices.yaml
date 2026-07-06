@@ -34,6 +34,9 @@ outputSchema:
     - { name: ApInvoicesInvoiceId, type: "decimal(18,0)", nullable: true, pii: low }
     - { name: ApInvoicesVendorId, type: "decimal(18,0)", nullable: true, pii: low }
     - { name: ApInvoicesInvoiceAmount, type: "decimal(38,30)", nullable: true, pii: low }
+    - { name: ApInvoicesAmountPaid, type: "decimal(38,30)", nullable: true, pii: low }
+    - { name: ApInvoicesApprovalStatus, type: string, nullable: true, pii: none }
+    - { name: ApInvoicesCancelledDate, type: date, nullable: true, pii: none }
     - { name: ApInvoicesInvoiceDate, type: date, nullable: true, pii: none }
     - { name: ApInvoicesInvoiceCurrencyCode, type: string, nullable: true, pii: none }
     - { name: ApInvoicesLastUpdateDate, type: timestamp, nullable: true, pii: none }

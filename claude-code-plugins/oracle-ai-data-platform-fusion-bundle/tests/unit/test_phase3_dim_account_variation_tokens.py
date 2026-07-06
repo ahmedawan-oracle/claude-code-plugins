@@ -74,9 +74,9 @@ class TestDimAccountVariationTokensPresent:
     def test_three_coa_segment_tokens_present(self) -> None:
         sql = DIM_ACCOUNT_SQL.read_text()
         for token in (
-            "{{ column.coa_balancing_segment }}",
-            "{{ column.coa_cost_center_segment }}",
-            "{{ column.coa_natural_account_segment }}",
+            "{{ coa.balancing }}",
+            "{{ coa.cost_center }}",
+            "{{ coa.natural_account }}",
         ):
             assert token in sql, (
                 f"dim_account.sql is missing the {token!r} substitution. "
@@ -149,16 +149,18 @@ _ALT_PROFILE_YAML = textwrap.dedent(
         supplier_natural_key: SEGMENT1
         vendor_id: VENDORID
         invoice_currency_code: ApInvoicesInvoiceCurrencyCode
-        # The deliberately non-conventional COA mapping — this is what
-        # makes Test B load-bearing: rendered SQL MUST follow these
-        # values, not v1's conventional Segment1/2/3 hardcodes.
-        coa_balancing_segment: CodeCombinationSegment4
-        coa_cost_center_segment: CodeCombinationSegment5
-        coa_natural_account_segment: CodeCombinationSegment6
       semantic:
         cancelled_status: cancelled_date
     profile:
       snapshotDate: '2026-06-06'
+      # The deliberately non-conventional COA mapping — this is what
+      # makes Test B load-bearing: rendered SQL MUST follow these
+      # values via {{ coa.* }}, not v1's conventional Segment1/2/3.
+      chartOfAccounts:
+        default:
+          balancingSegment: CodeCombinationSegment4
+          costCenterSegment: CodeCombinationSegment5
+          naturalAccountSegment: CodeCombinationSegment6
     """
 ).strip()
 

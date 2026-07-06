@@ -231,3 +231,257 @@ def test_cli_validate_valid_overlay_exits_0(tmp_path: Path) -> None:
     data = json.loads(result.stdout)
     assert data["ok"] is True
     assert data["errors"] == []
+
+
+# ---------------------------------------------------------------------------
+# refresh-fork + replaceNode (guarded same-id full replacement)
+# ---------------------------------------------------------------------------
+
+import copy  # noqa: E402
+
+import yaml as _yaml  # noqa: E402
+
+from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack import (  # noqa: E402
+    load_pack,
+)
+from oracle_ai_data_platform_fusion_bundle.orchestrator.sql_renderer import (  # noqa: E402
+    compute_contract_fingerprint,
+    compute_fork_fingerprint,
+)
+
+_RF_BRONZE = {
+    "id": "erp_suppliers",
+    "layer": "bronze",
+    "implementation": {
+        "type": "bronze_extract",
+        "datastore": "Fscm.X.SupplierExtractPVO",
+        "biccSchema": "Financial",
+        "incrementalCapable": True,
+        "auditColumnsMode": "bronze_v1",
+    },
+    "target": "erp_suppliers",
+    "dependsOn": {"bronze": [], "silver": []},
+    "refresh": {
+        "seed": {"strategy": "replace"},
+        "incremental": {
+            "strategy": "merge",
+            "watermark": {"source": "erp_suppliers", "column": "LASTUPDATEDATE"},
+            "naturalKey": ["SEGMENT1"],
+        },
+    },
+    "requiredColumns": {"erp_suppliers": ["SEGMENT1"]},
+    "outputSchema": {
+        "columns": [
+            {"name": "SEGMENT1", "type": "string", "nullable": True, "pii": "low"},
+            {"name": "_extract_ts", "type": "timestamp", "nullable": False, "pii": "none"},
+            {"name": "_run_id", "type": "string", "nullable": False, "pii": "none"},
+        ]
+    },
+    "quality": {"tests": []},
+}
+
+_RF_SILVER = {
+    "id": "dim_supplier",
+    "layer": "silver",
+    "implementation": {"type": "sql", "sql": "silver/dim_supplier.sql"},
+    "target": "dim_supplier",
+    "dependsOn": {"bronze": [{"id": "erp_suppliers", "watermark": {"column": "_extract_ts"}}]},
+    "refresh": {
+        "seed": {"strategy": "replace"},
+        "incremental": {
+            "strategy": "merge",
+            "watermark": {"source": "erp_suppliers", "column": "_extract_ts"},
+            "naturalKey": ["supplier_key"],
+        },
+    },
+    "requiredColumns": {"erp_suppliers": ["SEGMENT1"]},
+    "outputSchema": {
+        "columns": [{"name": "supplier_key", "type": "bigint", "nullable": False, "pii": "none"}]
+    },
+    "quality": {"tests": []},
+}
+
+
+def _w(path: Path, data: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(_yaml.safe_dump(data, sort_keys=False))
+
+
+def _build_replace_fixture(tmp_path: Path, *, stamps: dict | None = None) -> tuple[Path, Path]:
+    """Write a base + replaceNode overlay as siblings. Returns (base, overlay)."""
+    base = tmp_path / "fusion-finance-starter"
+    _w(base / "pack.yaml", {
+        "id": "fusion-finance-starter", "version": "0.1.0",
+        "compatibility": {"pluginMinVersion": "0.3.0", "fusionFamilies": ["ERP"]},
+    })
+    _w(base / "bronze" / "erp_suppliers.yaml", copy.deepcopy(_RF_BRONZE))
+    _w(base / "silver" / "dim_supplier.yaml", copy.deepcopy(_RF_SILVER))
+    (base / "silver" / "dim_supplier.sql").write_text("SELECT 1 AS supplier_key\n")
+
+    if stamps is None:
+        bp = load_pack(base)
+        n = bp.silver["dim_supplier"]
+        stamps = {
+            "sqlSha256": compute_fork_fingerprint(n, bp),
+            "contractSha256": compute_contract_fingerprint(n),
+            "packVersion": bp.pack.version,
+        }
+
+    overlay = tmp_path / "acme-finance"
+    _w(overlay / "pack.yaml", {
+        "id": "acme-finance", "version": "0.1.0",
+        "compatibility": {"pluginMinVersion": "0.3.0", "fusionFamilies": ["ERP"]},
+        "extends": "fusion-finance-starter@0.1.0",
+        "overrides": {
+            "silver/dim_supplier": {"replaceNode": {"reason": "rewrite; T-1", "forkedFrom": stamps}}
+        },
+    })
+    _w(overlay / "silver" / "dim_supplier.yaml", copy.deepcopy(_RF_SILVER))
+    (overlay / "silver" / "dim_supplier.sql").write_text("SELECT 2 AS supplier_key\n")
+    return base, overlay
+
+
+def test_cli_refresh_fork_help() -> None:
+    result = _run_cli("content-pack", "refresh-fork", "--help")
+    assert result.returncode == 0, result.stderr
+    assert "forkedFrom" in result.stdout
+    # Help must name the current fork-base-drift code, not the stale/cluster one.
+    assert "AIDPF-2064" in result.stdout
+    assert "AIDPF-2047" not in result.stdout
+
+
+def test_cli_refresh_fork_refuses_wrong_base_version(tmp_path: Path) -> None:
+    """refresh-fork must NOT re-stamp from a base whose version != the overlay's
+    `extends` ref (AIDPF-2004) — it would corrupt fork provenance."""
+    # Base shipped at 0.2.0 ...
+    base = tmp_path / "fusion-finance-starter"
+    _w(base / "pack.yaml", {
+        "id": "fusion-finance-starter", "version": "0.2.0",
+        "compatibility": {"pluginMinVersion": "0.3.0", "fusionFamilies": ["ERP"]},
+    })
+    _w(base / "bronze" / "erp_suppliers.yaml", copy.deepcopy(_RF_BRONZE))
+    _w(base / "silver" / "dim_supplier.yaml", copy.deepcopy(_RF_SILVER))
+    (base / "silver" / "dim_supplier.sql").write_text("SELECT 1 AS supplier_key\n")
+    # ... but the overlay says it forked from 0.1.0 (stale placeholder stamps).
+    overlay = tmp_path / "acme-finance"
+    placeholder = {"sqlSha256": "x", "contractSha256": "y", "packVersion": "0.1.0"}
+    _w(overlay / "pack.yaml", {
+        "id": "acme-finance", "version": "0.1.0",
+        "compatibility": {"pluginMinVersion": "0.3.0", "fusionFamilies": ["ERP"]},
+        "extends": "fusion-finance-starter@0.1.0",
+        "overrides": {
+            "silver/dim_supplier": {"replaceNode": {"reason": "x", "forkedFrom": placeholder}}
+        },
+    })
+    _w(overlay / "silver" / "dim_supplier.yaml", copy.deepcopy(_RF_SILVER))
+    (overlay / "silver" / "dim_supplier.sql").write_text("SELECT 2 AS supplier_key\n")
+    before = (overlay / "pack.yaml").read_text()
+
+    result = _run_cli("content-pack", "refresh-fork", str(overlay), "--json")
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert "AIDPF-2004" in [e["code"] for e in json.loads(result.stdout)["errors"]]
+    # The leaf pack.yaml must be left untouched (no re-stamp from the wrong base).
+    assert (overlay / "pack.yaml").read_text() == before
+
+
+def test_cli_refresh_fork_multilevel_chain(tmp_path: Path) -> None:
+    """leaf overlay -> parent OVERLAY -> starter: the version guard must validate
+    the leaf's DIRECT parent (raw id/version), not the merged root identity."""
+    # Root base.
+    starter = tmp_path / "fusion-finance-starter"
+    _w(starter / "pack.yaml", {
+        "id": "fusion-finance-starter", "version": "0.1.0",
+        "compatibility": {"pluginMinVersion": "0.3.0", "fusionFamilies": ["ERP"]},
+    })
+    _w(starter / "bronze" / "erp_suppliers.yaml", copy.deepcopy(_RF_BRONZE))
+    _w(starter / "silver" / "dim_supplier.yaml", copy.deepcopy(_RF_SILVER))
+    (starter / "silver" / "dim_supplier.sql").write_text("SELECT 1 AS supplier_key\n")
+    # Mid overlay (no overrides) — the leaf's direct parent.
+    tenant = tmp_path / "tenant-base"
+    _w(tenant / "pack.yaml", {
+        "id": "tenant-base", "version": "0.1.0",
+        "compatibility": {"pluginMinVersion": "0.3.0", "fusionFamilies": ["ERP"]},
+        "extends": "fusion-finance-starter@0.1.0",
+    })
+    # Leaf overlay extends the mid overlay, with a stale replaceNode stamp.
+    leaf = tmp_path / "acme-customer"
+    placeholder = {"sqlSha256": "stale", "contractSha256": "stale", "packVersion": "0.0.0"}
+    _w(leaf / "pack.yaml", {
+        "id": "acme-customer", "version": "0.1.0",
+        "compatibility": {"pluginMinVersion": "0.3.0", "fusionFamilies": ["ERP"]},
+        "extends": "tenant-base@0.1.0",
+        "overrides": {
+            "silver/dim_supplier": {"replaceNode": {"reason": "x", "forkedFrom": placeholder}}
+        },
+    })
+    _w(leaf / "silver" / "dim_supplier.yaml", copy.deepcopy(_RF_SILVER))
+    (leaf / "silver" / "dim_supplier.sql").write_text("SELECT 2 AS supplier_key\n")
+
+    result = _run_cli("content-pack", "refresh-fork", str(leaf), "--json")
+    assert result.returncode == 0, result.stdout + result.stderr
+    # forkedFrom must be re-stamped with real fingerprints from the parent chain.
+    rew = _yaml.safe_load((leaf / "pack.yaml").read_text())
+    ff = rew["overrides"]["silver/dim_supplier"]["replaceNode"]["forkedFrom"]
+    assert len(ff["sqlSha256"]) == 64 and len(ff["contractSha256"]) == 64
+    assert ff["packVersion"] == "0.1.0"
+
+
+def test_cli_replace_node_validates_clean(tmp_path: Path) -> None:
+    _, overlay = _build_replace_fixture(tmp_path)
+    result = _run_cli("content-pack", "validate", str(overlay), "--json")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout)["ok"] is True
+
+
+def test_cli_sql_drift_then_refresh_recovers(tmp_path: Path) -> None:
+    base, overlay = _build_replace_fixture(tmp_path)
+    # Edit the base SQL → fork-base drift (logic variant).
+    (base / "silver" / "dim_supplier.sql").write_text("SELECT 1 AS supplier_key -- fix\n")
+    drift = _run_cli("content-pack", "validate", str(overlay), "--json")
+    assert drift.returncode == 2
+    codes = [e["code"] for e in json.loads(drift.stdout)["errors"]]
+    assert "AIDPF-2064" in codes
+    # refresh-fork re-stamps → validate clean.
+    rf = _run_cli("content-pack", "refresh-fork", str(overlay))
+    assert rf.returncode == 0, rf.stdout + rf.stderr
+    ok = _run_cli("content-pack", "validate", str(overlay), "--json")
+    assert ok.returncode == 0, ok.stdout
+    assert json.loads(ok.stdout)["ok"] is True
+
+
+def test_cli_contract_drift_then_refresh_recovers(tmp_path: Path) -> None:
+    base, overlay = _build_replace_fixture(tmp_path)
+    # Edit ONLY the base YAML contract (PII) → contract-variant drift.
+    node = copy.deepcopy(_RF_SILVER)
+    node["outputSchema"]["columns"][0]["pii"] = "high"
+    _w(base / "silver" / "dim_supplier.yaml", node)
+    drift = _run_cli("content-pack", "validate", str(overlay), "--json")
+    assert drift.returncode == 2
+    assert "AIDPF-2064" in [e["code"] for e in json.loads(drift.stdout)["errors"]]
+    # refresh-fork must re-stamp the CONTRACT hash too (not just sql) → recovers.
+    rf = _run_cli("content-pack", "refresh-fork", str(overlay))
+    assert rf.returncode == 0, rf.stdout + rf.stderr
+    ok = _run_cli("content-pack", "validate", str(overlay), "--json")
+    assert ok.returncode == 0, ok.stdout
+
+
+def test_cli_refresh_fork_idempotent(tmp_path: Path) -> None:
+    base, overlay = _build_replace_fixture(tmp_path)
+    (base / "silver" / "dim_supplier.sql").write_text("SELECT 3 AS supplier_key\n")
+    first = _run_cli("content-pack", "refresh-fork", str(overlay), "--json")
+    assert first.returncode == 0
+    assert any(c["changed"] for c in json.loads(first.stdout)["refreshed"])
+    second = _run_cli("content-pack", "refresh-fork", str(overlay), "--json")
+    assert second.returncode == 0
+    assert all(not c["changed"] for c in json.loads(second.stdout)["refreshed"])
+
+
+def test_cli_identity_change_emits_2048(tmp_path: Path) -> None:
+    base, overlay = _build_replace_fixture(tmp_path)
+    # Change target in the overlay replacement → identity change.
+    node = copy.deepcopy(_RF_SILVER)
+    node["target"] = "dim_supplier_v2"
+    _w(overlay / "silver" / "dim_supplier.yaml", node)
+    result = _run_cli("content-pack", "validate", str(overlay), "--json")
+    assert result.returncode == 2
+    assert "AIDPF-2065" in [e["code"] for e in json.loads(result.stdout)["errors"]]
