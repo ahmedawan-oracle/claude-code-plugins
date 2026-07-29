@@ -219,3 +219,30 @@ class TestResolveContentPackRoot:
         spec = ContentPackSpec(name="empty", path=abs_empty)
         with pytest.raises(ContentPackRootInvalidError):
             resolve_content_pack_root(bundle_path, spec)
+
+
+# ---------------------------------------------------------------------------
+# allowUnprovableCOA — StrictBool COA escape hatch (fail-fast-seed-validation)
+# ---------------------------------------------------------------------------
+
+
+class TestAllowUnprovableCoa:
+    def test_omitted_defaults_false(self) -> None:
+        """Omitted → False, no schema error (backward compatible)."""
+        spec = ContentPackSpec(name="fusion-finance-starter")
+        assert spec.allow_unprovable_coa is False
+
+    @pytest.mark.parametrize("value", [True, False])
+    def test_native_bool_accepted(self, value: bool) -> None:
+        """Native true/false accepted, via both alias and attr name."""
+        by_alias = ContentPackSpec(name="p", allowUnprovableCOA=value)
+        by_attr = ContentPackSpec(name="p", allow_unprovable_coa=value)
+        assert by_alias.allow_unprovable_coa is value
+        assert by_attr.allow_unprovable_coa is value
+
+    @pytest.mark.parametrize("value", [1, 0, "true", "false", "yes", "on"])
+    def test_coercible_values_rejected(self, value: object) -> None:
+        """StrictBool rejects every coercible value — no accidental enable of a
+        correctness bypass."""
+        with pytest.raises(ValidationError):
+            ContentPackSpec(name="p", allowUnprovableCOA=value)

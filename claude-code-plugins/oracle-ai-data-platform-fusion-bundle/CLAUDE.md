@@ -189,6 +189,71 @@ Then seed only the needed node when possible:
 aidp-fusion-bundle run --mode seed --datasets <mart_id> --layers gold
 ```
 
+## Seed Gate Ordering And Run Manifest
+
+A `run --mode seed|incremental` fails fast: every provable gate runs BEFORE the
+expensive Fusion PVO extracts, in this order (nothing is extracted until they
+pass):
+
+1. PVO source-drift (`AIDPF-2072`) and bronze-schema fingerprint drift. An
+   ABSENT bronze table (extract never succeeded) is tolerated with a WARN and
+   baseline-filled from the pinned schema snapshot — one unmaterialised dataset
+   does not block the incremental; every present table stays drift-checked.
+   Missing/desynced snapshot → fail closed (`bootstrap --refresh` back-fills).
+2. Bronze readiness (`AIDPF-2071`, mart-only runs) + the source-schema batch
+   (`AIDPF-4071`).
+3. **COA gate.** The `gl_coa` extract is ordered FIRST among bronze. A
+   MISSING / EMPTY / structurally invalid `profile.chartOfAccounts` hard-blocks
+   pre-extraction with **`AIDPF-2013`** (both the flat/legacy and nested
+   `default` shapes are accepted). Once `gl_coa` lands, COA plausibility is
+   checked (`AIDPF-5001/2016/2042/2018/2017`); a probe that cannot execute is
+   **`AIDPF-2074`** — blocked by default, downgraded to a WARN only when
+   `contentPack.allowUnprovableCOA: true` AND no real violation was found.
+4. **Run manifest** — one immutable `__run_manifest__` row is written (records
+   resolver inputs + canonical topology + per-node fingerprints + mode +
+   execution identity + pack fingerprint + profile hash + exec policy) BEFORE
+   the first node dispatches. A commit failure is **`AIDPF-4022`** (clean abort,
+   nothing extracted). Reserved `__*__` ids are hidden from `status`.
+5. Per-node execution loop (bronze → silver → gold).
+
+`--resume` replays the manifest, not the surviving rows. A manifest that is
+PRESENT but malformed / empty / unreadable fails closed (`AIDPF-4022`). A
+MISSING manifest row or column (a pre-feature run — backward compatibility is
+intentionally preserved) is NOT an error: it uses the legacy path (scope
+reconstructed from state rows, mode inferred from the run's execution rows with
+`AIDPF-1046` mixed-history / conflict protection). When a manifest IS present,
+these guards route to a fresh `--mode seed` rather than resuming: topology drift
+`AIDPF-1044`, node-definition/pack drift `AIDPF-1049`, execution-identity /
+profile / COA-policy drift `AIDPF-1048`, scope conflict `AIDPF-1047`, mode
+conflict `AIDPF-1046`. A bare `--resume` never silently flips seed↔incremental.
+
+### Additive chart-of-accounts on incremental
+
+Onboarding a **new** chart of accounts (a new `profile.chartOfAccounts.byChart`
+arm added via `bootstrap --refresh`) is absorbed by an ordinary `run --mode
+incremental` — no full re-seed — **when the change is provably additive**: every
+already-materialised chart's role→column mapping is byte-identical and only new
+charts are added. The COA-source bronze node (`gl_coa`) accepts pre-checkpoint
+(it produces the data the checkpoint reads); downstream COA consumers accept only
+after the post-land COA data checkpoint passes. Each accepting node records
+`coa_additive_accept_reason` on its success row. A **mutating** COA change (an
+existing chart's mapping moved or removed) still routes to a fresh `--mode seed`
+(`AIDPF-1048` / `AIDPF-4040`), because an incremental MERGE cannot revisit the
+already-classified rows it would leave stale.
+
+### Bootstrap COA advisory (yellow, never blocking)
+
+Bootstrap (initial AND `--refresh`, including the no-drift early return) ends
+with a pre-extraction advisory comparing the charts of accounts **visible to
+the configured Fusion user** (transactional REST LOVs, laptop-side
+`FUSION_BICC_USER`/`FUSION_BICC_PASSWORD` env creds) against
+`profile.chartOfAccounts`. An active-but-unmapped chart is a finding with the
+additive remediation spelled out (`bootstrap --refresh` + ordinary
+incremental). It has NO exit code and NO AIDPF code — never treat advisory or
+`COA advisory skipped:` lines as a failure; a skip is normal without laptop
+env creds, and the post-extraction AIDPF-2018 gate remains the authoritative
+tenant-complete check.
+
 ## Safety Rules
 
 - Never store Fusion or OAC passwords in committed files.

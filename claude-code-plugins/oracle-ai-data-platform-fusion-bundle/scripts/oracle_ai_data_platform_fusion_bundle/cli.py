@@ -398,13 +398,15 @@ def catalog_probe_pvo(
 
 @main.command()
 @click.option(
-    "--mode", type=click.Choice(["seed", "incremental"]), default="seed",
+    "--mode", type=click.Choice(["seed", "incremental"]), default=None,
     help="seed = full BICC pull + replace strategy per layer; incremental "
          "= delta-merge using prior watermarks from fusion_bundle_state "
          "(bronze MERGE on natural key + payload diff for "
          "incremental_capable=False PVOs; silver/gold MERGE on the "
          "primary source's row-max watermark). The retired alias 'full' "
-         "is now 'seed'."
+         "is now 'seed'. Omitted on a fresh run → seed (unchanged default); "
+         "omitted on --resume → adopt the resumed run's mode (never silently "
+         "flip seed<->incremental)."
 )
 @click.option("--datasets", default=None, help="Comma-separated dataset/dim/mart names to filter (default: all in bundle.yaml).")
 @click.option(
@@ -471,22 +473,24 @@ def catalog_probe_pvo(
          "use only when the change was deliberate.",
 )
 @click.option(
-    "--strict-scope", "strict_scope", is_flag=True, default=False,
+    "--strict-scope/--no-strict-scope", "strict_scope", default=None,
     help="Disable implicit transitive include. When set, "
          "every declared root's `dependsOn` must ALSO appear in "
          "`--datasets` / `bundle.datasets[]` explicitly; missing deps "
          "raise AIDPF-1042 STRICT_SCOPE_MISSING_DEPENDENCY. Use for "
          "debug-style runs where exact control over the plan is "
          "required (e.g. re-run only `dim_supplier` against pre-staged "
-         "bronze).",
+         "bronze). Tri-state: omitted → False on a fresh run, or adopt the "
+         "resumed run's manifest value; an explicit value that conflicts with "
+         "the manifest raises AIDPF-1047.",
 )
 @click.pass_context
-def run(ctx: click.Context, mode: str, datasets: str | None, layers: str | None,
+def run(ctx: click.Context, mode: str | None, datasets: str | None, layers: str | None,
         inline: bool, resume_run_id: str | None, dry_run: bool,
         poll_timeout_s: int,
         force_fingerprint_skip: bool,
         repin_plan_hash: bool,
-        strict_scope: bool) -> None:
+        strict_scope: bool | None) -> None:
     """Invoke the orchestrator: extract -> bronze -> silver -> gold."""
     from .commands.run import run as run_impl
     sys.exit(run_impl(

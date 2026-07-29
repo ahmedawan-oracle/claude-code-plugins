@@ -172,6 +172,8 @@ def execute_node(
     prior_plan_hash: str | None = None,
     target_override: str | None = None,
     repin_plan_hash: bool = False,
+    coa_inc: "Any | None" = None,
+    prior_run_id: str | None = None,
 ) -> NodeExecutionResult:
     """Execute one content-pack node end-to-end.
 
@@ -226,6 +228,8 @@ def execute_node(
             prior_plan_hash=prior_plan_hash,
             target_override=target_override,
             repin_plan_hash=repin_plan_hash,
+            coa_inc=coa_inc,
+            prior_run_id=prior_run_id,
         )
     if impl_type == "bronze_extract":
         # Content-pack-driven bronze follows the builtin lifecycle, but
@@ -244,6 +248,8 @@ def execute_node(
             prior_plan_hash=prior_plan_hash,
             target_override=target_override,
             repin_plan_hash=repin_plan_hash,
+            coa_inc=coa_inc,
+            prior_run_id=prior_run_id,
         )
     if impl_type != "sql":
         # Defensive — the loader's discriminated union already rejects
@@ -295,11 +301,31 @@ def execute_node(
     )
 
     # ----- Step 5: plan-hash drift gate (incremental only) -----------
+    # Additive-COA fast path: if the gate would fire, try to prove the drift is
+    # a purely additive chart-of-accounts change. The prior-equivalent hash
+    # re-renders THIS node under the prior COA baseline (its rendered SQL DOES
+    # depend on the COA mapping) and hashes with the stored prior profile_hash.
+    def _sql_recompute_prior_equiv(prior_coa, prior_profile_hash):
+        prior_profile = _profile_with_prior_coa(profile, prior_coa)
+        prior_rendered = render_node_sql(node, pack, prior_profile, ctx)
+        return plan_hash_module.compute_content_pack_plan_hash(
+            pack=pack, node=node, profile=profile,
+            rendered_sql_hash=compute_rendered_sql_hash(prior_rendered),
+            output_schema_hash=output_schema_hash,
+            profile_hash=prior_profile_hash,
+        )
+
+    coa_accept_reason = _coa_additive_reason(
+        coa_inc=coa_inc, node=node, prior_run_id=prior_run_id,
+        prior_plan_hash=prior_plan_hash, expected_plan_hash=expected_plan_hash,
+        mode=mode, recompute_hash=_sql_recompute_prior_equiv,
+    )
     drift_result = _resume_drift_or_repin(
         spark, paths, node=node, ctx=ctx, profile=profile, mode=mode,
         expected_plan_hash=expected_plan_hash, prior_plan_hash=prior_plan_hash,
         repin_plan_hash=repin_plan_hash,
         revert_hint="revert the YAML / SQL / profile change",
+        coa_additive_accept=coa_accept_reason is not None,
     )
     if drift_result is not None:
         return drift_result
@@ -372,6 +398,7 @@ def execute_node(
         plan_hash=expected_plan_hash,
         strategy_result=strategy_result,
         output_watermark=output_watermark,
+        coa_additive_accept_reason=coa_accept_reason,
     )
 
     # ----- Step 11: ONE atomic batch state write ----------------------
@@ -611,6 +638,7 @@ def _assemble_success_state_rows(
     plan_hash: str,
     strategy_result,
     output_watermark: datetime | None,
+    coa_additive_accept_reason: str | None = None,
 ) -> list[dict[str, Any]]:
     """Assemble the full state-row list (primary + every lookup).
 
@@ -649,6 +677,9 @@ def _assemble_success_state_rows(
         "bronze_schema_fingerprint": profile.bronze_schema_fingerprint,
         "input_watermark_start": None,
         "input_watermark_end": None,
+        # Additive-COA fast-path acceptance trace (NULL on every non-accepted
+        # row). Observability only — re-derivable from the paired manifest.
+        "coa_additive_accept_reason": coa_additive_accept_reason,
     }
 
     rows: list[dict[str, Any]] = []
@@ -832,6 +863,7 @@ def _safe_write_plan_hash_repin_row(
 def _resume_drift_or_repin(
     spark, paths, *, node, ctx, profile, mode, expected_plan_hash,
     prior_plan_hash, repin_plan_hash, revert_hint,
+    coa_additive_accept: bool = False,
 ) -> "NodeExecutionResult | None":
     """Apply the AIDPF-4040 continuity gate with the --repin-plan-hash hatch.
 
@@ -840,6 +872,13 @@ def _resume_drift_or_repin(
 
     When the gate would fire (incremental + diverged prior hash):
 
+    * ``coa_additive_accept=True`` — the caller PROVED (feature:
+      incremental-coa-chart-onboarding) that the node's entire plan-hash delta is
+      an additive chart-of-accounts change (per-node prior-equivalent proof +
+      additive verdict + staged checkpoint). Proceed and re-pin the new hash; the
+      acceptance reason is persisted on the node's atomic success row by the
+      caller. This is a content-checked, fail-closed acceptance — NOT the blunt
+      ``--repin-plan-hash`` bypass.
     * ``repin_plan_hash=True`` — operator break-glass: write a
       ``mode='plan_hash_repin'`` audit row, WARN, and return ``None`` so
       execution proceeds and re-pins the new hash.
@@ -849,6 +888,16 @@ def _resume_drift_or_repin(
     vs adapter-version bump).
     """
     if not (mode == "incremental" and prior_plan_hash and prior_plan_hash != expected_plan_hash):
+        return None
+
+    if coa_additive_accept:
+        logger.info(
+            "%s accepted on node %r as a proven additive chart-of-accounts change "
+            "— plan-hash advanced from %s... to %s... (reason recorded on the "
+            "success row).",
+            AIDPF_4040_PLAN_HASH_DRIFT, node.id,
+            prior_plan_hash[:16], expected_plan_hash[:16],
+        )
         return None
 
     if repin_plan_hash:
@@ -881,6 +930,54 @@ def _resume_drift_or_repin(
         error_message=message,
         plan_hash=expected_plan_hash,
     )
+
+
+# ---------------------------------------------------------------------------
+# Additive-COA fast-path acceptance (feature: incremental-coa-chart-onboarding)
+# ---------------------------------------------------------------------------
+
+
+def _coa_additive_reason(
+    *,
+    coa_inc,
+    node,
+    prior_run_id,
+    prior_plan_hash,
+    expected_plan_hash,
+    mode,
+    recompute_hash,
+) -> "str | None":
+    """Return the acceptance reason if this node's AIDPF-4040 drift is a proven
+    additive COA change, else ``None``. No-op (returns ``None``) unless the gate
+    would actually fire (incremental + diverged prior hash) and an active
+    :class:`CoaIncrementalContext` was threaded in.
+
+    ``recompute_hash(prior_coa_projection, prior_profile_hash)`` is path-specific
+    (the caller owns rendering) and returns this node's plan-hash as it WOULD have
+    been under the prior COA baseline.
+    """
+    if coa_inc is None or not getattr(coa_inc, "active", False):
+        return None
+    if not (mode == "incremental" and prior_plan_hash and prior_plan_hash != expected_plan_hash):
+        return None
+    return coa_inc.coa_accept_reason(
+        node=node,
+        prior_run_id=prior_run_id,
+        stored_prior_hash=prior_plan_hash,
+        recompute_hash=recompute_hash,
+    )
+
+
+def _profile_with_prior_coa(profile, prior_coa_projection):
+    """Deep-clone ``profile`` and swap ONLY its ``chartOfAccounts`` for the prior
+    COA baseline, so a node can be re-rendered under the prior mapping without
+    mutating live profile state (per-node prior-equivalent proof)."""
+    from .coa_change import projection_to_coa_dict
+
+    clone = profile.model_copy(deep=True)
+    clone.profile = dict(clone.profile or {})
+    clone.profile["chartOfAccounts"] = projection_to_coa_dict(prior_coa_projection)
+    return clone
 
 
 # ---------------------------------------------------------------------------
@@ -953,6 +1050,8 @@ def _execute_builtin_node(
     prior_plan_hash: str | None,
     target_override: str | None,
     repin_plan_hash: bool = False,
+    coa_inc: "Any | None" = None,
+    prior_run_id: str | None = None,
 ) -> NodeExecutionResult:
     """Execute a ``type: builtin`` node via the registry.
 
@@ -1007,11 +1106,28 @@ def _execute_builtin_node(
     )
 
     # ----- Step 5: plan-hash drift gate (incremental only) ----------
+    # A builtin's rendered-hash substitute does NOT depend on the COA mapping,
+    # so its prior-equivalent hash reuses the current substitute + the stored
+    # prior profile_hash (only profile_hash flips under a COA-only change).
+    def _builtin_recompute_prior_equiv(prior_coa, prior_profile_hash):
+        return plan_hash_module.compute_content_pack_plan_hash(
+            pack=pack, node=node, profile=profile,
+            rendered_sql_hash=rendered_sql_hash,
+            output_schema_hash=output_schema_hash,
+            profile_hash=prior_profile_hash,
+        )
+
+    coa_accept_reason = _coa_additive_reason(
+        coa_inc=coa_inc, node=node, prior_run_id=prior_run_id,
+        prior_plan_hash=prior_plan_hash, expected_plan_hash=expected_plan_hash,
+        mode=mode, recompute_hash=_builtin_recompute_prior_equiv,
+    )
     drift_result = _resume_drift_or_repin(
         spark, paths, node=node, ctx=ctx, profile=profile, mode=mode,
         expected_plan_hash=expected_plan_hash, prior_plan_hash=prior_plan_hash,
         repin_plan_hash=repin_plan_hash,
         revert_hint="revert the YAML / adapter version change",
+        coa_additive_accept=coa_accept_reason is not None,
     )
     if drift_result is not None:
         return drift_result
@@ -1085,6 +1201,7 @@ def _execute_builtin_node(
         plan_hash=expected_plan_hash,
         strategy_result=strategy_result,
         output_watermark=None,  # builtins are parameter-driven, no cursor.
+        coa_additive_accept_reason=coa_accept_reason,
     )
 
     try:
@@ -1398,6 +1515,8 @@ def _execute_bronze_extract_node(
     prior_plan_hash: str | None,
     target_override: str | None,
     repin_plan_hash: bool = False,
+    coa_inc: "Any | None" = None,
+    prior_run_id: str | None = None,
 ) -> NodeExecutionResult:
     """Execute a ``type: bronze_extract`` node via the bronze adapter.
 
@@ -1465,11 +1584,30 @@ def _execute_bronze_extract_node(
     )
 
     # ----- Step 5: plan-hash drift gate (incremental only) ----------
+    # The bronze adapter's rendered-hash substitute does NOT depend on the COA
+    # mapping (gl_coa is the COA SOURCE, it does not consume the mapping), so its
+    # prior-equivalent hash reuses the current substitute + the stored prior
+    # profile_hash. gl_coa is a COA SOURCE, so its acceptance does not require the
+    # post-land checkpoint (which hasn't run yet) — see CoaIncrementalContext.
+    def _bronze_recompute_prior_equiv(prior_coa, prior_profile_hash):
+        return plan_hash_module.compute_content_pack_plan_hash(
+            pack=pack, node=node, profile=profile,
+            rendered_sql_hash=rendered_sql_hash,
+            output_schema_hash=output_schema_hash,
+            profile_hash=prior_profile_hash,
+        )
+
+    coa_accept_reason = _coa_additive_reason(
+        coa_inc=coa_inc, node=node, prior_run_id=prior_run_id,
+        prior_plan_hash=prior_plan_hash, expected_plan_hash=expected_plan_hash,
+        mode=mode, recompute_hash=_bronze_recompute_prior_equiv,
+    )
     drift_result = _resume_drift_or_repin(
         spark, paths, node=node, ctx=ctx, profile=profile, mode=mode,
         expected_plan_hash=expected_plan_hash, prior_plan_hash=prior_plan_hash,
         repin_plan_hash=repin_plan_hash,
         revert_hint="revert the YAML / adapter version change",
+        coa_additive_accept=coa_accept_reason is not None,
     )
     if drift_result is not None:
         return drift_result
@@ -1558,6 +1696,7 @@ def _execute_bronze_extract_node(
         plan_hash=expected_plan_hash,
         strategy_result=strategy_result,
         output_watermark=bronze_output_watermark,
+        coa_additive_accept_reason=coa_accept_reason,
     )
 
     try:

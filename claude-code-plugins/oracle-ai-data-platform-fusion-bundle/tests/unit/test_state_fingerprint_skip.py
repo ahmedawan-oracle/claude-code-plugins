@@ -7,8 +7,8 @@ Tests cover:
 * SQL-identifier safety: single-quote escaping per the existing
   ``state.py`` pattern (no SQL-injection surface).
 * Fingerprint truncation: 24 chars + ``...``.
-* Sentinel ``dataset_id="_fingerprint_skip"`` so the bootstrap
-  watermark read query doesn't pick it up.
+* Reserved sentinel ``dataset_id="__fingerprint_skip__"`` so the resume reader
+  and bootstrap watermark query exclude it (reserved ``__*__`` namespace).
 """
 
 from __future__ import annotations
@@ -43,7 +43,7 @@ class TestWriteFingerprintSkipRow:
         # 3-part path used.
         assert "cat.bronze.fusion_bundle_state" in sql
         # Sentinel + mode + status.
-        assert "'_fingerprint_skip'" in sql
+        assert "'__fingerprint_skip__'" in sql
         assert "'fingerprint_skip'" in sql
         assert "'success'" in sql
         # Run id.
@@ -86,9 +86,10 @@ class TestWriteFingerprintSkipRow:
         assert "'cp-test'; DROP TABLE x;--'" not in sql
 
     def test_sentinel_dataset_id_distinct_from_real_datasets(self) -> None:
-        """Bootstrap's ``read_last_watermark`` filters on real
-        dataset_ids; the sentinel ``_fingerprint_skip`` must never
-        collide with a real dataset. Confirm the literal we emit."""
+        """Bootstrap's ``read_last_watermark`` and the resume reader filter out
+        the reserved ``__fingerprint_skip__`` sentinel; it must never collide
+        with a real dataset. Confirm the literal we emit is in the reserved
+        ``__*__`` namespace."""
         spark = MagicMock(name="spark")
         state.write_fingerprint_skip_row(
             spark, _mock_paths(),
@@ -97,5 +98,6 @@ class TestWriteFingerprintSkipRow:
             current_fingerprint="c",
         )
         sql = spark.sql.call_args[0][0]
-        # The leading underscore is the discriminator.
-        assert "'_fingerprint_skip'" in sql
+        # Reserved __*__ namespace is the discriminator.
+        assert "'__fingerprint_skip__'" in sql
+        assert "'_fingerprint_skip'" not in sql.replace("'__fingerprint_skip__'", "")

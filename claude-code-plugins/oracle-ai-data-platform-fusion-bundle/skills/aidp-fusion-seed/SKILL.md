@@ -246,8 +246,15 @@ aidp-fusion-bundle run --mode seed <scope flags> --poll-timeout <N>
   first-time full seed against a slow Fusion pod (cold-cache BICC extracts;
   `gl_period_balances` can be the long pole). Valid range 60–14400.
 - For a **resume**: `aidp-fusion-bundle run --mode seed --resume <run_id>`
-  (scope is reconstructed from the stored plan snapshot; omit `--datasets` /
-  `--layers` unless narrowing).
+  (omit `--datasets` / `--layers` unless narrowing). When the failed run wrote a
+  durable **run manifest**, `--resume` *replays the manifest* (canonical topology,
+  per-node fingerprints, mode, and identity) rather than re-deriving scope; a bare
+  `--resume` never silently flips seed↔incremental. Manifest-present drift guards
+  (topology `AIDPF-1044`, node/pack `AIDPF-1049`, identity/profile/COA-policy
+  `AIDPF-1048`, scope `AIDPF-1047`, mode `AIDPF-1046`) route to a fresh seed. A
+  pre-manifest run falls back to the legacy path (scope reconstructed from state
+  rows). A malformed/unreadable manifest fails closed with `AIDPF-4022` — start a
+  fresh seed.
 - **On non-terminal failure / interruption**: capture the printed `run_id` and
   offer `aidp-fusion-bundle run --mode seed --resume <run_id>`. The original
   run_id is preserved end-to-end (medallion `_run_id` audit invariant).

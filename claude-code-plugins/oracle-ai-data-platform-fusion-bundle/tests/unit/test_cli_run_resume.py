@@ -117,6 +117,32 @@ def test_resume_run_not_found_exits_2_no_traceback(
     assert "Traceback" not in result.output
 
 
+def test_manifest_error_exits_2_no_traceback(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    """A manifest/resume-guard failure (AIDPF-4022 / AIDPF-104x) must surface as
+    the clean exit-2 path, not a traceback — ``ManifestError`` subclasses
+    ``OrchestratorConfigError`` so the CLI boundary catches it."""
+    from oracle_ai_data_platform_fusion_bundle.orchestrator.run_manifest import (
+        ManifestInvalidError,
+    )
+
+    monkeypatch.chdir(tmp_path)
+    _init_minimal_bundle(monkeypatch)
+    with patch(
+        "oracle_ai_data_platform_fusion_bundle.orchestrator.run",
+        side_effect=ManifestInvalidError(
+            "AIDPF-4022: the __run_manifest__ row has a missing/empty payload."
+        ),
+    ):
+        result = CliRunner().invoke(cli.main, [
+            "run", "--inline", "--resume", "some-run",
+        ])
+    assert result.exit_code == 2
+    assert "AIDPF-4022" in result.output
+    assert "Traceback" not in result.output
+
+
 def test_resume_run_not_resumable_exits_2_no_traceback(
     tmp_path: Path, monkeypatch,
 ) -> None:

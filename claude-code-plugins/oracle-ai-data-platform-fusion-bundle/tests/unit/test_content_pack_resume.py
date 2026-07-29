@@ -259,14 +259,14 @@ def _state_rows(
     base_time = datetime(2026, 5, 21, 12, 0, 0)
     for ds_id, layer in succeeded:
         rows.append(_FakeRow(
-            dataset_id=ds_id, layer=layer, status="success",
+            dataset_id=ds_id, layer=layer, status="success", mode="seed",
             row_count=succeeded_row_count, last_watermark=None,
             plan_hash=plan_hash, plan_snapshot=snapshot,
             last_run_at=base_time,
         ))
     for ds_id, layer in failed:
         rows.append(_FakeRow(
-            dataset_id=ds_id, layer=layer, status="failed",
+            dataset_id=ds_id, layer=layer, status="failed", mode="seed",
             row_count=None, last_watermark=None,
             plan_hash=plan_hash, plan_snapshot=snapshot,
             last_run_at=base_time,
@@ -295,14 +295,14 @@ def _cp_shape_state_rows(
     base_time = datetime(2026, 5, 21, 12, 0, 0)
     for ds_id, layer in succeeded:
         rows.append(_FakeRow(
-            dataset_id=ds_id, layer=layer, status="success",
+            dataset_id=ds_id, layer=layer, status="success", mode="seed",
             row_count=succeeded_row_count, last_watermark=None,
             plan_hash=f"cp-node-hash-{ds_id}", plan_snapshot=None,
             last_run_at=base_time,
         ))
     for ds_id, layer in failed:
         rows.append(_FakeRow(
-            dataset_id=ds_id, layer=layer, status="failed",
+            dataset_id=ds_id, layer=layer, status="failed", mode="seed",
             row_count=None, last_watermark=None,
             plan_hash=f"cp-node-hash-{ds_id}", plan_snapshot=None,
             last_run_at=base_time,
@@ -601,3 +601,213 @@ class TestContentPackResume:
             "bare resume — reconstructed scope should have driven all "
             "in-scope nodes through the resume short-circuit"
         )
+
+
+# ---------------------------------------------------------------------------
+# Reader: __*__ exclusion + execution-row predicate + manifest read
+# (feature: fail-fast-seed-validation)
+# ---------------------------------------------------------------------------
+
+
+class _ManifestAwareSpark:
+    """Fake spark answering the ranked resume query, DESCRIBE (column probe),
+    the unranked distinct-mode query, and the manifest read.
+
+    ``manifest_rows`` (list of payload values, each str or None) drives the
+    ``__run_manifest__`` read; ``manifest_raises`` makes that read raise;
+    ``has_manifest_col`` toggles whether DESCRIBE reports the run_manifest
+    column (False → column-absent legacy table)."""
+
+    def __init__(
+        self,
+        rows: list[_FakeRow],
+        manifest_raw: str | None = None,
+        *,
+        manifest_rows: "list[str | None] | None" = None,
+        manifest_raises: bool = False,
+        has_manifest_col: bool = True,
+    ) -> None:
+        self._rows = rows
+        if manifest_rows is not None:
+            self._manifest_rows = manifest_rows
+        elif manifest_raw is not None:
+            self._manifest_rows = [manifest_raw]
+        else:
+            self._manifest_rows = []
+        self._manifest_raises = manifest_raises
+        self._has_manifest_col = has_manifest_col
+
+    def sql(self, query: str):
+        if query.strip().startswith("DESCRIBE TABLE"):
+            cols = [
+                "run_id", "dataset_id", "layer", "mode", "status", "last_run_at",
+            ]
+            if self._has_manifest_col:
+                cols.append("run_manifest")
+            return _FakeDataFrame([_FakeRow(col_name=c) for c in cols])
+        if "SELECT run_manifest FROM" in query and "__run_manifest__" in query:
+            if self._manifest_raises:
+                raise RuntimeError("spark read failure on manifest column")
+            return _FakeDataFrame(
+                [_FakeRow(run_manifest=p) for p in self._manifest_rows]
+            )
+        if "SELECT DISTINCT mode FROM" in query:
+            # Unranked distinct execution modes over real-node exec rows.
+            modes = {
+                r._data.get("mode")
+                for r in self._rows
+                if r._data.get("mode") in ("seed", "incremental")
+                and not (
+                    r._data["dataset_id"].startswith("__")
+                    and r._data["dataset_id"].endswith("__")
+                )
+            }
+            return _FakeDataFrame([_FakeRow(mode=m) for m in sorted(modes)])
+        if "ranked AS" in query and "row_count IS NOT NULL" in query:
+            return _FakeDataFrame(
+                [r for r in self._rows
+                 if getattr(r, "_data", {}).get("row_count") is not None]
+            )
+        if "ranked AS" in query:
+            return _FakeDataFrame(self._rows)
+        return _FakeDataFrame([])
+
+
+def _row(dataset_id, layer, status, mode, **extra):
+    from datetime import datetime
+    base = dict(
+        dataset_id=dataset_id, layer=layer, status=status, mode=mode,
+        row_count=None, last_watermark=None, plan_hash="h", plan_snapshot=None,
+        last_run_at=datetime(2026, 5, 21, 12, 0, 0),
+    )
+    base.update(extra)
+    return _FakeRow(**base)
+
+
+def test_reader_excludes_reserved_ids_and_reads_manifest() -> None:
+    from oracle_ai_data_platform_fusion_bundle.orchestrator import state as _state
+
+    rows = [
+        _row("gl_coa", "bronze", "success", "seed"),
+        _row("dim_account", "silver", "failed", "seed"),
+        # Reserved manifest row (status deferred) — must NOT count as a node.
+        _row("__run_manifest__", "silver", "deferred", "seed"),
+        # Audit row on a real node — success but audit mode → not an exec row.
+        _row("dim_account", "silver", "success", "plan_hash_repin",
+             last_run_at=__import__("datetime").datetime(2026, 5, 21, 11, 0, 0)),
+    ]
+    spark = _ManifestAwareSpark(rows, manifest_raw='{"schemaVersion":1}')
+    paths = MagicMock()
+    paths.bronze.return_value = "cat.bronze.fusion_bundle_state"
+    ctx = _state.read_content_pack_resumable_state(spark, paths, "run-1")
+
+    # Reserved id excluded from succeeded + scope.
+    assert "__run_manifest__" not in ctx.succeeded
+    assert "__run_manifest__" not in ctx.scope_datasets
+    # gl_coa succeeded (exec row); dim_account did not (latest exec row failed).
+    assert "gl_coa" in ctx.succeeded
+    # Manifest raw surfaced.
+    assert ctx.run_manifest_raw == '{"schemaVersion":1}'
+    # Only 'seed' is an execution mode here (audit mode excluded).
+    assert ctx.historical_exec_modes == ("seed",)
+
+
+def test_reader_surfaces_mixed_execution_modes() -> None:
+    from oracle_ai_data_platform_fusion_bundle.orchestrator import state as _state
+
+    rows = [
+        _row("gl_coa", "bronze", "success", "seed"),
+        _row("ap_invoices", "bronze", "success", "incremental"),
+    ]
+    spark = _ManifestAwareSpark(rows, manifest_raw=None)
+    paths = MagicMock()
+    paths.bronze.return_value = "cat.bronze.fusion_bundle_state"
+    ctx = _state.read_content_pack_resumable_state(spark, paths, "run-2")
+    assert set(ctx.historical_exec_modes) == {"seed", "incremental"}
+    assert ctx.run_manifest_raw is None
+
+
+# ---------------------------------------------------------------------------
+# Finding 1 (round 2): manifest ingestion FAILS CLOSED, never fails open
+# ---------------------------------------------------------------------------
+
+from oracle_ai_data_platform_fusion_bundle.orchestrator.run_manifest import (  # noqa: E402
+    ManifestInvalidError,
+)
+
+
+def _paths_mock():
+    paths = MagicMock()
+    paths.bronze.return_value = "cat.bronze.fusion_bundle_state"
+    return paths
+
+
+def _one_exec_row():
+    return [_row("gl_coa", "bronze", "success", "seed")]
+
+
+def test_manifest_null_payload_row_raises_4022() -> None:
+    from oracle_ai_data_platform_fusion_bundle.orchestrator import state as _state
+
+    spark = _ManifestAwareSpark(_one_exec_row(), manifest_rows=[None])
+    with pytest.raises(ManifestInvalidError):
+        _state.read_content_pack_resumable_state(spark, _paths_mock(), "r")
+
+
+@pytest.mark.parametrize("payload", ["", "   ", "\n"])
+def test_manifest_empty_payload_row_raises_4022(payload) -> None:
+    """An empty/blank string payload is corruption, NOT 'no manifest' — it must
+    fail closed (AIDPF-4022), not fall back to the legacy path."""
+    from oracle_ai_data_platform_fusion_bundle.orchestrator import state as _state
+
+    spark = _ManifestAwareSpark(_one_exec_row(), manifest_rows=[payload])
+    with pytest.raises(ManifestInvalidError):
+        _state.read_content_pack_resumable_state(spark, _paths_mock(), "r")
+
+
+def test_manifest_conflicting_duplicate_rows_raise_4022() -> None:
+    from oracle_ai_data_platform_fusion_bundle.orchestrator import state as _state
+
+    spark = _ManifestAwareSpark(
+        _one_exec_row(),
+        manifest_rows=['{"schemaVersion":1,"a":1}', '{"schemaVersion":1,"a":2}'],
+    )
+    with pytest.raises(ManifestInvalidError):
+        _state.read_content_pack_resumable_state(spark, _paths_mock(), "r")
+
+
+def test_manifest_read_failure_raises_4022_not_legacy() -> None:
+    from oracle_ai_data_platform_fusion_bundle.orchestrator import state as _state
+
+    spark = _ManifestAwareSpark(_one_exec_row(), manifest_raises=True)
+    with pytest.raises(ManifestInvalidError):
+        _state.read_content_pack_resumable_state(spark, _paths_mock(), "r")
+
+
+def test_manifest_absent_column_is_legacy_not_error() -> None:
+    """A pre-feature table WITHOUT the run_manifest column → legitimate legacy
+    path (raw=None), NOT an error."""
+    from oracle_ai_data_platform_fusion_bundle.orchestrator import state as _state
+
+    spark = _ManifestAwareSpark(_one_exec_row(), has_manifest_col=False)
+    ctx = _state.read_content_pack_resumable_state(spark, _paths_mock(), "r")
+    assert ctx.run_manifest_raw is None
+
+
+def test_manifest_no_rows_is_legacy() -> None:
+    """Column present but zero __run_manifest__ rows → legacy (raw=None)."""
+    from oracle_ai_data_platform_fusion_bundle.orchestrator import state as _state
+
+    spark = _ManifestAwareSpark(_one_exec_row(), manifest_rows=[])
+    ctx = _state.read_content_pack_resumable_state(spark, _paths_mock(), "r")
+    assert ctx.run_manifest_raw is None
+
+
+def test_manifest_single_duplicate_identical_payload_ok() -> None:
+    """Two rows with the SAME payload are benign (idempotent) — not a conflict."""
+    from oracle_ai_data_platform_fusion_bundle.orchestrator import state as _state
+
+    raw = '{"schemaVersion":1}'
+    spark = _ManifestAwareSpark(_one_exec_row(), manifest_rows=[raw, raw])
+    ctx = _state.read_content_pack_resumable_state(spark, _paths_mock(), "r")
+    assert ctx.run_manifest_raw == raw

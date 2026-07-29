@@ -105,7 +105,31 @@ RDD-level coercion; all-string schema mirror; uniform `Decimal(38,30)`;
 hand-off — connector should box `Long` into `BigDecimal` when the declared type
 is `DecimalType`). Bypass option: read the CSV staging files directly from the
 `fusion.externalStorage` Object Storage bucket (plugin-portable; needs manifest
-discovery + own delta detection).
+discovery + own delta detection). Per-tenant unblock (unverified-live, ops-side,
+no code): trim the PVO's BICC **data-store column list** in the Fusion console to
+only the pack-needed columns — the poison no-precision-NUMBER columns never enter
+the extract, so inference never declares them. Needs BICC admin; drift-prone
+across Fusion upgrades.
+
+**Live re-confirmation (2026-07-15, Spark 4.1 runtime, dev tenant)** — three
+cluster-side probe rounds independently reproduced the analysis above and added:
+(a) `ItemExtractPVO` census: **130 of 400** columns inferred `DecimalType(38,30)`;
+(b) the connector emits **mixed runtime types per column** — `BigDecimal` on some
+rows, `Long` on others — proven by the inverted failure (`BigDecimal is not a
+valid external type for bigint`) under a `LongType` user schema, so NO single
+declared type can satisfy the encoder and user schemas are pass-through-ignored;
+(c) `select(clean_columns)`+materialize still fails — the connector does **not**
+prune columns for value reads (a bare `count()` passing is the empty-projection
+special case). This evidence strengthens the upstream report.
+
+**Interaction (fingerprint gate) — RESOLVED (feature:
+bronze-fingerprint-gate-scope)**: an L2-affected PVO's unmaterialized bronze
+table no longer blocks incrementals. The fingerprint gate tolerates ABSENT
+tables (WARN, listed on the outcome) by baseline-filling them from the pinned
+schema snapshot — every present table stays drift-checked, and
+`--force-fingerprint-skip` is no longer needed for this case. Fail-closed
+remains for a missing/desynced snapshot (`bootstrap --refresh` back-fills
+without repinning) and for non-not-found probe failures.
 
 **Status**: tracked; affected PVOs (notably `scm_items`) deferred.
 

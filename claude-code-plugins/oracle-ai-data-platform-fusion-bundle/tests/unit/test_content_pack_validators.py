@@ -16,6 +16,7 @@ from unittest.mock import MagicMock
 from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack import load_pack
 from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack_validators import (
     AIDPF_2003_SQL_FILE_MISSING,
+    AIDPF_2005_RESERVED_NODE_ID,
     AIDPF_2040_DAG_CYCLE,
     AIDPF_2041_UNRESOLVED_DEPENDENCY,
     AIDPF_2045_COLUMN_CONTRACT_MISMATCH,
@@ -31,6 +32,7 @@ from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack_validators 
     validate_dashboard_requires,
     validate_dashboard_security_and_compat,
     validate_pack_full,
+    validate_reserved_node_ids,
     validate_sql_paths,
     validate_template_variables,
 )
@@ -122,6 +124,70 @@ def _make_base_pack(root: Path, *, with_sql: bool = False) -> Path:
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
+
+def test_reserved_node_id_clean_pack_ok(tmp_path: Path) -> None:
+    """A pack with no ``__``-prefixed ids raises no AIDPF-2005."""
+    pack_root = _make_base_pack(tmp_path, with_sql=False)
+    pack = load_pack(pack_root)
+    assert validate_reserved_node_ids(pack) == []
+
+
+def test_reserved_node_id_silver_node_rejected(tmp_path: Path) -> None:
+    """A real silver node id in the reserved ``__`` namespace → AIDPF-2005."""
+    pack_root = _make_base_pack(tmp_path, with_sql=False)
+    _write_yaml(
+        pack_root / "silver" / "__run_manifest__.yaml",
+        {
+            "id": "__run_manifest__",
+            "layer": "silver",
+            "implementation": {"type": "builtin", "callable": "pkg.x:build"},
+            "target": "evil",
+            "dependsOn": {
+                "bronze": [{"id": "erp_suppliers", "watermark": {"column": "_extract_ts"}}]
+            },
+            "refresh": {
+                "seed": {"strategy": "replace"},
+                "incremental": {
+                    "strategy": "merge",
+                    "watermark": {"source": "erp_suppliers", "column": "_extract_ts"},
+                    "naturalKey": ["k"],
+                },
+            },
+            "outputSchema": {
+                "columns": [
+                    {"name": "k", "type": "bigint", "nullable": False, "pii": "none"},
+                ]
+            },
+        },
+    )
+    pack = load_pack(pack_root)
+    errors = validate_reserved_node_ids(pack)
+    assert any(e.code == AIDPF_2005_RESERVED_NODE_ID for e in errors)
+    # And it is surfaced by the aggregate validator, failing the report.
+    report = validate_pack_full(pack)
+    assert not report.ok
+    assert any(e.code == AIDPF_2005_RESERVED_NODE_ID for e in report.errors)
+
+
+def test_reserved_node_id_bronze_dataset_rejected(tmp_path: Path) -> None:
+    """A legacy ``datasets[]`` bronze id in the reserved namespace → AIDPF-2005."""
+    pack_root = _make_base_pack(tmp_path, with_sql=False)
+    _write_yaml(
+        pack_root / "bronze.yaml",
+        {
+            "datasets": [
+                {"id": "erp_suppliers", "extractor": "bicc", "pvo": "SupplierExtractPVO", "target": "erp_suppliers"},
+                {"id": "__coa_gate__", "extractor": "bicc", "pvo": "X", "target": "x"},
+            ]
+        },
+    )
+    pack = load_pack(pack_root)
+    errors = validate_reserved_node_ids(pack)
+    assert any(
+        e.code == AIDPF_2005_RESERVED_NODE_ID and "__coa_gate__" in e.location
+        for e in errors
+    )
 
 
 def test_sql_file_missing_for_sql_node(tmp_path: Path) -> None:

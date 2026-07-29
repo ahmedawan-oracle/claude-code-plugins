@@ -12,7 +12,14 @@ from pathlib import Path
 from typing import Any, Literal, Self
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictBool,
+    ValidationError,
+    model_validator,
+)
 
 from .errors import BundleLoadError, BundleVersionMismatchError
 from .refs import render_vars
@@ -366,6 +373,19 @@ class ContentPackSpec(BaseModel):
 
     profile: str | None = None
     """Active tenant profile name. Required at runtime under content-pack backend."""
+
+    allow_unprovable_coa: StrictBool = Field(
+        default=False, alias="allowUnprovableCOA"
+    )
+    """Opt-in escape hatch for the COA gate: when ``true``, a COA correctness
+    PROBE that cannot EXECUTE (constrained Spark session) downgrades to a loud
+    logged WARN instead of a hard AIDPF-2074 abort — but ONLY when no COA
+    VIOLATION was retained (a real 5001/2016/2042/2018/2017 violation still
+    hard-blocks). Default ``false`` (correctness first).
+
+    ``StrictBool`` on purpose: a plain ``bool`` would coerce ``1``/``"yes"``/
+    ``"on"``/``"true"`` and risk an ACCIDENTAL enable of a correctness bypass;
+    ``StrictBool`` accepts only native ``true``/``false``."""
 
 
 class Bundle(BaseModel):

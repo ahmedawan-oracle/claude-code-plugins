@@ -480,6 +480,55 @@ gold:
         assert ("ap_invoices", "bronze") in plan_keys
         assert ("dim_supplier", "silver") in plan_keys
 
+    def test_dry_run_omitted_mode_resolves_to_seed(
+        self, bundle_path: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Dry-run mode parity: after the tri-state ``--mode`` change, a
+        FRESH ``run --dry-run`` with ``--mode`` omitted (mode=None) must
+        preview ``mode == "seed"`` — the same mode ``orchestrator.run``
+        resolves the omitted value to cluster-side. Pre-fix the REST
+        dry-run summary carried the raw ``mode=None``, so the preview
+        header diverged from what the dispatched notebook would execute.
+        """
+        _stub_client(monkeypatch)
+        pack = _make_dispatch_test_pack(tmp_path)
+        summary = dispatch_via_rest(
+            bundle_path=bundle_path,
+            config=_config(),
+            env=_env(),
+            env_name="dev",
+            mode=None,  # type: ignore[arg-type]  # tri-state: omitted → seed
+            datasets=None,
+            layers=None,
+            dry_run=True,
+            resolved_pack=pack,
+        )
+        assert summary.mode == "seed", (
+            f"omitted --mode on a fresh dry-run must resolve to 'seed' "
+            f"(matching orchestrator.run); got {summary.mode!r}"
+        )
+
+    def test_dry_run_explicit_incremental_mode_preserved(
+        self, bundle_path: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An explicit ``--mode incremental`` must NOT be overwritten by the
+        omitted-mode default — the ``mode or "seed"`` fallback only fires
+        when mode is falsy."""
+        _stub_client(monkeypatch)
+        pack = _make_dispatch_test_pack(tmp_path)
+        summary = dispatch_via_rest(
+            bundle_path=bundle_path,
+            config=_config(),
+            env=_env(),
+            env_name="dev",
+            mode="incremental",
+            datasets=None,
+            layers=None,
+            dry_run=True,
+            resolved_pack=pack,
+        )
+        assert summary.mode == "incremental"
+
 
 # ---------------------------------------------------------------------------
 # Happy path — full round trip

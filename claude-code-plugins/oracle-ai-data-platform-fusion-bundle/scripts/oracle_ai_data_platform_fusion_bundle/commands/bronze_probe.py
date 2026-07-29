@@ -209,6 +209,84 @@ def _is_table_or_view_not_found(exc: Exception) -> bool:
     )
 
 
+def describe_bronze_present(
+    spark: "SparkSession",
+    *,
+    catalog: str,
+    bronze_schema: str,
+    dataset_ids: list[str],
+    table_names: dict[str, str] | None = None,
+) -> tuple[dict[str, "list[ColumnInfo]"], list[str]]:
+    """Absence-tolerant :func:`describe_bronze` (feature:
+    bronze-fingerprint-gate-scope).
+
+    Splits ``dataset_ids`` into PRESENT tables (DESCRIBEd, returned in
+    ``observed``) and ABSENT tables (TABLE_OR_VIEW_NOT_FOUND, returned as
+    ``absent_ids`` — e.g. a dataset whose extract never succeeded, so its
+    bronze table was never materialised). One unmaterialised dataset no longer
+    aborts the whole probe.
+
+    Security boundary — validation-first: ALL identifiers are validated
+    upfront, BEFORE any Spark call or exception-translation boundary exists,
+    so :class:`UnsafeIdentifierError` is raised pre-Spark and can never be
+    wrapped into a (``--force-fingerprint-skip``-bypassable)
+    :class:`BronzeProbeFailure`. Exception taxonomy:
+
+    * :class:`UnsafeIdentifierError` — injection guard; NEVER translated,
+      never bypassable.
+    * TABLE_OR_VIEW_NOT_FOUND — absence; tolerated (collected).
+    * :class:`BronzeProbeFailure` — any OTHER Spark-call failure
+      (permissions, broken catalog, transport); fail-closed here, break-glass
+      bypassable at the gate exactly as today.
+
+    Returns:
+        ``(observed, absent_ids)`` — ``observed`` keyed by dataset id for the
+        present tables; ``absent_ids`` in ``dataset_ids`` order.
+    """
+    table_names = table_names or {}
+
+    # Validation-first: no loop / translation boundary until every identifier
+    # has passed the allowlist (same triple describe_bronze enforces).
+    _validate_identifier(catalog, field="aidp.catalog")
+    _validate_identifier(bronze_schema, field="aidp.bronzeSchema")
+    for dataset_id in dataset_ids:
+        _validate_identifier(dataset_id, field="bronze.dataset.id")
+        _validate_identifier(
+            table_names.get(dataset_id, dataset_id), field="bronze.dataset.target"
+        )
+
+    absent_ids: list[str] = []
+    present_ids: list[str] = []
+    for dataset_id in dataset_ids:
+        table = table_names.get(dataset_id, dataset_id)
+        try:
+            is_absent = bronze_table_absent(
+                spark, catalog=catalog, bronze_schema=bronze_schema, table=table
+            )
+        except UnsafeIdentifierError:
+            # Defense in depth: unreachable (validated above), but the guard
+            # must never enter the BronzeProbeFailure translation below.
+            raise
+        except Exception as exc:  # noqa: BLE001 — Spark-call failures only
+            raise BronzeProbeFailure(
+                dataset_id=dataset_id,
+                fully_qualified=f"{catalog}.{bronze_schema}.{table}",
+                cause=exc,
+            ) from exc
+        (absent_ids if is_absent else present_ids).append(dataset_id)
+
+    observed: dict[str, list[ColumnInfo]] = {}
+    if present_ids:
+        observed = describe_bronze(
+            spark,
+            catalog=catalog,
+            bronze_schema=bronze_schema,
+            dataset_ids=present_ids,
+            table_names=table_names,
+        )
+    return observed, absent_ids
+
+
 def describe_bronze_from_source(
     spark: "SparkSession",
     *,
@@ -458,5 +536,6 @@ __all__ = [
     "bronze_table_absent",
     "describe_bronze",
     "describe_bronze_from_source",
+    "describe_bronze_present",
     "resolve_observed",
 ]

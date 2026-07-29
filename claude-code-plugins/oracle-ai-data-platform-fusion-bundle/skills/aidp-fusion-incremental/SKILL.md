@@ -66,6 +66,15 @@ gets a clear next step instead of a deep cluster error:
   and don't want a full re-seed, pass the hidden `--repin-plan-hash` flag to
   repin the new hash (writes a `mode='plan_hash_repin'` audit row); otherwise
   re-seed or revert.
+- **New chart of accounts added?** A profile change that ONLY adds a new
+  `chartOfAccounts.byChart` arm (existing charts byte-identical) is a *proven
+  additive* change: incremental **absorbs it automatically** — no re-seed and no
+  `--repin-plan-hash` needed. The per-node gate accepts the plan-hash advance
+  (recording `coa_additive_accept_reason`) once the post-land COA checkpoint
+  passes. A **mutating** COA change (an existing chart's segment moved/removed)
+  is NOT additive and still routes to `--mode seed` (AIDPF-1048/4040) — an
+  incremental would leave that chart's already-classified rows stale. So: adding
+  a chart → incremental; correcting an existing chart → seed.
 - **Fusion-PVO / bronze drift?** Incremental fires the drift gates — `AIDPF-2072`
   (live PVO column renamed/removed vs the pinned snapshot), `AIDPF-4070/4071`
   (source-schema), `AIDPF-2012` (bronze-table fingerprint). On any of these →
@@ -73,6 +82,12 @@ gets a clear next step instead of a deep cluster error:
   `bootstrap --refresh` (a declared candidate still matches) or `/medallion-author`
   (a new column the pack never anticipated). Do NOT paper over it with
   `--force-fingerprint-skip` outside dev.
+  An **absent** bronze table (a dataset whose extract never succeeded — e.g. the
+  `LIMITS.md` L2-blocked PVO) no longer aborts the fingerprint gate: it is
+  tolerated with a WARN and baseline-filled from the pinned schema snapshot, so
+  every *present* table stays drift-checked and `--force-fingerprint-skip` is
+  NOT needed for that case. If the snapshot is missing/desynced the gate still
+  fails closed — run `bootstrap --refresh` to back-fill it (no repin needed).
 
 ### 4 — Dispatch
 Fire `run --mode incremental <scope flags> --poll-timeout <N>` (default 3600).
@@ -81,8 +96,13 @@ Fire `run --mode incremental <scope flags> --poll-timeout <N>` (default 3600).
   it). A full incremental re-extracts bronze deltas within the watermark safety
   window, then merges up.
 - On non-terminal failure → capture the `run_id`, offer
-  `run --mode incremental --resume <run_id>` (scope reconstructed from the stored
-  plan snapshot; the original run_id is preserved end-to-end).
+  `run --mode incremental --resume <run_id>` (the original run_id is preserved
+  end-to-end). When the failed run wrote a durable **run manifest**, `--resume`
+  replays the manifest (topology + per-node fingerprints + mode + identity) rather
+  than re-deriving scope, and a bare `--resume` never silently flips
+  seed↔incremental; manifest drift guards (`AIDPF-1044/1046/1047/1048/1049`) route
+  to a fresh run. A pre-manifest run uses the legacy path (scope reconstructed from
+  state rows). A malformed manifest fails closed with `AIDPF-4022`.
 
 ### 5 — Present + recommend
 Summarize the per-step table (dataset / layer / status / row_count / duration) +

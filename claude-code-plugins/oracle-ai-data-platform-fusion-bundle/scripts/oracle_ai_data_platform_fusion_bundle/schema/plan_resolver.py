@@ -415,6 +415,39 @@ def resolve_dry_run_plan(
         ts.add(name, *deps_in_plan)
 
     ordered_names = list(ts.static_order())
+
+    # COA-first ordering parity (feature: fail-fast-seed-validation). Mirror the
+    # exec loop's `order_coa_source_first` so the previewed order matches what
+    # runtime dispatches: hoist COA-source bronze (consumed by an in-scope
+    # silver/gold) to the front. Applicability mirrors
+    # `node_preflight.coa_applicable_sources`.
+    #
+    # The COA role filter lives in the neutral schema layer
+    # (``schema.coa_roles``), NOT ``orchestrator.node_preflight`` — importing
+    # the engine-side module here would pull orchestrator/* into sys.modules
+    # and break the dispatch import boundary (see the module docstring +
+    # ``tests/unit/dispatch/test_imports.py``).
+    from .coa_roles import coa_role_aliases
+
+    _coa_srcs = {src for (_role, src) in coa_role_aliases(pack).values()}
+    if _coa_srcs:
+        _applicable: set[str] = set()
+        for name in plan_ids:
+            nl = _layer_of(name)
+            if nl in ("silver", "gold"):
+                b_deps, _s = _node_depends_on(pack, nl, name)
+                _applicable.update(b for b in b_deps if b in _coa_srcs)
+        if _applicable:
+            _coa_first = [
+                n for n in ordered_names
+                if _layer_of(n) == "bronze" and n in _applicable
+            ]
+            _rest = [
+                n for n in ordered_names
+                if not (_layer_of(n) == "bronze" and n in _applicable)
+            ]
+            ordered_names = _coa_first + _rest
+
     plan_nodes = tuple(
         PlanNode(
             dataset_id=name,

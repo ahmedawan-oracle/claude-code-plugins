@@ -704,8 +704,11 @@ environments:
         )
 
     def test_cli_without_strict_scope_defaults_to_false(self, tmp_path):
-        """When --strict-scope is NOT passed, dispatch_via_rest must
-        receive strict_scope=False so D-1 default behaviour stands."""
+        """When --strict-scope is NOT passed, the tri-state value (None) is
+        threaded through dispatch UNCHANGED so a manifest-backed resume can tell
+        omission from an explicit False (AIDPF-1047). The D-1 default (False)
+        still stands — it is resolved downstream in orchestrator.run (a fresh
+        run) / treated as falsy by the resolver — not collapsed at the CLI."""
         from unittest.mock import patch
         from click.testing import CliRunner
         from oracle_ai_data_platform_fusion_bundle import cli
@@ -770,8 +773,9 @@ environments:
             f"CLI invocation failed: exit={result.exit_code} "
             f"output={result.output!r}"
         )
-        assert captured.get("strict_scope") is False, (
-            f"default strict_scope must be False; got {captured.get('strict_scope')!r}"
+        assert captured.get("strict_scope") is None, (
+            f"omitted strict_scope must thread as None (tri-state), resolved to "
+            f"False downstream; got {captured.get('strict_scope')!r}"
         )
 
     def test_dispatch_via_rest_threads_strict_scope_to_build_notebook(

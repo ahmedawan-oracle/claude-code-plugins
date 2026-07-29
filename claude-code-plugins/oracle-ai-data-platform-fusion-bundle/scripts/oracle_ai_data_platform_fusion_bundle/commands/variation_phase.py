@@ -358,6 +358,17 @@ def run_variation_phase(
     if options.refresh and profile_path.exists():
         prior_profile = load_tenant_profile(profile_path)
         if prior_profile.bronze_schema_fingerprint == fingerprint:
+            # An unchanged bronze fingerprint says nothing about NEW charts
+            # of accounts (a newly active chart doesn't alter existing
+            # bronze schemas) — so the COA advisory runs on this early
+            # return too, before either exit below. Advisory-only: it can
+            # not change the exit code (metadata-driven-coa-resolution
+            # Finding 1).
+            _render_coa_advisory(
+                console,
+                bundle=bundle,
+                chart_of_accounts=prior_profile.profile.get("chartOfAccounts"),
+            )
             # Back-fill the snapshot if missing / desynced /
             # hand-edited. This is the only path that exits the no-drift
             # branch with a write — profile + evidence stay untouched so
@@ -577,6 +588,15 @@ def run_variation_phase(
         console.print(f"[red]{exc}[/red]")
         return VariationPhaseOutcome(exit_code=1, summary=str(exc))
     _write_profile_yaml(profile_path, profile)
+
+    # COA advisory against the freshly resolved profile (the full-path
+    # twin of the no-drift call above). Runs AFTER the profile is durable
+    # so a mid-advisory interrupt can't lose the resolution. Advisory-only.
+    _render_coa_advisory(
+        console,
+        bundle=bundle,
+        chart_of_accounts=profile.profile.get("chartOfAccounts"),
+    )
 
     # Thread skill_version from the entry overlay, when
     # skill-authored) into the snapshot's top-level provenance so audit
@@ -1014,6 +1034,47 @@ def _pack_coa_default(pack: ResolvedPack, tenant_name: str) -> dict | None:
     if chosen is None or chosen.chart_of_accounts is None:
         return None
     return chosen.chart_of_accounts.model_dump(by_alias=True, exclude_none=True)
+
+
+def _render_coa_advisory(
+    console: "Console",
+    *,
+    bundle: "Bundle",
+    chart_of_accounts: "dict | None",
+) -> None:
+    """Non-blocking bootstrap COA advisory (feature:
+    metadata-driven-coa-resolution, Phase 1).
+
+    Compares the charts of accounts VISIBLE to the configured Fusion user
+    (transactional REST LOVs, laptop-side, `_probe_bicc` env-credential
+    contract) against the given ``chartOfAccounts`` mapping and prints
+    yellow, advisory-only lines. Two call paths share this helper: the
+    no-drift ``--refresh`` early-return branch (prior profile) and the full
+    path after COA resolution (fresh profile).
+
+    NEVER affects the phase outcome: ``run_coa_advisory`` is fail-soft by
+    contract (skips on missing creds / 401 / 403 / timeout / budget expiry),
+    and this wrapper is belt-and-braces guarded on top.
+    """
+    try:
+        from .coa_advisory import run_coa_advisory
+
+        result = run_coa_advisory(
+            service_url=bundle.fusion.service_url,
+            chart_of_accounts=chart_of_accounts,
+        )
+        if result.kind == "skipped":
+            console.print(
+                f"[yellow]COA advisory skipped: {result.skip_reason}[/yellow]"
+            )
+            return
+        for line in result.lines:
+            console.print(f"[yellow]{line}[/yellow]")
+    except Exception as exc:  # noqa: BLE001 — advisory must never block bootstrap
+        console.print(
+            f"[yellow]COA advisory skipped: unexpected "
+            f"{type(exc).__name__}: {str(exc)[:120]}[/yellow]"
+        )
 
 
 def _apply_coa_resolution(

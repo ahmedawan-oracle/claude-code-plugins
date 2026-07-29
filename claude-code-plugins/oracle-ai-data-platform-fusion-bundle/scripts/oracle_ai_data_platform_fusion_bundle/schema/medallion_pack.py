@@ -31,6 +31,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    StrictBool,
     ValidationInfo,
     field_validator,
     model_validator,
@@ -317,7 +318,12 @@ class ChartOfAccountsProfile(BaseModel):
 
     # Operator opt-in: all active charts share the default layout (set via
     # `bootstrap --accept-singleton-coa`). Lets the multi-COA gate pass.
-    singleton_accepted: bool = Field(default=False, alias="singletonAccepted")
+    #
+    # StrictBool (not plain bool): a hand-edited `singletonAccepted: "false"`
+    # STRING must NOT coerce to True and silently bypass AIDPF-2018. Native
+    # true/false only; the structural COA gate relies on this to reject a
+    # non-bool value pre-extraction.
+    singleton_accepted: StrictBool = Field(default=False, alias="singletonAccepted")
 
     @model_validator(mode="after")
     def _check_shape(self) -> "ChartOfAccountsProfile":

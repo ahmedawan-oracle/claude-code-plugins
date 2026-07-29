@@ -153,6 +153,57 @@ class TestContentPackBackendInvokesExecuteNode:
         assert summary.steps[0].layer == "silver"
         assert summary.steps[0].status == "success"
 
+    def test_fresh_run_omitted_mode_resolves_to_seed(self, monkeypatch) -> None:
+        """Tri-state --mode (feature: fail-fast-seed-validation): a FRESH run
+        with mode omitted (None) resolves to 'seed' (unchanged default) and
+        threads 'seed' into execute_node — never surfaces mode=None."""
+        from oracle_ai_data_platform_fusion_bundle.orchestrator import sql_runner
+        from oracle_ai_data_platform_fusion_bundle.orchestrator.sql_runner import (
+            NodeExecutionResult,
+        )
+        from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack import (
+            load_full_chain,
+            make_filesystem_base_resolver,
+        )
+        from oracle_ai_data_platform_fusion_bundle.schema.tenant_profile import (
+            load_tenant_profile,
+        )
+        from oracle_ai_data_platform_fusion_bundle.orchestrator import state as v1_state
+        from oracle_ai_data_platform_fusion_bundle.orchestrator import state_phase2
+
+        pack = load_full_chain(
+            FIXTURE_PACK, base_resolver=make_filesystem_base_resolver(FIXTURE_PACK)
+        )
+        profile = load_tenant_profile(FIXTURE_PROFILE)
+
+        calls: list[dict] = []
+
+        def fake_execute_node(spark, **kwargs):
+            calls.append(kwargs)
+            return NodeExecutionResult(status="success", row_count=0)
+
+        monkeypatch.setattr(sql_runner, "execute_node", fake_execute_node)
+        monkeypatch.setattr(v1_state, "ensure_state_table", lambda spark, paths: None)
+        monkeypatch.setattr(
+            state_phase2, "ensure_state_columns_v2", lambda spark, paths: None
+        )
+        # Manifest write must not require a real Delta table in this unit test.
+        monkeypatch.setattr(
+            state_phase2, "write_state_rows_hard", lambda spark, paths, rows: None
+        )
+        import oracle_ai_data_platform_fusion_bundle.orchestrator as _o
+        monkeypatch.setattr(_o, "_bootstrap_spark", lambda: MagicMock(name="FakeSpark"))
+
+        summary = orchestrator.run(
+            bundle_path=FIXTURE_BUNDLE,
+            mode=None,  # omitted
+            resolved_pack=pack,
+            tenant_profile=profile,
+            layers=["silver", "gold"],
+        )
+        assert summary.mode == "seed"
+        assert calls and all(c["mode"] == "seed" for c in calls)
+
     def test_content_pack_backend_adopts_resume_run_id(self) -> None:
         """Phase 5 Step 9b — AIDPF-1032 resolved. The content-pack
         backend now accepts ``--resume`` and adopts the supplied

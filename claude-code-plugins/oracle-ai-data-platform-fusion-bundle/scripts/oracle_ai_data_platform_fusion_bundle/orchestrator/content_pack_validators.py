@@ -41,6 +41,12 @@ if TYPE_CHECKING:
 
 # Error codes surfaced by content-pack validation.
 AIDPF_2003_SQL_FILE_MISSING = "AIDPF-2003"
+AIDPF_2005_RESERVED_NODE_ID = "AIDPF-2005"
+"""A real content-pack node id begins with the reserved ``__`` prefix. That
+namespace is reserved for synthetic state rows (``__run_manifest__``,
+``__coa_gate__``, ``__bronze_readiness_gate__``, ``__fusion_pvo_drift_gate__``,
+``__fingerprint_skip__``); a real node colliding with it would be dropped from
+resume scope reconstruction or masquerade as a synthetic row. Fail closed."""
 AIDPF_2040_DAG_CYCLE = "AIDPF-2040"
 AIDPF_2041_UNRESOLVED_DEPENDENCY = "AIDPF-2041"
 AIDPF_2045_COLUMN_CONTRACT_MISMATCH = "AIDPF-2045"
@@ -1112,6 +1118,51 @@ def validate_coa_semantic_roles(pack: ResolvedPack) -> list[ValidationError]:
     return errors
 
 
+def validate_reserved_node_ids(pack: ResolvedPack) -> list[ValidationError]:
+    """Reject any real node id in the reserved ``__``-prefixed namespace (AIDPF-2005).
+
+    Synthetic state rows (``__run_manifest__``, ``__coa_gate__``, the gate
+    markers) live in this namespace and the resume reader EXCLUDES ``__*__`` ids
+    from its succeeded/scope node sets. A real node named ``__…__`` would either
+    collide with a synthetic row or be silently dropped from scope
+    reconstruction → perpetual retries / omitted nodes / an ambiguous manifest
+    read. Covers bronze (per-file + legacy datasets[]), silver, and gold.
+    """
+    errors: list[ValidationError] = []
+    seen: set[tuple[str, str]] = set()
+
+    def _check(layer: str, node_id: str) -> None:
+        key = (layer, node_id)
+        if key in seen:
+            return
+        seen.add(key)
+        if node_id.startswith("__"):
+            errors.append(
+                ValidationError(
+                    code=AIDPF_2005_RESERVED_NODE_ID,
+                    message=(
+                        f"{AIDPF_2005_RESERVED_NODE_ID}: node id "
+                        f"`{layer}/{node_id}` uses the reserved `__` prefix. That "
+                        f"namespace is reserved for synthetic state rows "
+                        f"(e.g. `__run_manifest__`, `__coa_gate__`); a real node "
+                        f"there breaks resume scope reconstruction. Rename it."
+                    ),
+                    location=f"{layer}/{node_id}",
+                )
+            )
+
+    for node_id in pack.bronze:
+        _check("bronze", node_id)
+    for ds in pack.bronze_yaml.get("datasets", []) or []:
+        if isinstance(ds, dict) and isinstance(ds.get("id"), str):
+            _check("bronze", ds["id"])
+    for node_id in pack.silver:
+        _check("silver", node_id)
+    for node_id in pack.gold:
+        _check("gold", node_id)
+    return errors
+
+
 def validate_pack_full(
     pack: ResolvedPack, *, profile: "TenantProfile | None" = None
 ) -> ValidationReport:
@@ -1129,6 +1180,7 @@ def validate_pack_full(
     AIDPF-2085 (``collect_declared_input_warnings``) is profile-agnostic, warn-only.
     """
     report = ValidationReport()
+    report.merge_errors(validate_reserved_node_ids(pack))
     report.merge_errors(validate_sql_paths(pack))
     report.merge_errors(validate_template_variables(pack))
     report.merge_errors(validate_dag(pack))

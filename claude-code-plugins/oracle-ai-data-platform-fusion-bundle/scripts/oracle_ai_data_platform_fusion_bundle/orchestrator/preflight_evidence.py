@@ -38,7 +38,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
-from ..commands.bronze_probe import BronzeProbeFailure, describe_bronze
+from ..commands.bronze_probe import BronzeProbeFailure, describe_bronze_present
 from ..schema.bronze_fingerprint import ColumnInfo, compute_bronze_fingerprint
 from ..schema.bronze_schema_snapshot import (
     BronzeSchemaSnapshotSchemaError,
@@ -106,7 +106,16 @@ class PreflightOutcome:
 
     summary: str = ""
     """Human-readable hand-off message; used for stderr printing
-    on drift. Empty for non-drift outcomes."""
+    on drift. Empty for non-drift outcomes, EXCEPT when absent bronze
+    tables were baseline-filled — then it names them so the effective
+    fingerprint is never mistaken for an all-live probe."""
+
+    absent_datasets: tuple[str, ...] = ()
+    """Bronze dataset ids whose tables were ABSENT (never materialised)
+    and therefore baseline-filled from the pinned schema snapshot — or
+    tolerated un-filled when the pack declared them after the pin
+    (feature: bronze-fingerprint-gate-scope). Empty on the healthy
+    all-present path."""
 
 
 def check_bronze_fingerprint_drift(
@@ -171,15 +180,81 @@ def check_bronze_fingerprint_drift(
         for nid in dataset_ids
         if nid in getattr(pack, "bronze", {}) and getattr(pack.bronze[nid], "target", None)
     }
+    # Snapshot path is keyed by `bundle.contentPack.profile` (same key
+    # bootstrap writes under), NOT `profile.tenant` — see the comment at the
+    # drift branch below.
+    snapshot_key = bundle.content_pack.profile or bundle.content_pack.name
+    snapshot: BronzeSchemaSnapshotV1 | None = None
     try:
-        observed = describe_bronze(
+        # Absence-tolerant probe (feature: bronze-fingerprint-gate-scope):
+        # a bronze table that was never materialised (e.g. its extract is
+        # blocked — LIMITS.md L2) must not abort every incremental. Present
+        # tables are all still probed and all still drift-checked.
+        observed, absent_ids = describe_bronze_present(
             spark,
             catalog=bundle.aidp.catalog,
             bronze_schema=bundle.aidp.bronze_schema,
             dataset_ids=dataset_ids,
             table_names=table_names,
         )
-        current_fingerprint = compute_bronze_fingerprint(observed=observed)
+        # Baseline-filled EFFECTIVE observation: live columns for present
+        # tables; the pinned snapshot's columns for absent ones. "Assume an
+        # absent table still looks like its pin; verify everything else
+        # live." The effective fingerprint is then comparable to the pinned
+        # monolithic hash — and a dataset REMOVED from the pack falls out of
+        # the effective set (it is not a current pack id), so pack-removal
+        # still drifts exactly as today.
+        filled: dict[str, list[ColumnInfo]] = {}
+        unpinned_absent: list[str] = []
+        if absent_ids:
+            snapshot = _load_snapshot_if_present(
+                bundle_path=bundle_path,
+                profile_name=snapshot_key,
+                profile=profile,
+            )
+            if snapshot is None:
+                # Nothing to baseline-fill from → fail closed (absence-
+                # tolerance must never silently drop drift protection).
+                # Raised as BronzeProbeFailure so --force-fingerprint-skip
+                # keeps its existing break-glass reach.
+                first = absent_ids[0]
+                raise BronzeProbeFailure(
+                    dataset_id=first,
+                    fully_qualified=(
+                        f"{bundle.aidp.catalog}.{bundle.aidp.bronze_schema}."
+                        f"{table_names.get(first, first)}"
+                    ),
+                    cause=RuntimeError(
+                        f"bronze table(s) absent ({', '.join(absent_ids)}) and "
+                        f"no healthy schema snapshot exists to baseline-fill "
+                        f"from. Run `aidp-fusion-bundle bootstrap --refresh` to "
+                        f"(re)write profiles/{snapshot_key}.schema-snapshot.yaml "
+                        f"(no-drift refresh back-fills it without repinning)."
+                    ),
+                )
+            snapshot_observed = snapshot_to_observed(snapshot)
+            for did in absent_ids:
+                if did in snapshot_observed:
+                    filled[did] = snapshot_observed[did]
+                else:
+                    # Declared after the pin and never landed — tolerated,
+                    # unprotected until seeded or re-pinned.
+                    unpinned_absent.append(did)
+            logger.warning(
+                "Bronze fingerprint gate: %d absent table(s) tolerated — "
+                "baseline-filled from snapshot: %s%s. Drift protection for "
+                "them resumes once materialised.",
+                len(absent_ids),
+                sorted(filled) or "(none)",
+                (
+                    f"; unpinned (declared after the pin, unprotected until "
+                    f"seeded or re-pinned): {sorted(unpinned_absent)}"
+                    if unpinned_absent
+                    else ""
+                ),
+            )
+        effective_observed = {**observed, **filled}
+        current_fingerprint = compute_bronze_fingerprint(observed=effective_observed)
     except BronzeProbeFailure as exc:
         # A declared bronze table is unreachable (e.g. a dataset whose extract
         # failed, so its table was never materialised). Under the break-glass
@@ -198,46 +273,70 @@ def check_bronze_fingerprint_drift(
             )
         raise
 
+    # Names the baseline-filled datasets on every outcome so the effective
+    # fingerprint is never mistaken for an all-live probe.
+    absent_note = (
+        f"absent bronze tolerated (baseline-filled from snapshot): "
+        f"{sorted(filled)}"
+        + (f"; unpinned absent: {sorted(unpinned_absent)}" if unpinned_absent else "")
+        if absent_ids
+        else ""
+    )
+
     # ─── Skip: --force-fingerprint-skip ────────────────────────────
     if force_skip:
         return PreflightOutcome(
             kind="skip_force_flag",
             prior_fingerprint=prior_fingerprint,
             current_fingerprint=current_fingerprint,
-            summary="--force-fingerprint-skip bypassed comparison",
+            summary="--force-fingerprint-skip bypassed comparison"
+            + (f" ({absent_note})" if absent_note else ""),
+            absent_datasets=tuple(absent_ids),
         )
 
-    # ─── Compare ───────────────────────────────────────────────────
+    # ─── Compare (effective fingerprint vs pinned) ─────────────────
     if prior_fingerprint == current_fingerprint:
         return PreflightOutcome(
             kind="match",
             prior_fingerprint=prior_fingerprint,
             current_fingerprint=current_fingerprint,
+            summary=absent_note,
+            absent_datasets=tuple(absent_ids),
         )
 
     # ─── Drift: write artifact + return outcome ────────────────────
+    # Affected-VP diff runs on the EFFECTIVE observation: absent datasets'
+    # pinned columns stay visible via their baseline fill, so a variation
+    # point living only in an absent table is never falsely reported as
+    # "NO LONGER EXISTS".
     affected_vps = _compute_affected_variation_points(
-        pack=pack, profile=profile, observed=observed
+        pack=pack, profile=profile, observed=effective_observed
     )
     # Read the pinned snapshot, when present and healthy, and diff it
-    # against the live observation to populate per-dataset column-level
+    # against the effective observation to populate per-dataset column-level
     # deltas. Absent / unparseable / desynced snapshot degrades to empty
     # `datasetDeltas` + a one-time WARN log; drift signal must always
     # reach the artifact even when the snapshot path is unhealthy.
+    # (Already loaded above when absent tables were baseline-filled —
+    # guaranteed healthy in that case, else the probe raised.)
     # Snapshot path is keyed by `bundle.contentPack.profile` (same key
     # bootstrap writes under), NOT `profile.tenant` — a hand-authored
     # pre-3d profile YAML may carry a different `tenant:` value than
     # the active profile name, and using the YAML field as the path
     # key would silently look in the wrong place after a healthy
     # back-fill.
-    snapshot_key = bundle.content_pack.profile or bundle.content_pack.name
-    snapshot = _load_snapshot_if_present(
-        bundle_path=bundle_path,
-        profile_name=snapshot_key,
-        profile=profile,
-    )
+    if snapshot is None:
+        snapshot = _load_snapshot_if_present(
+            bundle_path=bundle_path,
+            profile_name=snapshot_key,
+            profile=profile,
+        )
+    # Baseline-filled entries diff as identical by construction → no false
+    # "all columns removed" delta for an absent table. A dataset REMOVED
+    # from the pack is genuinely gone from the effective set, so its
+    # "all columns removed" delta is a TRUE signal.
     dataset_deltas: list[DatasetSchemaDelta] = (
-        _compute_dataset_deltas(snapshot=snapshot, observed=observed)
+        _compute_dataset_deltas(snapshot=snapshot, observed=effective_observed)
         if snapshot is not None
         else []
     )
@@ -272,7 +371,8 @@ def check_bronze_fingerprint_drift(
         prior_fingerprint=prior_fingerprint,
         current_fingerprint=current_fingerprint,
         diagnostic_path=diagnostic_path,
-        summary=summary,
+        summary=summary + (f"\n{absent_note}" if absent_note else ""),
+        absent_datasets=tuple(absent_ids),
     )
 
 

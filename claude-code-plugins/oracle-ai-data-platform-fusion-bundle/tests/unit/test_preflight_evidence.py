@@ -922,3 +922,277 @@ class TestPhase3dDriftBranchPopulation:
         removed = {c["name"] for c in deltas[0]["removedColumns"]}
         assert added == {"ApInvoicesCurrencyCode"}
         assert removed == {"ApInvoicesInvoiceCurrencyCode"}
+
+
+# ---------------------------------------------------------------------------
+# Absence tolerance — baseline-filled effective fingerprint
+# (feature: bronze-fingerprint-gate-scope)
+# ---------------------------------------------------------------------------
+
+from oracle_ai_data_platform_fusion_bundle.commands.bronze_probe import (
+    BronzeProbeFailure,
+    UnsafeIdentifierError,
+)
+
+
+def _mock_spark_partial(
+    present: dict[str, list[str]],
+    absent: set[str] = frozenset(),
+    broken: dict[str, str] | None = None,
+) -> MagicMock:
+    """Fake Spark: DESCRIBE raises NOT_FOUND for ``absent`` tables, raises the
+    given message for ``broken`` tables, returns rows otherwise."""
+    spark = MagicMock(name="spark")
+
+    def _sql(query: str):
+        target = query.split()[-1]
+        table = target.split(".")[-1]
+        if table in absent:
+            raise Exception(
+                f"[TABLE_OR_VIEW_NOT_FOUND] The table or view `{target}` "
+                f"cannot be found."
+            )
+        if broken and table in broken:
+            raise Exception(broken[table])
+        df = MagicMock(name=f"df_{table}")
+        df.collect.return_value = [_row(c) for c in present.get(table, [])]
+        df.take.return_value = [_row(c) for c in present.get(table, [])][:1]
+        return df
+
+    spark.sql.side_effect = _sql
+    return spark
+
+
+class TestAbsenceTolerance:
+    """One missing bronze table must not abort the gate — but every present
+    table stays fully drift-checked, and pack-set changes still drift."""
+
+    def _pin(self, tmp_path: Path, observed: dict) -> str:
+        """Pin fingerprint + write a healthy snapshot for ``observed``."""
+        pinned = compute_bronze_fingerprint(observed=observed)
+        _write_snapshot(
+            tmp_path,
+            tenant="finance-default",
+            pinned_at=datetime(2026, 6, 1, tzinfo=timezone.utc),
+            fingerprint=pinned,
+            observed=observed,
+        )
+        return pinned
+
+    def test_absent_with_baseline_matches(self, tmp_path: Path) -> None:
+        pin_observed = {
+            "a_tbl": [ColumnInfo(name="ColA", type="string")],
+            "b_tbl": [ColumnInfo(name="ColB", type="string")],
+        }
+        pinned = self._pin(tmp_path, pin_observed)
+        outcome = check_bronze_fingerprint_drift(
+            spark=_mock_spark_partial({"a_tbl": ["ColA"]}, absent={"b_tbl"}),
+            bundle=_mock_bundle(),
+            bundle_path=tmp_path / "bundle.yaml",
+            pack=_mock_pack(["a_tbl", "b_tbl"]),
+            profile=_mock_profile(pinned=pinned),
+            run_id="abs-1",
+            mode="incremental",
+            workdir=tmp_path,
+        )
+        assert outcome.kind == "match"
+        assert outcome.absent_datasets == ("b_tbl",)
+        # Effective fingerprint == pin (baseline-filled), surfaced verbatim.
+        assert outcome.current_fingerprint == pinned
+        assert "b_tbl" in outcome.summary
+        assert not (tmp_path / ".aidp" / "diagnostics").exists()
+
+    def test_absent_plus_present_drift(self, tmp_path: Path) -> None:
+        pin_observed = {
+            "a_tbl": [ColumnInfo(name="ColA", type="string")],
+            "b_tbl": [ColumnInfo(name="ColB", type="string")],
+        }
+        pinned = self._pin(tmp_path, pin_observed)
+        outcome = check_bronze_fingerprint_drift(
+            spark=_mock_spark_partial(
+                {"a_tbl": ["ColA_renamed"]}, absent={"b_tbl"}
+            ),
+            bundle=_mock_bundle(),
+            bundle_path=tmp_path / "bundle.yaml",
+            pack=_mock_pack(["a_tbl", "b_tbl"]),
+            profile=_mock_profile(pinned=pinned),
+            run_id="abs-2",
+            mode="incremental",
+            workdir=tmp_path,
+        )
+        assert outcome.kind == "drift"
+        assert outcome.absent_datasets == ("b_tbl",)
+        import json
+
+        payload = json.loads(outcome.diagnostic_path.read_text(encoding="utf-8"))
+        deltas = payload["schemaDrift"]["datasetDeltas"]
+        # Baseline-filled b_tbl diffs as identical -> NO false delta for it.
+        assert [d["datasetId"] for d in deltas] == ["a_tbl"]
+
+    def test_set_removal_regression(self, tmp_path: Path) -> None:
+        """Round-1 Finding 1 (Blocking): one current table absent + one
+        snapshot dataset REMOVED from the pack -> drift, not match."""
+        pin_observed = {
+            "a_tbl": [ColumnInfo(name="ColA", type="string")],
+            "b_tbl": [ColumnInfo(name="ColB", type="string")],
+        }
+        pinned = self._pin(tmp_path, pin_observed)
+        outcome = check_bronze_fingerprint_drift(
+            spark=_mock_spark_partial({}, absent={"a_tbl"}),
+            bundle=_mock_bundle(),
+            bundle_path=tmp_path / "bundle.yaml",
+            pack=_mock_pack(["a_tbl"]),  # b_tbl removed from the pack
+            profile=_mock_profile(pinned=pinned),
+            run_id="abs-3",
+            mode="incremental",
+            workdir=tmp_path,
+        )
+        assert outcome.kind == "drift"
+        import json
+
+        payload = json.loads(outcome.diagnostic_path.read_text(encoding="utf-8"))
+        deltas = {d["datasetId"]: d for d in payload["schemaDrift"]["datasetDeltas"]}
+        # b_tbl's "all columns removed" is a TRUE signal (gone from the pack).
+        assert "b_tbl" in deltas
+        assert [c["name"] for c in deltas["b_tbl"]["removedColumns"]] == ["ColB"]
+        # a_tbl was baseline-filled -> identical -> no delta.
+        assert "a_tbl" not in deltas
+
+    def test_unpinned_absent_tolerated(
+        self, tmp_path: Path, caplog: "pytest.LogCaptureFixture"
+    ) -> None:
+        """A dataset declared AFTER the pin and never landed is tolerated."""
+        import logging
+
+        caplog.set_level(logging.WARNING)
+        pin_observed = {"a_tbl": [ColumnInfo(name="ColA", type="string")]}
+        pinned = self._pin(tmp_path, pin_observed)
+        outcome = check_bronze_fingerprint_drift(
+            spark=_mock_spark_partial({"a_tbl": ["ColA"]}, absent={"c_tbl"}),
+            bundle=_mock_bundle(),
+            bundle_path=tmp_path / "bundle.yaml",
+            pack=_mock_pack(["a_tbl", "c_tbl"]),  # c_tbl post-pin addition
+            profile=_mock_profile(pinned=pinned),
+            run_id="abs-4",
+            mode="incremental",
+            workdir=tmp_path,
+        )
+        assert outcome.kind == "match"
+        assert outcome.absent_datasets == ("c_tbl",)
+        assert any("unpinned" in r.getMessage() for r in caplog.records)
+
+    def test_absent_no_snapshot_raises_with_remediation(
+        self, tmp_path: Path
+    ) -> None:
+        with pytest.raises(BronzeProbeFailure) as exc_info:
+            check_bronze_fingerprint_drift(
+                spark=_mock_spark_partial({"a_tbl": ["ColA"]}, absent={"b_tbl"}),
+                bundle=_mock_bundle(),
+                bundle_path=tmp_path / "bundle.yaml",
+                pack=_mock_pack(["a_tbl", "b_tbl"]),
+                profile=_mock_profile(pinned="sha256:" + "a" * 64),
+                run_id="abs-5",
+                mode="incremental",
+                workdir=tmp_path,
+            )
+        assert "bootstrap --refresh" in str(exc_info.value)
+
+    def test_absent_no_snapshot_force_skip_bypasses(self, tmp_path: Path) -> None:
+        """Round-1 Rec 1: the no-snapshot raise is a BronzeProbeFailure, so
+        the break-glass reach is byte-identical to today."""
+        outcome = check_bronze_fingerprint_drift(
+            spark=_mock_spark_partial({"a_tbl": ["ColA"]}, absent={"b_tbl"}),
+            bundle=_mock_bundle(),
+            bundle_path=tmp_path / "bundle.yaml",
+            pack=_mock_pack(["a_tbl", "b_tbl"]),
+            profile=_mock_profile(pinned="sha256:" + "a" * 64),
+            run_id="abs-6",
+            mode="incremental",
+            workdir=tmp_path,
+            force_skip=True,
+        )
+        assert outcome.kind == "skip_force_flag"
+        assert outcome.current_fingerprint is None
+
+    def test_catalog_failure_raises_and_force_skip_bypasses(
+        self, tmp_path: Path
+    ) -> None:
+        """A non-not-found failure (permissions / broken catalog) fails closed
+        without the flag and is bypassed with it — unchanged contract."""
+        kwargs = dict(
+            bundle=_mock_bundle(),
+            bundle_path=tmp_path / "bundle.yaml",
+            pack=_mock_pack(["a_tbl", "b_tbl"]),
+            profile=_mock_profile(pinned="sha256:" + "a" * 64),
+            run_id="abs-7",
+            mode="incremental",
+            workdir=tmp_path,
+        )
+        broken_spark = _mock_spark_partial(
+            {"a_tbl": ["ColA"]}, broken={"b_tbl": "PERMISSION_DENIED: nope"}
+        )
+        with pytest.raises(BronzeProbeFailure):
+            check_bronze_fingerprint_drift(spark=broken_spark, **kwargs)
+        outcome = check_bronze_fingerprint_drift(
+            spark=_mock_spark_partial(
+                {"a_tbl": ["ColA"]}, broken={"b_tbl": "PERMISSION_DENIED: nope"}
+            ),
+            force_skip=True,
+            **kwargs,
+        )
+        assert outcome.kind == "skip_force_flag"
+
+    def test_affected_vp_in_absent_dataset_still_exists(
+        self, tmp_path: Path
+    ) -> None:
+        """Round-1 Rec 2: a pinned VP whose column lives ONLY in an absent
+        (baseline-filled) table must NOT be reported as no-longer-exists."""
+        pin_observed = {
+            "a_tbl": [ColumnInfo(name="ColA", type="string")],
+            "b_tbl": [ColumnInfo(name="VpOnlyColumn", type="string")],
+        }
+        pinned = self._pin(tmp_path, pin_observed)
+        outcome = check_bronze_fingerprint_drift(
+            spark=_mock_spark_partial(
+                {"a_tbl": ["ColA_renamed"]}, absent={"b_tbl"}
+            ),
+            bundle=_mock_bundle(),
+            bundle_path=tmp_path / "bundle.yaml",
+            pack=_mock_pack(["a_tbl", "b_tbl"]),
+            profile=_mock_profile(
+                pinned=pinned,
+                resolved_column={"invoice_currency": "VpOnlyColumn"},
+            ),
+            run_id="abs-8",
+            mode="incremental",
+            workdir=tmp_path,
+        )
+        assert outcome.kind == "drift"
+        import json
+
+        payload = json.loads(outcome.diagnostic_path.read_text(encoding="utf-8"))
+        vps = {
+            v["name"]: v
+            for v in payload["schemaDrift"]["affectedVariationPoints"]
+        }
+        assert vps["invoice_currency"]["stillExistsOnBronze"] is True
+
+    def test_unsafe_identifier_never_bypassable(self, tmp_path: Path) -> None:
+        """Round-2 review: the injection guard is raised pre-Spark and is NOT
+        translated into a (force-skippable) BronzeProbeFailure."""
+        spark = MagicMock(name="spark")
+        bundle = _mock_bundle()
+        bundle.aidp.catalog = "cat; DROP TABLE x"
+        with pytest.raises(UnsafeIdentifierError):
+            check_bronze_fingerprint_drift(
+                spark=spark,
+                bundle=bundle,
+                bundle_path=tmp_path / "bundle.yaml",
+                pack=_mock_pack(["a_tbl"]),
+                profile=_mock_profile(pinned="sha256:" + "a" * 64),
+                run_id="abs-9",
+                mode="incremental",
+                workdir=tmp_path,
+                force_skip=True,
+            )
+        assert spark.sql.call_count == 0

@@ -147,7 +147,7 @@ def dispatch_via_rest(
     # ``--strict-scope`` opt-out of implicit transitive include. Threaded into
     # both the dispatch dry-run resolver and the cluster-side orchestrator.run
     # call. Default False matches the CLI default.
-    strict_scope: bool = False,
+    strict_scope: bool | None = None,
 ) -> RunSummary:
     """Dispatch the orchestrator notebook to AIDP and return the parsed RunSummary.
 
@@ -260,8 +260,17 @@ def dispatch_via_rest(
             strict_scope=strict_scope,
         )
         log("dry-run requested — skipping wheel build + upload + dispatch")
+        # Dry-run mode parity: a FRESH run with ``--mode`` omitted (mode=None
+        # after the tri-state CLI change) resolves to "seed" in
+        # ``orchestrator.run`` cluster-side. Mirror that here so the REST
+        # dry-run header shows the same mode the dispatched notebook would
+        # actually execute — not a bare ``mode=None``. Inlined (not
+        # ``orchestrator.run_manifest.resolve_run_mode``) to keep dispatch
+        # free of orchestrator imports. Dry-run never resumes (dispatch
+        # short-circuits above), so the fresh-run default is the only case.
+        dry_run_mode = mode or "seed"
         return RunSummary.empty(
-            bundle_project=config.project, mode=mode,
+            bundle_project=config.project, mode=dry_run_mode,
             plan=plan_nodes, prereqs=prereq_nodes,
         )
 

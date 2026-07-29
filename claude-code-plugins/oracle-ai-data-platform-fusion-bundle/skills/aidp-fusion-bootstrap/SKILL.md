@@ -129,8 +129,31 @@ On success, report the concrete artifacts:
 - latest `evidence/<profile>/<timestamp>.yaml`
 - key resolved variation choices: column aliases and semantic variants
 - any IAM/BICC/AIDP warnings that remain
+- any yellow `COA advisory` lines (see below)
 
 Then hand off to `/aidp-fusion-seed` for first materialization.
+
+#### COA advisory lines (yellow, never blocking)
+
+Bootstrap ends with a pre-extraction chart-of-accounts advisory: it compares
+the charts **visible to the configured Fusion user** (transactional REST LOVs,
+laptop-side `FUSION_BICC_USER` / `FUSION_BICC_PASSWORD` env credentials)
+against the profile's `chartOfAccounts` mapping. It runs on BOTH paths —
+including the no-drift `--refresh` early return, because an unchanged bronze
+fingerprint says nothing about a newly active chart. Read it as:
+
+- `chart(s) <ids> are ACTIVE … but have no chartOfAccounts.byChart arm` —
+  a real finding: add the arm via `bootstrap --refresh`; an ordinary
+  `run --mode incremental` absorbs a new chart (additive fast path).
+- `partial — probed N of M` — findings above are confirmed; no all-clear is
+  implied for the unprobed rest.
+- `COA advisory skipped: …` — the advisory could not run (missing env creds,
+  `${aidp:secret:…}` ref, 401/403, time budget). Normal on cluster-dispatch
+  and CI; the post-extraction COA gate (AIDPF-2018) remains the
+  authoritative, tenant-complete check.
+
+Never treat advisory lines as a bootstrap failure; they carry no exit code
+and no AIDPF code.
 
 On failure, classify before recommending action:
 

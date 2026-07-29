@@ -877,3 +877,266 @@ class TestFreshTenantSourceProbe:
         # Walkers resolved from the source-derived observed columns.
         assert profile["resolved"]["column"]["vendor_id"] == "VENDORID"
         assert profile["resolved"]["column"]["supplier_natural_key"] == "SEGMENT1"
+
+
+# ---------------------------------------------------------------------------
+# metadata-driven-coa-resolution — COA advisory wiring (Step 3)
+#
+# The advisory itself is unit-tested in test_coa_advisory.py; these tests pin
+# the WIRING: both call paths invoke it, its lines render on the injected
+# console, and NO failure mode can change the phase's exit code or summary.
+# ---------------------------------------------------------------------------
+
+from io import StringIO
+
+from rich.console import Console
+
+from oracle_ai_data_platform_fusion_bundle.commands import (
+    coa_advisory as coa_advisory_module,
+)
+from oracle_ai_data_platform_fusion_bundle.commands.coa_advisory import (
+    CoaAdvisoryResult,
+)
+
+
+@pytest.fixture(autouse=True)
+def _no_fusion_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Hermetic tests: never let a developer shell's real Fusion credentials
+    leak in (the advisory would then attempt live HTTP)."""
+    monkeypatch.delenv("FUSION_BICC_USER", raising=False)
+    monkeypatch.delenv("FUSION_BICC_PASSWORD", raising=False)
+
+
+def _capture_console() -> tuple[Console, StringIO]:
+    buf = StringIO()
+    return Console(file=buf, force_terminal=False, width=400), buf
+
+
+class _AdvisoryResp:
+    """Minimal requests.Response stand-in for the advisory fetchers."""
+
+    def __init__(self, items: list[dict], has_more: bool = False) -> None:
+        self._payload = {"items": items, "hasMore": has_more}
+        self.status_code = 200
+
+    def raise_for_status(self) -> None:  # pragma: no cover - never errors here
+        pass
+
+    def json(self) -> dict:
+        return self._payload
+
+
+class _AdvisorySession:
+    """Fake authenticated session: chart LOV + per-chart activity probes."""
+
+    def __init__(
+        self,
+        charts: list[tuple[str, bool]],
+        active_chart_ids: set[str],
+    ) -> None:
+        self._charts = charts
+        self._active = active_chart_ids
+        self.requests: list[tuple[str, dict]] = []
+
+    def get(self, url: str, params: dict, timeout: float) -> _AdvisoryResp:
+        self.requests.append((url, dict(params)))
+        if "chartOfAccountsLOV" in url:
+            return _AdvisoryResp(
+                [
+                    {"StructureInstanceNumber": cid, "EnabledFlag": enabled}
+                    for cid, enabled in self._charts
+                ]
+            )
+        assert "accountCombinationsLOV" in url, url
+        chart_id = params["q"].rsplit("=", 1)[1]
+        if chart_id in self._active:
+            return _AdvisoryResp([{"_CODE_COMBINATION_ID": "1"}])
+        return _AdvisoryResp([])
+
+
+class TestCoaAdvisoryWiring:
+    def _initial_pin(
+        self, bundle_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> Path:
+        monkeypatch.setenv("USER", "alice@oracle.com")
+        bundle = _load_bundle(bundle_dir / "bundle.yaml")
+        outcome = run_variation_phase(
+            bundle,
+            bundle_dir / "bundle.yaml",
+            options=VariationPhaseOptions(
+                spark_session=_mock_spark(SAASFADEMO_BRONZE),
+                non_interactive=True, accept_coa_convention=True,
+            ),
+        )
+        assert outcome.exit_code == 0
+        return outcome.profile_path
+
+    def test_no_drift_refresh_emits_advisory_finding(
+        self,
+        bundle_dir: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Finding-1 regression: an UNCHANGED bronze fingerprint must not
+        suppress the advisory — a newly active chart doesn't alter existing
+        bronze schemas, so the no-drift `--refresh` early return is exactly
+        where the miss would happen. End-to-end through the REAL
+        run_coa_advisory with a fake REST session."""
+        profile_path = self._initial_pin(bundle_dir, monkeypatch)
+
+        # Simulate a mapped multi-COA tenant: give the pinned profile a
+        # byChart arm for chart 100 (profile.profile is free-form; the
+        # bronze fingerprint is untouched, so refresh takes the no-drift
+        # early-return branch).
+        data = yaml.safe_load(profile_path.read_text(encoding="utf-8"))
+        data["profile"].setdefault("chartOfAccounts", {})["byChart"] = {
+            "100": {"balancingSegment": "CodeCombinationSegment1"}
+        }
+        profile_path.write_text(yaml.safe_dump(data), encoding="utf-8")
+
+        # Fusion now shows an ADDITIONAL enabled chart 205 with enabled
+        # combinations — active-but-unmapped, the advisory's core finding.
+        session = _AdvisorySession(
+            charts=[("100", True), ("205", True)],
+            active_chart_ids={"100", "205"},
+        )
+        real = coa_advisory_module.run_coa_advisory
+        monkeypatch.setattr(
+            coa_advisory_module,
+            "run_coa_advisory",
+            lambda **kw: real(**{**kw, "session": session}),
+        )
+
+        console, buf = _capture_console()
+        bundle = _load_bundle(bundle_dir / "bundle.yaml")
+        outcome = run_variation_phase(
+            bundle,
+            bundle_dir / "bundle.yaml",
+            options=VariationPhaseOptions(
+                spark_session=_mock_spark(SAASFADEMO_BRONZE),
+                non_interactive=True, accept_coa_convention=True,
+                refresh=True,
+            ),
+            console=console,
+        )
+
+        # Still the no-drift early return — advisory changed NOTHING.
+        assert outcome.exit_code == 0
+        assert "no drift" in outcome.summary
+        out = buf.getvalue()
+        assert "205" in out and "ACTIVE" in out
+        assert "bootstrap --refresh" in out  # remediation text rendered
+        assert "No drift detected" in out  # original message intact
+        # The candidate probe used the Step-1-validated SEMICOLON grammar.
+        probe_qs = [
+            p["q"] for (u, p) in session.requests if "accountCombinations" in u
+        ]
+        assert "EnabledFlag=Y;_CHART_OF_ACCOUNTS_ID=205" in probe_qs
+
+    def test_full_path_advisory_runs_after_profile_write(
+        self,
+        bundle_dir: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The full (non-refresh) path calls the advisory AFTER the profile
+        is durable, passing the freshly resolved chartOfAccounts."""
+        monkeypatch.setenv("USER", "alice@oracle.com")
+        calls: list[dict] = []
+
+        def _recorder(**kw) -> CoaAdvisoryResult:
+            profile_path = (
+                bundle_dir / "profiles" / "finance-default.yaml"
+            )
+            calls.append(
+                {
+                    "chart_of_accounts": kw["chart_of_accounts"],
+                    "profile_durable": profile_path.exists(),
+                }
+            )
+            return CoaAdvisoryResult(kind="skipped", skip_reason="recorder")
+
+        monkeypatch.setattr(
+            coa_advisory_module, "run_coa_advisory", _recorder
+        )
+
+        console, buf = _capture_console()
+        bundle = _load_bundle(bundle_dir / "bundle.yaml")
+        outcome = run_variation_phase(
+            bundle,
+            bundle_dir / "bundle.yaml",
+            options=VariationPhaseOptions(
+                spark_session=_mock_spark(SAASFADEMO_BRONZE),
+                non_interactive=True, accept_coa_convention=True,
+            ),
+            console=console,
+        )
+
+        assert outcome.exit_code == 0
+        assert len(calls) == 1
+        assert calls[0]["profile_durable"] is True
+        # The kwarg is the resolved profile's chartOfAccounts, verbatim.
+        written = yaml.safe_load(
+            outcome.profile_path.read_text(encoding="utf-8")
+        )
+        assert calls[0]["chart_of_accounts"] == written["profile"].get(
+            "chartOfAccounts"
+        )
+        assert "COA advisory skipped: recorder" in buf.getvalue()
+
+    def test_advisory_crash_never_blocks_no_drift_refresh(
+        self,
+        bundle_dir: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Even a bug INSIDE the advisory (raise instead of fail-soft) must
+        not change the no-drift early return's exit code or summary."""
+        self._initial_pin(bundle_dir, monkeypatch)
+
+        def _boom(**kw):
+            raise RuntimeError("advisory bug")
+
+        monkeypatch.setattr(coa_advisory_module, "run_coa_advisory", _boom)
+
+        console, buf = _capture_console()
+        bundle = _load_bundle(bundle_dir / "bundle.yaml")
+        outcome = run_variation_phase(
+            bundle,
+            bundle_dir / "bundle.yaml",
+            options=VariationPhaseOptions(
+                spark_session=_mock_spark(SAASFADEMO_BRONZE),
+                non_interactive=True, accept_coa_convention=True,
+                refresh=True,
+            ),
+            console=console,
+        )
+
+        assert outcome.exit_code == 0
+        assert "no drift" in outcome.summary
+        assert (
+            "COA advisory skipped: unexpected RuntimeError" in buf.getvalue()
+        )
+
+    def test_missing_creds_end_to_end_skip(
+        self,
+        bundle_dir: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Default test/CI environment (no Fusion env creds): the REAL
+        advisory chain skips before any HTTP — labelled, non-blocking."""
+        monkeypatch.setenv("USER", "alice@oracle.com")
+        console, buf = _capture_console()
+        bundle = _load_bundle(bundle_dir / "bundle.yaml")
+        outcome = run_variation_phase(
+            bundle,
+            bundle_dir / "bundle.yaml",
+            options=VariationPhaseOptions(
+                spark_session=_mock_spark(SAASFADEMO_BRONZE),
+                non_interactive=True, accept_coa_convention=True,
+            ),
+            console=console,
+        )
+
+        assert outcome.exit_code == 0
+        assert (
+            "COA advisory skipped: FUSION_BICC_USER / FUSION_BICC_PASSWORD "
+            "not set" in buf.getvalue()
+        )

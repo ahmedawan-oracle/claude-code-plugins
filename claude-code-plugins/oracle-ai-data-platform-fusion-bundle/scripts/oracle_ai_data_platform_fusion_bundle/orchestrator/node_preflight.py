@@ -25,7 +25,10 @@ import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from ..schema.medallion_pack import NodeYaml
+from pydantic import ValidationError
+
+from ..schema.coa_roles import SUPPORTED_COA_ROLES, coa_role_aliases
+from ..schema.medallion_pack import ChartOfAccountsProfile, NodeYaml
 from . import coa_gate
 from .required_column_resolver import coa_role_union
 
@@ -72,6 +75,25 @@ syntax but the key is either (a) not declared in ``pack.yaml``'s
 ``columnAliases``, or (b) declared but missing from the tenant profile's
 ``resolved.column`` map (bootstrap not run, or alias was added after
 last bootstrap)."""
+
+AIDPF_2013_STRUCTURAL_COA = "AIDPF-2013"
+"""The tenant profile's ``chartOfAccounts`` is MISSING / EMPTY / structurally
+INVALID while an in-scope node consumes a COA source. A hard, pre-extraction
+block (NOT a no-op, NOT ``allowUnprovableCOA``-eligible — the hatch covers only
+a probe that cannot EXECUTE, never a malformed/absent mapping). The shape
+contract is enforced by parsing through ``ChartOfAccountsProfile`` (accepts both
+the flat/legacy and nested ``default`` shapes), plus numeric ``byChart`` keys and
+role completeness."""
+
+AIDPF_2074_COA_UNPROVABLE = "AIDPF-2074"
+"""A COA correctness PROBE could not EXECUTE (e.g. a constrained Spark session),
+so COA correctness is UNPROVEN. Blocks by default; downgrades to a loud WARN only
+when ``contentPack.allowUnprovableCOA: true`` AND no COA VIOLATION was retained."""
+
+# byChart keys must be numeric chart_of_accounts_id values — mirrors
+# sql_renderer._COA_CHART_ID_RE so an invalid key is rejected pre-extraction
+# rather than at render time.
+_COA_CHART_ID_RE = re.compile(r"^[0-9]{1,18}$")
 
 
 _COLUMN_REF_PREFIX = "$column."
@@ -496,19 +518,13 @@ _COA_ACCOUNT_TYPE = "CodeCombinationAccountType"
 _COA_ENABLED_FLAG = "CodeCombinationEnabledFlag"
 
 
-def _coa_role_aliases(pack: "ResolvedPack") -> dict[str, tuple[str, str]]:
-    """Return {alias_name: (role_token, applies_to_source)} for COA semanticRole
-    aliases declared in the pack. Empty when the pack has none."""
-    out: dict[str, tuple[str, str]] = {}
-    for name, spec in pack.pack.column_aliases.items():
-        resolution = getattr(spec, "resolution", "columnExistence")
-        role = getattr(spec, "role", None)
-        if resolution != "semanticRole" or not isinstance(role, str):
-            continue
-        applies_to = getattr(spec, "appliesTo", "")
-        source = applies_to.split(".", 1)[1] if "." in applies_to else applies_to
-        out[name] = (role, source)
-    return out
+# The COA role filter now lives in the neutral schema layer
+# (``schema.coa_roles``) so ``schema.plan_resolver``'s dry-run COA-first
+# ordering can share ONE definition without importing this engine-side module
+# (which would break the dispatch import boundary). Re-exported here under the
+# module-private names this file's COA gate already uses.
+_SUPPORTED_COA_ROLES = SUPPORTED_COA_ROLES
+_coa_role_aliases = coa_role_aliases
 
 
 def _node_consumes_source(node: NodeYaml, source_id: str) -> bool:
@@ -521,6 +537,99 @@ def _node_consumes_source(node: NodeYaml, source_id: str) -> bool:
     return False
 
 
+@dataclass(frozen=True)
+class CoaEvalResult:
+    """Structured outcome of :func:`_evaluate_coa`.
+
+    Separating retained VIOLATIONS from probe-EXECUTION failures is the key
+    correctness property: a raise in a LATER probe can never discard a violation
+    an EARLIER probe already found (each probe runs in its own ``try/except``).
+    The caller dispositions in a fixed order — violations block ALWAYS; a
+    probe-execution failure blocks with AIDPF-2074 UNLESS ``allowUnprovableCOA``.
+    """
+
+    violations: list[PreflightError] = field(default_factory=list)
+    probe_failures: list[str] = field(default_factory=list)
+
+    @property
+    def ok(self) -> bool:
+        return not self.violations and not self.probe_failures
+
+
+def _coa_roles_needed(pack: "ResolvedPack", source_id: str) -> set[str]:
+    """The COA role tokens the pack declares against ``source_id``."""
+    return {
+        role
+        for (role, src) in _coa_role_aliases(pack).values()
+        if src == source_id
+    }
+
+
+def _normalize_coa_structure(
+    coa_raw: object, roles_needed: set[str], source_id: str
+) -> list[PreflightError]:
+    """Structural COA gate (AIDPF-2013) — profile-structural, needs NO landed data.
+
+    Runs FIRST and HARD whenever an in-scope node consumes a COA source. Reuses
+    the ``ChartOfAccountsProfile`` model (accepts BOTH the flat/legacy and nested
+    ``default`` shapes; rejects the mixed form, an incomplete arm, and
+    ``byChart`` without an effective default) and layers on the extra strictness
+    the model does not itself enforce (numeric ``byChart`` keys pre-extraction,
+    an effective default present, role completeness for the pack's declared
+    roles). Any failure → a single AIDPF-2013 (never a no-op, never
+    ``allowUnprovableCOA``-eligible). Returns ``[]`` when the mapping is sound.
+    """
+
+    def _fail(detail: str) -> list[PreflightError]:
+        return [
+            PreflightError(
+                code=AIDPF_2013_STRUCTURAL_COA,
+                source=source_id,
+                message=(
+                    f"{AIDPF_2013_STRUCTURAL_COA}: `profile.chartOfAccounts` is "
+                    f"invalid for the COA-consuming source {source_id!r}: {detail} "
+                    f"Declare a complete `chartOfAccounts` (flat "
+                    f"`balancing/costCenter/naturalAccountSegment` OR a nested "
+                    f"`default` mapping, optional numeric `byChart` arms) — run "
+                    f"`bootstrap` to resolve COA roles."
+                ),
+            )
+        ]
+
+    if not isinstance(coa_raw, dict):
+        return _fail("the mapping is missing or not a dict.")
+    if not coa_raw:
+        return _fail("the mapping is empty.")
+    try:
+        coa = ChartOfAccountsProfile.model_validate(coa_raw)
+    except ValidationError as exc:
+        return _fail(f"it does not match the chartOfAccounts contract ({exc}).")
+
+    default = coa.resolved_default()
+    if default is None:
+        return _fail("no effective `default` role mapping is present.")
+
+    # Numeric byChart keys — rejected HERE, pre-extraction (today only caught at
+    # render, sql_renderer.py). The model permits arbitrary string keys.
+    for chart_id in (coa.by_chart or {}):
+        if not _COA_CHART_ID_RE.match(str(chart_id)):
+            return _fail(
+                f"byChart key {chart_id!r} is not a valid numeric "
+                f"chart_of_accounts_id."
+            )
+
+    # Role completeness: every arm must supply the roles the pack declares. The
+    # model already requires all three role columns per arm, so this only bites
+    # if roles_needed ever names a role outside the model's fixed set.
+    for arm_id, mapping in coa.arms().items():
+        cols = {f"coa.{k}": v for k, v in mapping.columns().items()}
+        missing = sorted(r for r in roles_needed if not cols.get(r))
+        if missing:
+            return _fail(f"arm {arm_id!r} is missing role(s) {missing!r}.")
+
+    return []
+
+
 def _check_coa_gate(
     spark: "SparkSession",
     node: NodeYaml,
@@ -528,14 +637,16 @@ def _check_coa_gate(
     profile: "TenantProfile",  # noqa: F821
     ctx: "RunContext",
 ) -> list[PreflightError]:
-    """COA plausibility + multi-COA gate. Validate-only (no writes, no render).
+    """COA gate BACKSTOP in per-node preflight (defense in depth).
 
-    Structural checks (Tier A existence-union + per-arm distinctness) are hard
-    and use ``DESCRIBE``. The multi-COA detection and Tier B natural-account
-    probes run live ``gl_coa`` data queries; a probe that cannot execute (e.g.
-    a constrained session) downgrades to a logged warning rather than crashing
-    this validate-only gate. A probe that DOES run and finds a violation
-    fails closed.
+    The structural gate (AIDPF-2013) now runs FIRST and HARD — replacing the old
+    ``return []`` no-op on a missing/empty/invalid mapping. When the structure is
+    sound, the shared :func:`_evaluate_coa` runs the full ordered sequence
+    (5001 → 2016 → 2042 → 2018 → 2017) and this backstop returns its retained
+    VIOLATIONS as blocking errors while a probe-EXECUTION failure downgrades to a
+    logged WARN (legacy behaviour, retained as defense-in-depth — the
+    pre-extraction COA CHECKPOINT is the layer that hard-blocks on an unprovable
+    probe / applies ``allowUnprovableCOA``).
     """
     aliases = _coa_role_aliases(pack)
     if not aliases:
@@ -543,65 +654,31 @@ def _check_coa_gate(
     # All COA roles in the starter share one source (gl_coa). Group by source.
     sources = {src for (_role, src) in aliases.values()}
     coa_raw = (profile.profile or {}).get("chartOfAccounts")
-    if not isinstance(coa_raw, dict):
-        return []  # no COA config to validate (M1 fails closed earlier)
 
     errors: list[PreflightError] = []
     for source_id in sources:
         if not _node_consumes_source(node, source_id):
             continue
+
+        roles_needed = _coa_roles_needed(pack, source_id)
+        # Structural gate FIRST — a missing/empty/invalid mapping hard-blocks
+        # (AIDPF-2013), and we do NOT probe a malformed mapping.
+        structural = _normalize_coa_structure(coa_raw, roles_needed, source_id)
+        if structural:
+            errors.extend(structural)
+            continue
+
         table = ctx.bronze_table_for_source.get(source_id)
         if table is None:
             continue
 
-        arms = _coa_arms(coa_raw)
-        # Tier A.0 — identifier allowlist (HARD, FIRST). The tenant profile's
-        # chartOfAccounts is free-form and hand-editable; pack validation does
-        # NOT cover it. Every COA role column is interpolated into the Tier B
-        # probe SQL (and rendered later), so validate each against the SAME
-        # allowlist the renderer uses BEFORE any SQL is constructed. A bad value
-        # (injection or just an invalid identifier) blocks here — we do NOT run
-        # the data probes when any identifier is invalid.
-        ident_ok = True
-        for arm_id, mapping in arms.items():
-            for role, col in mapping.items():
-                if not _COA_IDENT_RE.match(col or ""):
-                    ident_ok = False
-                    errors.append(
-                        PreflightError(
-                            code=AIDPF_5001_IDENTIFIER_ALLOWLIST,
-                            source=source_id,
-                            message=(
-                                f"COA mapping for arm {arm_id!r} role {role!r} resolves "
-                                f"to {col!r}, which fails the identifier allowlist "
-                                f"`^[A-Za-z_][A-Za-z0-9_]{{0,62}}$`. Fix "
-                                f"`profile.chartOfAccounts` — a COA role must bind a "
-                                f"plain column name."
-                            ),
-                        )
-                    )
-        # Tier A — distinctness (pure).
-        for code, msg in coa_gate.check_distinctness(arms):
-            errors.append(PreflightError(code=code, source=source_id, message=msg))
-        # Tier A — existence union (DESCRIBE).
-        referenced = {c for m in arms.values() for c in m.values()}
-        present = _describe_columns(spark, table)
-        for code, msg in coa_gate.check_existence_union(referenced, present):
-            errors.append(PreflightError(code=code, source=source_id, message=msg))
-
-        # Data probes (multi-COA + Tier B): interpolate COA columns into SQL, so
-        # ONLY run when every identifier passed the allowlist above.
-        if not ident_ok:
-            continue
-        try:
-            errors.extend(
-                _coa_data_probes(spark, table, source_id, coa_raw, arms)
-            )
-        except Exception as exc:  # pragma: no cover — constrained-session guard
+        result = _evaluate_coa(spark, table, source_id, coa_raw, roles_needed)
+        errors.extend(result.violations)
+        for detail in result.probe_failures:
             _log.warning(
                 "COA data probe on %s skipped (%s); structural checks still applied.",
                 table,
-                exc,
+                detail,
             )
     return errors
 
@@ -630,17 +707,8 @@ def _coa_arms(coa_raw: dict) -> dict[str, dict[str, str]]:
     return arms
 
 
-def _coa_data_probes(
-    spark: "SparkSession",
-    table: str,
-    source_id: str,
-    coa_raw: dict,
-    arms: dict[str, dict[str, str]],
-) -> list[PreflightError]:
-    """Run the multi-COA + Tier B natural-account live probes against gl_coa."""
-    errors: list[PreflightError] = []
-
-    # Multi-COA: active rows per chart (enabled only).
+def _coa_chart_active(spark: "SparkSession", table: str) -> dict[str, int]:
+    """Active (enabled) gl_coa row count per chart_of_accounts_id."""
     rows = spark.sql(
         f"SELECT CAST({_COA_DISCRIMINANT} AS STRING) AS chart_id, COUNT(*) AS n "
         f"FROM {table} "
@@ -648,70 +716,353 @@ def _coa_data_probes(
         f"AND COALESCE({_COA_ENABLED_FLAG}, 'Y') <> 'N' "
         f"GROUP BY CAST({_COA_DISCRIMINANT} AS STRING)"
     ).collect()
-    chart_active = {str(r[0]): int(r[1]) for r in rows if r[0] is not None}
+    return {str(r[0]): int(r[1]) for r in rows if r[0] is not None}
 
-    by_chart = coa_raw.get("byChart") or {}
-    has_by_chart = bool(by_chart)
-    singleton_accepted = bool(coa_raw.get("singletonAccepted"))
-    for code, msg in coa_gate.check_multi_coa(
-        chart_active,
-        singleton_accepted=singleton_accepted,
-        has_by_chart=has_by_chart,
-    ):
-        errors.append(PreflightError(code=code, source=source_id, message=msg))
 
-    # L3.4 completeness: when byChart is declared, every present (active) chart
-    # must have an arm — an unmapped chart would hit the CASE ELSE raise_error.
-    if has_by_chart:
-        mapped = {str(k) for k in by_chart}
-        for chart_id, n in chart_active.items():
-            if n >= coa_gate.MULTI_COA_MIN_ACTIVE_ROWS and chart_id not in mapped:
-                errors.append(
+def _evaluate_coa(
+    spark: "SparkSession",
+    table: str,
+    source_id: str,
+    coa_raw: dict,
+    roles_needed: set[str],
+) -> CoaEvalResult:
+    """Run the COMPLETE ordered COA gate against a LANDED ``gl_coa`` table and
+    return a structured :class:`CoaEvalResult`.
+
+    Assumes the structural gate (:func:`_normalize_coa_structure`, AIDPF-2013)
+    already passed, so ``coa_raw`` is well-formed. The ordered sequence:
+
+    1. **AIDPF-5001** identifier allowlist (pure; a HARD SECURITY BOUNDARY, runs
+       FIRST — if any identifier fails, the data probes that interpolate columns
+       into SQL MUST NOT run).
+    2. **AIDPF-2016** distinctness (pure).
+    3. **AIDPF-2042** existence union (DESCRIBE — own ``try``).
+    4. **AIDPF-2018** multi-COA + completeness (data probe — own ``try``).
+    5. **AIDPF-2017** Tier-B natural-account contradiction (data probe — each
+       per-chart query in its OWN ``try``).
+
+    Every probe runs in its own ``try/except`` so a raise in a LATER probe cannot
+    discard a VIOLATION an earlier probe accumulated (the multi-COA 2018 result
+    is retained even if a per-chart Tier-B 2017 query then raises). Violations
+    land in ``violations``; each probe-execution failure lands in
+    ``probe_failures`` — the caller dispositions them.
+    """
+    violations: list[PreflightError] = []
+    probe_failures: list[str] = []
+    arms = _coa_arms(coa_raw)
+
+    # 1. AIDPF-5001 — identifier allowlist (pure, FIRST, hard security boundary).
+    ident_ok = True
+    for arm_id, mapping in arms.items():
+        for role, col in mapping.items():
+            if not _COA_IDENT_RE.match(col or ""):
+                ident_ok = False
+                violations.append(
                     PreflightError(
-                        code=coa_gate.AIDPF_2018_MULTI_COA_UNCONFIGURED,
+                        code=AIDPF_5001_IDENTIFIER_ALLOWLIST,
                         source=source_id,
                         message=(
-                            f"chart_of_accounts_id {chart_id!r} has active gl_coa rows "
-                            f"but no `chartOfAccounts.byChart` arm. Declare it (the "
-                            f"rendered CASE would otherwise raise at runtime)."
+                            f"COA mapping for arm {arm_id!r} role {role!r} resolves "
+                            f"to {col!r}, which fails the identifier allowlist "
+                            f"`^[A-Za-z_][A-Za-z0-9_]{{0,62}}$`. Fix "
+                            f"`profile.chartOfAccounts` — a COA role must bind a "
+                            f"plain column name."
                         ),
                     )
                 )
 
-    # Tier B per chart: natural-account ambiguity using that chart's NA column.
-    for chart_id, active_rows in chart_active.items():
-        mapping = arms.get(chart_id) or arms.get("default") or {}
-        na_col = mapping.get("coa.natural_account")
-        if not na_col:
+    # 2. AIDPF-2016 — distinctness (pure).
+    for code, msg in coa_gate.check_distinctness(arms):
+        violations.append(PreflightError(code=code, source=source_id, message=msg))
+
+    # 3. AIDPF-2042 — existence union (DESCRIBE; own try so a describe failure is
+    # a probe_failure, not a lost violation).
+    try:
+        referenced = {c for m in arms.values() for c in m.values()}
+        present = _describe_columns(spark, table)
+        for code, msg in coa_gate.check_existence_union(referenced, present):
+            violations.append(
+                PreflightError(code=code, source=source_id, message=msg)
+            )
+    except Exception as exc:  # pragma: no cover — constrained-session guard
+        probe_failures.append(f"existence-union DESCRIBE on {table}: {exc}")
+
+    # Data probes (4–5) interpolate COA columns into SQL — run ONLY when every
+    # identifier passed the allowlist (matching the renderer's contract).
+    if not ident_ok:
+        return CoaEvalResult(violations=violations, probe_failures=probe_failures)
+
+    # 4. AIDPF-2018 — multi-COA + completeness (own try; retained even if a later
+    # Tier-B probe raises).
+    chart_active: dict[str, int] | None = None
+    try:
+        chart_active = _coa_chart_active(spark, table)
+        by_chart = coa_raw.get("byChart") or {}
+        has_by_chart = bool(by_chart)
+        # Strict-bool consumption (never `bool("false")`): the structural gate
+        # guarantees a native bool, so anything other than True is False.
+        singleton_accepted = coa_raw.get("singletonAccepted") is True
+        for code, msg in coa_gate.check_multi_coa(
+            chart_active,
+            singleton_accepted=singleton_accepted,
+            has_by_chart=has_by_chart,
+        ):
+            violations.append(
+                PreflightError(code=code, source=source_id, message=msg)
+            )
+        # L3.4 completeness: when byChart is declared, every present (active)
+        # chart must have an arm — an unmapped chart would hit CASE ELSE
+        # raise_error at render time.
+        if has_by_chart:
+            mapped = {str(k) for k in by_chart}
+            for chart_id, n in chart_active.items():
+                if (
+                    n >= coa_gate.MULTI_COA_MIN_ACTIVE_ROWS
+                    and chart_id not in mapped
+                ):
+                    violations.append(
+                        PreflightError(
+                            code=coa_gate.AIDPF_2018_MULTI_COA_UNCONFIGURED,
+                            source=source_id,
+                            message=(
+                                f"chart_of_accounts_id {chart_id!r} has active "
+                                f"gl_coa rows but no `chartOfAccounts.byChart` arm. "
+                                f"Declare it (the rendered CASE would otherwise "
+                                f"raise at runtime)."
+                            ),
+                        )
+                    )
+    except Exception as exc:  # pragma: no cover — constrained-session guard
+        probe_failures.append(f"multi-COA probe on {table}: {exc}")
+
+    # 5. AIDPF-2017 — Tier-B natural-account contradiction, per chart. Each query
+    # in its OWN try so one chart's failure neither drops other charts' findings
+    # nor the retained 2018 violations above.
+    if chart_active is not None:
+        for chart_id, active_rows in chart_active.items():
+            mapping = arms.get(chart_id) or arms.get("default") or {}
+            na_col = mapping.get("coa.natural_account")
+            if not na_col:
+                continue
+            try:
+                agg = spark.sql(
+                    f"SELECT "
+                    f"COUNT(*) AS total, "
+                    f"SUM(CASE WHEN t > 1 THEN 1 ELSE 0 END) AS ambiguous "
+                    f"FROM (SELECT {na_col} AS na, "
+                    f"COUNT(DISTINCT {_COA_ACCOUNT_TYPE}) AS t "
+                    f"FROM {table} "
+                    f"WHERE CAST({_COA_DISCRIMINANT} AS STRING) = '{chart_id}' "
+                    f"AND {na_col} IS NOT NULL "
+                    f"AND COALESCE({_COA_ENABLED_FLAG}, 'Y') <> 'N' "
+                    f"GROUP BY {na_col})"
+                ).collect()
+            except Exception as exc:  # pragma: no cover — constrained-session
+                probe_failures.append(
+                    f"Tier-B natural-account probe on {table} chart {chart_id}: {exc}"
+                )
+                continue
+            if not agg:
+                continue
+            total = int(agg[0][0] or 0)
+            ambiguous = int(agg[0][1] or 0)
+            probe = coa_gate.ChartProbe(
+                chart_id=chart_id,
+                active_row_count=active_rows,
+                natural_account_distinct=total,
+                natural_account_ambiguous=ambiguous,
+            )
+            res = coa_gate.check_natural_account(probe)
+            for code, msg in res.errors:
+                violations.append(
+                    PreflightError(code=code, source=source_id, message=msg)
+                )
+            for warning in res.warnings:
+                _log.warning("COA gate: %s", warning)
+
+    return CoaEvalResult(violations=violations, probe_failures=probe_failures)
+
+
+# ---------------------------------------------------------------------------
+# Pre-extraction / in-loop COA checkpoint (fail-fast-seed-validation)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class CoaCheckpointResult:
+    """Disposition of a COA checkpoint (structural gate + data probes).
+
+    ``blocking`` holds hard-block errors (AIDPF-2013 structural, or a retained
+    5001/2016/2042/2018/2017 violation, or AIDPF-2074 for an unprovable probe
+    when the hatch is off). ``warnings`` holds probe-execution failures that
+    were downgraded because ``allowUnprovableCOA`` is set AND no violation was
+    retained. The caller aborts the run iff ``blocking`` is non-empty.
+    """
+
+    blocking: list[PreflightError] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+
+    @property
+    def ok(self) -> bool:
+        return not self.blocking
+
+
+def coa_applicable_sources(
+    pack: "ResolvedPack", plan_nodes: "list[NodeYaml]"
+) -> set[str]:
+    """COA source ids consumed by an in-scope silver/gold node in ``plan_nodes``.
+
+    Empty when the pack declares no COA ``semanticRole`` aliases, or no in-scope
+    mart consumes a COA source — in which case the COA gate is inert (the whole
+    checkpoint no-ops). This is the shared applicability guard used by the
+    pre-extraction gate, the in-loop checkpoint, and the mart-only checkpoint.
+    """
+    aliases = _coa_role_aliases(pack)
+    if not aliases:
+        return set()
+    coa_sources = {src for (_role, src) in aliases.values()}
+    consumed: set[str] = set()
+    for node in plan_nodes:
+        if getattr(node, "layer", None) not in ("silver", "gold"):
             continue
-        agg = spark.sql(
-            f"SELECT "
-            f"COUNT(*) AS total, "
-            f"SUM(CASE WHEN t > 1 THEN 1 ELSE 0 END) AS ambiguous "
-            f"FROM (SELECT {na_col} AS na, "
-            f"COUNT(DISTINCT {_COA_ACCOUNT_TYPE}) AS t "
-            f"FROM {table} "
-            f"WHERE CAST({_COA_DISCRIMINANT} AS STRING) = '{chart_id}' "
-            f"AND {na_col} IS NOT NULL "
-            f"AND COALESCE({_COA_ENABLED_FLAG}, 'Y') <> 'N' "
-            f"GROUP BY {na_col})"
-        ).collect()
-        if not agg:
+        for src in coa_sources:
+            if _node_consumes_source(node, src):
+                consumed.add(src)
+    return consumed
+
+
+def order_coa_source_first(
+    plan: "list[NodeYaml]", coa_sources: set[str]
+) -> "list[NodeYaml]":
+    """Return ``plan`` reordered so COA-source bronze nodes run FIRST.
+
+    Bronze nodes are independent leaves, so hoisting the COA source(s) to the
+    front of the plan preserves every other dependency edge (bronze still
+    precedes silver/gold; relative order within each group is kept). This makes
+    the pre-extraction COA gate a true gate for everything it guards — no
+    expensive PVO is extracted until COA is proven. Used by BOTH the exec loop
+    and the dry-run plan builder so the previewed order matches execution.
+    """
+    if not coa_sources:
+        return list(plan)
+    coa_first = [n for n in plan if n.layer == "bronze" and n.id in coa_sources]
+    if not coa_first:
+        return list(plan)
+    rest = [
+        n for n in plan
+        if not (n.layer == "bronze" and n.id in coa_sources)
+    ]
+    return coa_first + rest
+
+
+def split_landed_coa_sources(
+    coa_sources: set[str], *, mart_only: bool, succeeded: "frozenset[str] | set[str]"
+) -> "tuple[set[str], set[str]]":
+    """Split COA sources into (already-LANDED, still-PENDING) for the
+    pre-extraction checkpoint.
+
+    A COA source is already MATERIALIZED at pre-extraction time — so the in-loop
+    data checkpoint (row 4b) will NOT fire for it — when either the run is
+    mart-only (all bronze skipped) or this is a resume and the source already
+    succeeded (it will be resumed-skipped). Those sources MUST get the FULL
+    landed-data checkpoint pre-extraction; a source that will still land in-loop
+    only needs the structural gate now (its data probes run at 4b). Without this
+    split, a run originally aborted at the in-loop checkpoint (AIDPF-2018/2074)
+    could resume straight into the expensive bronze with COA unproven.
+    """
+    landed = {s for s in coa_sources if mart_only or s in succeeded}
+    return landed, coa_sources - landed
+
+
+def evaluate_coa_checkpoint(
+    spark: "SparkSession",
+    *,
+    pack: "ResolvedPack",
+    profile: "TenantProfile",
+    bronze_table_for_source: dict[str, str],
+    coa_sources: set[str],
+    allow_unprovable: bool,
+    structural_only: bool = False,
+) -> CoaCheckpointResult:
+    """Run the COA checkpoint over ``coa_sources`` and disposition the outcome.
+
+    Order (per source), with the disposition the hatch cannot reorder:
+
+    1. **Structural gate** (:func:`_normalize_coa_structure`, AIDPF-2013) — runs
+       ALWAYS, needs no landed data; a malformed/absent mapping hard-blocks and
+       the data probes do NOT run for that source. NEVER hatch-eligible.
+    2. If ``structural_only`` (the pre-extraction gate, before ``gl_coa`` lands)
+       → stop after the structural gate.
+    3. Else :func:`_evaluate_coa` against the LANDED table, then disposition:
+       - ``violations`` non-empty → **HARD BLOCK ALWAYS** (regardless of the
+         hatch, and even if a probe ALSO failed);
+       - else ``probe_failures`` non-empty → **AIDPF-2074** unless
+         ``allow_unprovable`` downgrades it to a WARN.
+    """
+    coa_raw = (profile.profile or {}).get("chartOfAccounts")
+    blocking: list[PreflightError] = []
+    warnings: list[str] = []
+
+    for source_id in sorted(coa_sources):
+        roles_needed = _coa_roles_needed(pack, source_id)
+
+        # 1. Structural gate FIRST — never hatch-eligible.
+        structural = _normalize_coa_structure(coa_raw, roles_needed, source_id)
+        if structural:
+            blocking.extend(structural)
+            continue  # do not probe a malformed mapping
+
+        if structural_only:
             continue
-        total = int(agg[0][0] or 0)
-        ambiguous = int(agg[0][1] or 0)
-        probe = coa_gate.ChartProbe(
-            chart_id=chart_id,
-            active_row_count=active_rows,
-            natural_account_distinct=total,
-            natural_account_ambiguous=ambiguous,
-        )
-        res = coa_gate.check_natural_account(probe)
-        for code, msg in res.errors:
-            errors.append(PreflightError(code=code, source=source_id, message=msg))
-        for warning in res.warnings:
-            _log.warning("COA gate: %s", warning)
-    return errors
+
+        table = bronze_table_for_source.get(source_id)
+        if table is None:
+            # No landed table to probe (should not happen post-landing / on a
+            # mart-only run where the readiness gate confirmed it). Treat an
+            # absent table as an unprovable probe rather than silently passing.
+            detail = f"COA source {source_id!r} has no landed table to probe."
+            if allow_unprovable:
+                warnings.append(detail)
+            else:
+                blocking.append(
+                    PreflightError(
+                        code=AIDPF_2074_COA_UNPROVABLE,
+                        source=source_id,
+                        message=f"{AIDPF_2074_COA_UNPROVABLE}: {detail}",
+                    )
+                )
+            continue
+
+        result = _evaluate_coa(spark, table, source_id, coa_raw, roles_needed)
+        # Disposition step 1 — a retained VIOLATION blocks ALWAYS.
+        if result.violations:
+            blocking.extend(result.violations)
+            continue
+        # Disposition step 2 — probe-execution failure → 2074 unless the hatch.
+        if result.probe_failures:
+            joined = "; ".join(result.probe_failures)
+            if allow_unprovable:
+                warnings.append(
+                    f"COA correctness UNPROVEN on {source_id!r} "
+                    f"(allowUnprovableCOA): {joined}"
+                )
+            else:
+                blocking.append(
+                    PreflightError(
+                        code=AIDPF_2074_COA_UNPROVABLE,
+                        source=source_id,
+                        message=(
+                            f"{AIDPF_2074_COA_UNPROVABLE}: COA correctness could not "
+                            f"be proven for {source_id!r} — a probe failed to "
+                            f"execute ({joined}). Set "
+                            f"`contentPack.allowUnprovableCOA: true` to proceed "
+                            f"with a logged WARN (correctness then rests on the "
+                            f"per-node backstop)."
+                        ),
+                    )
+                )
+
+    return CoaCheckpointResult(blocking=blocking, warnings=warnings)
 
 
 def _describe_columns(spark: "SparkSession", table: str) -> set[str]:
