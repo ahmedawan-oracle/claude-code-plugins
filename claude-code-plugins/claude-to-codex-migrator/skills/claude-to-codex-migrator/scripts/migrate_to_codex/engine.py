@@ -110,7 +110,7 @@ def migrate(
         if not _is_replaceable_output(output_root):
             raise ValueError(
                 f"Refusing to replace {output_root}: it is not empty and does not "
-                "contain previous migration output (reports/migration-report.md). "
+                "contain previous migration output (reports/output-manifest.json). "
                 "Remove it manually if replacement is intended."
             )
 
