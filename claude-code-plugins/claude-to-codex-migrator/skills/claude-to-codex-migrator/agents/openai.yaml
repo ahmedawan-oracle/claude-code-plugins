@@ -1,0 +1,4 @@
+interface:
+  display_name: "Claude to Codex Migrator"
+  short_description: "Cleanly migrate assistant packages to Codex"
+  default_prompt: "Use $claude-to-codex-migrator to migrate this source package into a clean Codex Skill or plugin."

@@ -1,0 +1,8 @@
+{
+  "name": "release-helper",
+  "version": "1.2.0",
+  "description": "Claude Code workflows for release preparation and review.",
+  "author": {
+    "name": "Example Team"
+  }
+}
