@@ -1,4 +1,4 @@
-# oracle-ai-data-platform-fusion-bundle
+# oracle-ai-data-platform-fusion-autopilot
 
 > **Productized Fusion → Oracle AI Data Platform pipeline.** Curated BICC extracts for Fusion ERP/HCM/SCM, bronze/silver/gold medallion in Delta, conformed COA/calendar/org/supplier/item dimensions, ready-made AR-aging / AP-aging / GL-balance / PO-backlog / Supplier-spend gold marts, and **MCP-native Oracle Analytics Cloud (OAC) workbook authoring**. The legacy `.bar` REST install path still ships for snapshot-based deployments. End-user consumption via [OAC MCP (Preview)](https://docs.oracle.com/en/cloud/paas/analytics-cloud/acsdv/access-oracle-analytics-cloud-mcp-server-preview.html) chat in Claude / Cline / Copilot.
 >
@@ -94,8 +94,8 @@ when-NOT-to-use). The CLI stays the contract; skills are guarded wrappers around
 these slash commands in Claude Code:
 
 ```text
-/plugin marketplace add repo/oracle-ai-data-platform-fusion-bundle
-/plugin install oracle-ai-data-platform-fusion-bundle@aidp-fusion-bundle
+/plugin marketplace add repo/oracle-ai-data-platform-fusion-autopilot
+/plugin install oracle-ai-data-platform-fusion-autopilot@aidp-fusion-autopilot
 ```
 
 > **First-run CLI provisioning (automatic).** Claude Code copies the plugin to a

@@ -9,17 +9,17 @@ on:
   push:
     branches: [main]
     paths:
-      - "claude-code-plugins/oracle-ai-data-platform-fusion-bundle/**"
+      - "claude-code-plugins/oracle-ai-data-platform-fusion-autopilot/**"
       - ".github/workflows/fusion-bundle-tests.yml"
   pull_request:
     paths:
-      - "claude-code-plugins/oracle-ai-data-platform-fusion-bundle/**"
+      - "claude-code-plugins/oracle-ai-data-platform-fusion-autopilot/**"
       - ".github/workflows/fusion-bundle-tests.yml"
   workflow_dispatch:
 
 defaults:
   run:
-    working-directory: claude-code-plugins/oracle-ai-data-platform-fusion-bundle
+    working-directory: claude-code-plugins/oracle-ai-data-platform-fusion-autopilot
 
 jobs:
   test:
