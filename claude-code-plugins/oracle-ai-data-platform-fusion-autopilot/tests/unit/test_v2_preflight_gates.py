@@ -67,7 +67,7 @@ class TestGate1_DroppedTarget:
     """
 
     def test_exception_class_carries_expected_attrs(self) -> None:
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.errors import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.errors import (
             IncrementalTargetMissingError,
         )
         # The exception should carry a `missing` attribute listing the
@@ -108,7 +108,7 @@ class TestGate2_TenantFingerprint:
     def test_seed_mode_skips_gate(self) -> None:
         """Per the Phase 3c contract, the gate is incremental-only —
         seed runs MUST never trigger AIDPF-2012."""
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.preflight_evidence import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.preflight_evidence import (
             check_bronze_fingerprint_drift,
         )
         outcome = check_bronze_fingerprint_drift(
@@ -132,7 +132,7 @@ class TestGate2_TenantFingerprint:
         """P3c-L1: profiles carrying the placeholder fingerprint string
         (used in `examples/profiles/finance-default.yaml`) take the
         warn-and-proceed branch — kind='skip_legacy_profile'."""
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.preflight_evidence import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.preflight_evidence import (
             check_bronze_fingerprint_drift,
         )
         outcome = check_bronze_fingerprint_drift(
@@ -168,7 +168,7 @@ class TestGate3_ProfileHashDrift:
     """
 
     def test_error_constant_format(self) -> None:
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.sql_runner import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.sql_runner import (
             AIDPF_4040_PLAN_HASH_DRIFT,
         )
         assert AIDPF_4040_PLAN_HASH_DRIFT.startswith("AIDPF-4040"), (
@@ -180,7 +180,7 @@ class TestGate3_ProfileHashDrift:
         'resume_drift_blocked' is a valid value the caller looks for.
         Catches a refactor that renames the status without updating
         the caller's match arm."""
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.sql_runner import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.sql_runner import (
             NodeExecutionResult,
         )
         # Construct directly — no validator on the literal; this asserts
@@ -213,7 +213,7 @@ class TestGate4_SchemaDrift:
         """Construct two ColumnInfo lists with one column added, one
         removed, and one type-changed; verify the diff function emits
         all three categories correctly."""
-        from oracle_ai_data_platform_fusion_bundle.schema.bronze_schema_snapshot import (
+        from oracle_ai_data_platform_fusion_autopilot.schema.bronze_schema_snapshot import (
             SnapshotColumn, SnapshotDataset,
         )
         # Pinned snapshot.
@@ -265,11 +265,11 @@ class TestGate4_SchemaDrift:
         ``<bundle.parent>/profiles/<profile_name>.schema-snapshot.yaml``
         — which is what cluster-side preflight depends on.
         """
-        from oracle_ai_data_platform_fusion_bundle.schema.bronze_schema_snapshot import (
+        from oracle_ai_data_platform_fusion_autopilot.schema.bronze_schema_snapshot import (
             resolve_snapshot_path,
         )
         bundle_path = tmp_path / "bundle.yaml"
-        bundle_path.write_text("apiVersion: aidp-fusion-bundle/v1\n")
+        bundle_path.write_text("apiVersion: aidp-fusion-autopilot/v1\n")
         path = resolve_snapshot_path(bundle_path, "finance-default")
         assert path.name == "finance-default.schema-snapshot.yaml"
         assert path.parent.name == "profiles"
@@ -290,7 +290,7 @@ class TestGate5_MissingCursor:
     """
 
     def test_exception_class_present_and_orchestrator_config_error(self) -> None:
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.errors import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.errors import (
             IncrementalCursorMissingError, OrchestratorConfigError,
         )
         # The CLI maps OrchestratorConfigError → exit 13 (or similar).
@@ -325,7 +325,7 @@ class TestGate6_LegacyHasNoFingerprintGate:
         import importlib
         import inspect
         orchestrator_mod = importlib.import_module(
-            "oracle_ai_data_platform_fusion_bundle.orchestrator"
+            "oracle_ai_data_platform_fusion_autopilot.orchestrator"
         )
         source = inspect.getsource(orchestrator_mod)
         # The string should appear in the source — gate IS called from

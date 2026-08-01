@@ -27,7 +27,7 @@ enforces it).
   <business logic>", "I need a column that isn't there".
 
 ## When NOT to use
-- The data exists but isn't materialized → `aidp-fusion-bundle run --mode seed`
+- The data exists but isn't materialized → `aidp-fusion-autopilot run --mode seed`
   (or `/aidp-fusion-seed`); use `oac-dataset-advisor` to confirm.
 - Resolving column-alias / semantic-variant tenant variation → `medallion-author`.
 - A **bronze column-TYPE** bug (a declared `outputSchema` type is wrong vs the
@@ -101,7 +101,7 @@ overrides:
         packVersion: "<base pack version>"
 ```
 
-- Compute/refresh `forkedFrom` with `aidp-fusion-bundle content-pack refresh-fork
+- Compute/refresh `forkedFrom` with `aidp-fusion-autopilot content-pack refresh-fork
   overlays/<name> --node <layer>/<id>` (don't hand-author the hashes).
 - **Identity must equal base** — `layer`, `target`, the `dependsOn` edge set, and
   the `refresh` contract. Changing any → `AIDPF-2065`; author a new mart id instead.
@@ -130,8 +130,8 @@ For any field the business logic needs that is NOT already in an existing
 table, confirm it exists at source and get its real name/type **from the PVO,
 not bronze**:
 ```bash
-aidp-fusion-bundle catalog probe --pod <url>            # list/reconcile PVOs
-aidp-fusion-bundle catalog probe-pvo <dataset_id> \      # one PVO's schema, metadata-only
+aidp-fusion-autopilot catalog probe --pod <url>            # list/reconcile PVOs
+aidp-fusion-autopilot catalog probe-pvo <dataset_id> \      # one PVO's schema, metadata-only
   --datastore <DatastorePVO> --bicc-schema <Financial|HCM|SCM> \
   --emit-pack-yaml overlays/<name>/bronze/<id>.yaml   # persistent, beside bundle.yaml
 ```
@@ -234,7 +234,7 @@ shipped installed `content_packs/` tree. For each `nodeSpec`:
 
 ### 6 — Validate
 ```bash
-aidp-fusion-bundle content-pack validate <overlay>
+aidp-fusion-autopilot content-pack validate <overlay>
 ```
 Fix until clean — schema + content validators cover PII-missing (AIDPF-2030),
 dependency/SQL integrity, and the no-new-legacy-module rule. Document new error
@@ -245,7 +245,7 @@ An overlay isn't seeded until the bundle points at it. **Do this FOR the
 client** with the single wiring verb — don't hand-edit YAML:
 
 ```bash
-aidp-fusion-bundle use-pack overlays/<name> --profile <tenant>
+aidp-fusion-autopilot use-pack overlays/<name> --profile <tenant>
 ```
 
 Use the default aligning behavior when the client wants the bundle scope to
@@ -253,7 +253,7 @@ match every silver/gold node in the resolved pack. For narrow customer bundles
 or a one-mart SQL override, preserve the existing scope instead:
 
 ```bash
-aidp-fusion-bundle use-pack overlays/<name> --profile <tenant> --no-align
+aidp-fusion-autopilot use-pack overlays/<name> --profile <tenant> --no-align
 ```
 
 When using `--no-align` for a new mart, add only the authored node to
@@ -277,7 +277,7 @@ the result. Then:
    remaining `${ENV}` ref in `bundle.yaml` must resolve **both** client-side
    (preflight) and cluster-side (literalize tenant values or set the env var).
 3. **Hand to the seed step** — `/aidp-fusion-seed` (or
-   `aidp-fusion-bundle run --mode seed --datasets <new-id> --layers gold`).
+   `aidp-fusion-autopilot run --mode seed --datasets <new-id> --layers gold`).
    `--layers gold` lets the bronze-readiness gate verify the existing bronze
    dep instead of re-extracting it from BICC (the plan still lists the bronze
    dep; it is read, not rebuilt).

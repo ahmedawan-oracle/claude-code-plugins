@@ -32,7 +32,7 @@ def _args() -> argparse.Namespace:
     p.add_argument("--secret-key", default="password")
     p.add_argument("--datastore", default="BalanceExtractPVO",
                    help="datastore short name to locate in the metadata listing.")
-    p.add_argument("--workspace-dir", default="/Workspace/Shared/fusion-bundle-bicc-spike")
+    p.add_argument("--workspace-dir", default="/Workspace/Shared/fusion-autopilot-bicc-spike")
     return p.parse_args()
 
 

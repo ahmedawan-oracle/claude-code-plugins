@@ -14,7 +14,7 @@ from unittest.mock import MagicMock
 import pytest
 import yaml
 
-from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack import (
     AIDPF_2001,
     OrphanOverrideError,
     PackLoaderError,
@@ -22,11 +22,11 @@ from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack import (
     load_pack,
     merge_overlay,
 )
-from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack_staging import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack_staging import (
     materialize_staged_pack,
     stage_pack_files,
 )
-from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack_validators import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack_validators import (
     validate_sql_paths,
 )
 
@@ -488,7 +488,7 @@ def _merged_retyped_node(tmp_path: Path):
 def test_merged_override_type_passes_4070_gate(tmp_path: Path) -> None:
     """The 4070 post-write gate accepts a materialised table that matches the
     overridden decimal(18,0) — i.e. the override flows into the gate."""
-    from oracle_ai_data_platform_fusion_bundle.orchestrator.sql_runner import (
+    from oracle_ai_data_platform_fusion_autopilot.orchestrator.sql_runner import (
         _assert_materialized_matches_declared,
     )
 
@@ -503,7 +503,7 @@ def test_merged_override_type_passes_4070_gate(tmp_path: Path) -> None:
 def test_merged_override_type_enforced_by_4070_gate(tmp_path: Path) -> None:
     """If the live/materialised VENDORID is still decimal(38,30) (un-overridden),
     the gate fails against the *overridden* decimal(18,0) declaration."""
-    from oracle_ai_data_platform_fusion_bundle.orchestrator.sql_runner import (
+    from oracle_ai_data_platform_fusion_autopilot.orchestrator.sql_runner import (
         _assert_materialized_matches_declared,
         MaterializedSchemaDriftError,
     )

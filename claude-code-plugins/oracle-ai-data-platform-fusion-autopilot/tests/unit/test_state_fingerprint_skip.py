@@ -17,8 +17,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.config.paths import TablePaths
-from oracle_ai_data_platform_fusion_bundle.orchestrator import state
+from oracle_ai_data_platform_fusion_autopilot.config.paths import TablePaths
+from oracle_ai_data_platform_fusion_autopilot.orchestrator import state
 
 
 def _mock_paths() -> TablePaths:
@@ -41,7 +41,7 @@ class TestWriteFingerprintSkipRow:
         spark.sql.assert_called_once()
         sql = spark.sql.call_args[0][0]
         # 3-part path used.
-        assert "cat.bronze.fusion_bundle_state" in sql
+        assert "cat.bronze.fusion_autopilot_state" in sql
         # Sentinel + mode + status.
         assert "'__fingerprint_skip__'" in sql
         assert "'fingerprint_skip'" in sql

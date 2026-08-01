@@ -14,11 +14,11 @@ import pathlib
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.config.paths import TablePaths
-from oracle_ai_data_platform_fusion_bundle.schema.errors import (
+from oracle_ai_data_platform_fusion_autopilot.config.paths import TablePaths
+from oracle_ai_data_platform_fusion_autopilot.schema.errors import (
     MissingDependencyError,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.plan_resolver import (
+from oracle_ai_data_platform_fusion_autopilot.schema.plan_resolver import (
     resolve_dry_run_plan,
 )
 
@@ -104,7 +104,7 @@ outputSchema:
 
 
 _BUNDLE_BASE = """\
-apiVersion: aidp-fusion-bundle/v1
+apiVersion: aidp-fusion-autopilot/v1
 project: plan-resolver-test
 fusion:
   serviceUrl: https://example.com
@@ -120,14 +120,14 @@ aidp:
 
 
 def _bundle(extra: str):
-    from oracle_ai_data_platform_fusion_bundle.schema.bundle import Bundle
+    from oracle_ai_data_platform_fusion_autopilot.schema.bundle import Bundle
     import yaml as _yaml
     return Bundle.model_validate(_yaml.safe_load(_BUNDLE_BASE + extra))
 
 
 @pytest.fixture
 def pack(tmp_path: pathlib.Path):
-    from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack import (
+    from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack import (
         load_pack,
     )
 
@@ -467,7 +467,7 @@ datasets:
         """Round-7 review fix: REST/inline dry-run parity for the
         omitted-blocks case. Bundle with only ``datasets:`` must
         produce the same plan ids in both resolvers."""
-        from oracle_ai_data_platform_fusion_bundle.orchestrator import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator import (
             _build_content_pack_dry_run_plan,
             _effective_bundle_scope,
         )

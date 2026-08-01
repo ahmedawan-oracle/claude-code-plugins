@@ -6,7 +6,7 @@ dataset, the user creates the AIDP connection and dataset in OAC UI, and
 `workbook-authoring` saves workbook JSON via OAC MCP. See
 [../workflow.md](../workflow.md) for that flow.
 
-The bundle's `aidp-fusion-bundle dashboard install --target oac` command is built on **only Oracle-documented public REST endpoints** (audit done 2026-05-01 against [openapi.json](https://docs.oracle.com/en/cloud/paas/analytics-cloud/acapi/openapi.json) — see TC10h-2/h-3/h-4 in `tests/live/TC10_oac_integration_results.md`):
+The bundle's `aidp-fusion-autopilot dashboard install --target oac` command is built on **only Oracle-documented public REST endpoints** (audit done 2026-05-01 against [openapi.json](https://docs.oracle.com/en/cloud/paas/analytics-cloud/acapi/openapi.json) — see TC10h-2/h-3/h-4 in `tests/live/TC10_oac_integration_results.md`):
 
 ```
 1. GET  /api/20210901/catalog?type=connections&search=<name>  (precheck — skip POST if found)
@@ -28,7 +28,7 @@ bundle then runs the four REST calls above to install the snapshot content.
 
 OAC's REST validator on `POST /catalog/connections` does not yet bless the AIDP `idljdbc` connectionType (it falls through to generic Oracle DB schemas requiring `serviceName`/`password`/`connectionString`). The bundle therefore uses this flow on first install:
 
-1. **(One-time, OAC UI)** Customer creates the AIDP connection via OAC UI: Data → Connections → Create → "Oracle AI Data Platform" → upload the 6-key JSON written by `aidp-fusion-bundle dashboard install --print-only` plus the API-key PEM. This is the path Oracle documents in the [AIDP-from-OAC Quick Start blog](https://blogs.oracle.com/ai-data-platform/continuing-your-oracle-ai-data-platform-journey-quick-start-guide).
+1. **(One-time, OAC UI)** Customer creates the AIDP connection via OAC UI: Data → Connections → Create → "Oracle AI Data Platform" → upload the 6-key JSON written by `aidp-fusion-autopilot dashboard install --print-only` plus the API-key PEM. This is the path Oracle documents in the [AIDP-from-OAC Quick Start blog](https://blogs.oracle.com/ai-data-platform/continuing-your-oracle-ai-data-platform-journey-quick-start-guide).
 2. **All subsequent runs** of `dashboard install` are pure REST: the precheck (`GET /catalog?type=connections&search=<name>`) finds the existing connection and skips the `POST /catalog/connections` step entirely; snapshot register + restore + poll then deploy the `.bar`.
 
 The bundle's `--overwrite-connection` flag still triggers the POST and would hit the validator gap; use `--print-only` + UI re-upload if you need to recreate the connection.
@@ -72,8 +72,8 @@ OCI Console → **Identity & Security → Domains → \<your-OAC-domain\> → In
 
 | Field | Value |
 |---|---|
-| Name | `aidp-fusion-bundle-installer` (or any name) |
-| Description | `OAuth client for aidp-fusion-bundle install` |
+| Name | `aidp-fusion-autopilot-installer` (or any name) |
+| Description | `OAuth client for aidp-fusion-autopilot install` |
 
 ### Step 2 — Configure as OAuth client
 
@@ -105,7 +105,7 @@ OCI Console → **Object Storage → Buckets → Create**.
 | Field | Value |
 |---|---|
 | Compartment | (any compartment your OAC instance can read from) |
-| Name | e.g. `aidp-fusion-bundle-bar` |
+| Name | e.g. `aidp-fusion-autopilot-bar` |
 | Visibility | Private |
 
 ### Step 6 — Upload the bundle's `.bar`
@@ -115,10 +115,10 @@ Download `bundle-vN.bar` from the bundle's release artifacts (or build it yourse
 Upload via OCI Console (Bucket → Upload Object) or `oci os object put`. Use a **folder-prefixed object name** — `--bar-uri` later passes the Oracle-documented `file:///<folder>/<name>.bar` shape, which is the only URI variant OAC's snapshot machinery accepts (verified live TC10h-3, 2026-05-03):
 
 ```bash
-oci os object put --bucket-name aidp-fusion-bundle-bar \
+oci os object put --bucket-name aidp-fusion-autopilot-bar \
                   --file ./bundle-v0.1.0a0.bar \
-                  --name aidp-fusion-bundle/bundle-v0.1.0a0.bar
-# Object name above maps to --bar-uri 'file:///aidp-fusion-bundle/bundle-v0.1.0a0.bar'
+                  --name aidp-fusion-autopilot/bundle-v0.1.0a0.bar
+# Object name above maps to --bar-uri 'file:///aidp-fusion-autopilot/bundle-v0.1.0a0.bar'
 ```
 
 ### Step 7 — Grant OAC's Resource Principal access to the bucket
@@ -128,7 +128,7 @@ Add an OCI IAM policy ([Snapshot REST API Prerequisites](https://docs.oracle.com
 Allow any-user to read objects in compartment <your-compartment>
 where ALL { request.principal.type='analyticsinstance',
             request.principal.id='<your-OAC-instance-OCID>',
-            target.bucket.name='aidp-fusion-bundle-bar' }
+            target.bucket.name='aidp-fusion-autopilot-bar' }
 ```
 
 ---
@@ -136,7 +136,7 @@ where ALL { request.principal.type='analyticsinstance',
 ## Running the install
 
 ```bash
-aidp-fusion-bundle dashboard install --target oac \
+aidp-fusion-autopilot dashboard install --target oac \
   --oac-url https://<your-oac>.analytics.ocp.oraclecloud.com \
   --connection-name aidp_fusion_jdbc \
   --region us-ashburn-1 \
@@ -149,13 +149,13 @@ aidp-fusion-bundle dashboard install --target oac \
   --idcs-url https://idcs-<stripe>.identity.oraclecloud.com \
   --client-id <step-4-client-id> \
   --client-secret '<step-4-client-secret>' \
-  --bar-bucket aidp-fusion-bundle-bar \
-  --bar-uri 'file:///aidp-fusion-bundle/bundle-v0.1.0a0.bar' \
+  --bar-bucket aidp-fusion-autopilot-bar \
+  --bar-uri 'file:///aidp-fusion-autopilot/bundle-v0.1.0a0.bar' \
   --bar-password '<bar-password-if-protected>' \
-  --snapshot-name aidp-fusion-bundle-v0.1.0a0
+  --snapshot-name aidp-fusion-autopilot-v0.1.0a0
 ```
 
-**First run** — browser opens to IDCS, sign in with your OAC admin account (federation/MFA all work), see "OAC consent received." Tokens persist to `~/.aidp-fusion-bundle/oac-token.json` (mode 0600 on POSIX).
+**First run** — browser opens to IDCS, sign in with your OAC admin account (federation/MFA all work), see "OAC consent received." Tokens persist to `~/.aidp-fusion-autopilot/oac-token.json` (mode 0600 on POSIX).
 
 **Subsequent runs** — silent refresh-token round-trip; no browser pop-up.
 
@@ -175,7 +175,7 @@ Omit `--bar-bucket` and `--bar-uri` — the bundle creates the connection only. 
 - You want to install the connection now and restore the snapshot later via OAC Console.
 
 ```bash
-aidp-fusion-bundle dashboard install --target oac \
+aidp-fusion-autopilot dashboard install --target oac \
   --oac-url ... --connection-name ... \
   ...all-connection-args... \
   --idcs-url ... --client-id ... --client-secret ...
@@ -189,7 +189,7 @@ aidp-fusion-bundle dashboard install --target oac \
 When the customer has no IDCS confidential app or doesn't want the bundle making any REST calls:
 
 ```bash
-aidp-fusion-bundle dashboard install --target oac \
+aidp-fusion-autopilot dashboard install --target oac \
   --oac-url ... --connection-name ... ... \
   --print-only
 ```
@@ -259,7 +259,7 @@ The URI shape must be exactly `file:///<folder>/<name>.bar`. Common mistakes:
 - `bundle-v0.1.0a0.bar` (bare object name) — wrong, fails validation.
 - `oci://<bucket>@<namespace>/<object>` — wrong; OAC's snapshot machinery does not accept the OCI-native URI scheme here.
 - `https://objectstorage.<region>.oraclecloud.com/n/<ns>/b/<bucket>/o/<object>` — wrong; pre-authenticated request URLs aren't accepted either.
-- The bundle expects you to upload with a folder-prefixed name (e.g. `--name aidp-fusion-bundle/bundle-v0.1.0a0.bar`) and pass `--bar-uri 'file:///aidp-fusion-bundle/bundle-v0.1.0a0.bar'`.
+- The bundle expects you to upload with a folder-prefixed name (e.g. `--name aidp-fusion-autopilot/bundle-v0.1.0a0.bar`) and pass `--bar-uri 'file:///aidp-fusion-autopilot/bundle-v0.1.0a0.bar'`.
 
 ### `Can't load models - Restore your models` warning on OAC home page
 
@@ -287,9 +287,9 @@ Copy the URL printed below "Opening browser..." and paste into any browser. Or s
 
 | Artifact | Removal |
 |---|---|
-| Cached refresh token | `rm ~/.aidp-fusion-bundle/oac-token.json` |
-| IDCS confidential app | OCI Console → Identity & Security → Domains → \<domain\> → Integrated applications → `aidp-fusion-bundle-installer` → Deactivate → Delete |
-| OAC connection | `aidp-fusion-bundle dashboard uninstall --target oac --connection-name aidp_fusion_jdbc ...` |
+| Cached refresh token | `rm ~/.aidp-fusion-autopilot/oac-token.json` |
+| IDCS confidential app | OCI Console → Identity & Security → Domains → \<domain\> → Integrated applications → `aidp-fusion-autopilot-installer` → Deactivate → Delete |
+| OAC connection | `aidp-fusion-autopilot dashboard uninstall --target oac --connection-name aidp_fusion_jdbc ...` |
 | Registered snapshot | Add `--snapshot-id <id>` to the uninstall command (deregisters the snapshot record; restored content is not auto-rolled-back) |
 | Restored workbooks | OAC Console → Catalog → delete `/shared/AIDP_Fusion_Bundle/`, OR restore an earlier snapshot of the OAC instance (take one BEFORE installing if you want a clean rollback) |
 

@@ -12,10 +12,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 import requests
 
-from oracle_ai_data_platform_fusion_bundle.orchestrator.discovery import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.discovery import (
     discover_pvo_schemas,
 )
-from oracle_ai_data_platform_fusion_bundle.orchestrator.errors import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.errors import (
     DiscoveryProbeError,
 )
 
@@ -65,7 +65,7 @@ def test_discover_returns_pairs_from_anonymized_bicc_response():
     fixture — including the duplicate viewObjectName entry that pdf shapes
     sometimes carry alongside the full name."""
     with patch(
-        "oracle_ai_data_platform_fusion_bundle.orchestrator.discovery.requests.get",
+        "oracle_ai_data_platform_fusion_autopilot.orchestrator.discovery.requests.get",
         return_value=_fake_response(200, _ANON_RESPONSE),
     ):
         mapping = discover_pvo_schemas("https://x", "u", "p")
@@ -95,7 +95,7 @@ def test_discover_walker_silently_skips_datastores_with_no_ancestor_schema():
         ],
     }
     with patch(
-        "oracle_ai_data_platform_fusion_bundle.orchestrator.discovery.requests.get",
+        "oracle_ai_data_platform_fusion_autopilot.orchestrator.discovery.requests.get",
         return_value=_fake_response(200, orphan_response),
     ):
         mapping = discover_pvo_schemas("https://x", "u", "p")
@@ -114,7 +114,7 @@ def test_discover_walker_handles_inline_schema_form():
         {"name": "A", "schemaName": "B"},  # alternative schema key
     ]
     with patch(
-        "oracle_ai_data_platform_fusion_bundle.orchestrator.discovery.requests.get",
+        "oracle_ai_data_platform_fusion_autopilot.orchestrator.discovery.requests.get",
         return_value=_fake_response(200, inline_response),
     ):
         mapping = discover_pvo_schemas("https://x", "u", "p")
@@ -125,7 +125,7 @@ def test_discover_walker_handles_inline_schema_form():
 def test_discover_raises_DiscoveryProbeError_on_http_error():
     """Non-200 response → DiscoveryProbeError with the status code surfaced."""
     with patch(
-        "oracle_ai_data_platform_fusion_bundle.orchestrator.discovery.requests.get",
+        "oracle_ai_data_platform_fusion_autopilot.orchestrator.discovery.requests.get",
         return_value=_fake_response(500, text="Internal Server Error"),
     ):
         with pytest.raises(DiscoveryProbeError) as exc_info:
@@ -133,7 +133,7 @@ def test_discover_raises_DiscoveryProbeError_on_http_error():
     assert "500" in str(exc_info.value)
     # Also covers requests.RequestException raising at the helper layer
     with patch(
-        "oracle_ai_data_platform_fusion_bundle.orchestrator.discovery.requests.get",
+        "oracle_ai_data_platform_fusion_autopilot.orchestrator.discovery.requests.get",
         side_effect=requests.ConnectionError("connection refused"),
     ):
         with pytest.raises(DiscoveryProbeError) as exc_info:

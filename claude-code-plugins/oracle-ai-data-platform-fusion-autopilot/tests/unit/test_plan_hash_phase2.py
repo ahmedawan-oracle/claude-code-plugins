@@ -11,12 +11,12 @@ from unittest.mock import MagicMock
 import pytest
 import yaml
 
-from oracle_ai_data_platform_fusion_bundle.orchestrator.plan_hash import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.plan_hash import (
     compute_content_pack_plan_hash,
     compute_output_schema_hash,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.medallion_pack import NodeYaml
-from oracle_ai_data_platform_fusion_bundle.schema.tenant_profile import (
+from oracle_ai_data_platform_fusion_autopilot.schema.medallion_pack import NodeYaml
+from oracle_ai_data_platform_fusion_autopilot.schema.tenant_profile import (
     load_tenant_profile_from_string,
 )
 

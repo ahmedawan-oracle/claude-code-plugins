@@ -1,13 +1,13 @@
 ---
 name: aidp-fusion-incremental
-description: "Turn a natural-language refresh request into a guarded `aidp-fusion-bundle run --mode incremental` (the daily delta-merge). Parses intent into scope flags (reusing the seed parser with --mode incremental), auto-satisfies preconditions, and runs the incremental-specific prechecks: a Fusion-PVO/bronze DRIFT precheck (route to /fusion-drift-doctor), a watermark-cursor check (a node with no prior cursor must be seeded first), and plan-hash awareness (if the YAML/SQL/profile changed since the last seed, AIDPF-4040 → re-seed). Use when the user says 'run incremental', 'refresh the marts', 'daily delta', 'incremental supplier_spend', 'pull the latest'. NOT for first build (use /aidp-fusion-seed) or a single CLI call you already know."
+description: "Turn a natural-language refresh request into a guarded `aidp-fusion-autopilot run --mode incremental` (the daily delta-merge). Parses intent into scope flags (reusing the seed parser with --mode incremental), auto-satisfies preconditions, and runs the incremental-specific prechecks: a Fusion-PVO/bronze DRIFT precheck (route to /fusion-drift-doctor), a watermark-cursor check (a node with no prior cursor must be seeded first), and plan-hash awareness (if the YAML/SQL/profile changed since the last seed, AIDPF-4040 → re-seed). Use when the user says 'run incremental', 'refresh the marts', 'daily delta', 'incremental supplier_spend', 'pull the latest'. NOT for first build (use /aidp-fusion-seed) or a single CLI call you already know."
 allowed-tools: Read, Bash, Glob, Grep
 ---
 
 # aidp-fusion-incremental — guarded daily delta runner
 
 Wraps `run --mode incremental` (delta-merge using prior watermarks from
-`fusion_bundle_state`) with the prechecks an incremental run actually needs.
+`fusion_autopilot_state`) with the prechecks an incremental run actually needs.
 Like `/aidp-fusion-seed`, it shells out to the CLI and never touches state
 directly. Incremental is **less destructive than seed** (row-grain nodes MERGE
 on the natural key; replace-marts still CREATE OR REPLACE), so the guard is
@@ -50,7 +50,7 @@ These are the failure modes incremental adds — front-run them so the operator
 gets a clear next step instead of a deep cluster error:
 
 - **Watermark cursor present?** Incremental delta-merges from each node's prior
-  `last_watermark` in `fusion_bundle_state`. A node that was never seeded raises
+  `last_watermark` in `fusion_autopilot_state`. A node that was never seeded raises
   `IncrementalCursorMissingError` (it lists the offending datasets). → tell the
   operator to **`/aidp-fusion-seed`** those nodes first. (Use
   `/aidp-fusion-status` to see which nodes have a prior successful run.)
@@ -141,4 +141,4 @@ Close the loop based on whether a dashboard already exists:
 - Never run incremental on a node with no prior seed cursor — seed it first.
 - Never bypass a drift gate (`--force-fingerprint-skip`) outside dev; route to
   the doctor.
-- Shell out to the CLI; never touch `fusion_bundle_state` / watermarks directly.
+- Shell out to the CLI; never touch `fusion_autopilot_state` / watermarks directly.

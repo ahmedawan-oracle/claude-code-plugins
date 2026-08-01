@@ -51,4 +51,4 @@ Important: `ai_generate(model, prompt)` — model is the FIRST argument (counter
 
 - The bundle's example notebooks should include a `ai_generate('openai.gpt-5.4', ...)` call against gold.supplier_spend as a flagship demo.
 - The plan's TC9 row referencing "ai_generate(...)" should note the correct (model, prompt) arg order.
-- Future v2 work: add a CLI helper `aidp-fusion-bundle agent ask "your question"` that wraps this pattern.
+- Future v2 work: add a CLI helper `aidp-fusion-autopilot agent ask "your question"` that wraps this pattern.

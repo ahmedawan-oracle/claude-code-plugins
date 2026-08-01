@@ -29,7 +29,7 @@ When a customer with saas-batch access wants to validate the bundle:
 2. Run:
    ```python
    import requests
-   from oracle_ai_data_platform_fusion_bundle.extractors.saas_batch_rest import (
+   from oracle_ai_data_platform_fusion_autopilot.extractors.saas_batch_rest import (
        get_token_relay, submit_extract_job, poll_job_until_complete, fetch_output_files,
    )
    s = requests.Session()

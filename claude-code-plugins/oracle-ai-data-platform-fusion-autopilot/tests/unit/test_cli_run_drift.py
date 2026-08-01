@@ -21,8 +21,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 import yaml
 
-from oracle_ai_data_platform_fusion_bundle import orchestrator
-from oracle_ai_data_platform_fusion_bundle.schema.errors import (
+from oracle_ai_data_platform_fusion_autopilot import orchestrator
+from oracle_ai_data_platform_fusion_autopilot.schema.errors import (
     EXIT_CODE_SCHEMA_DRIFT,
     SchemaDriftDetectedError,
 )
@@ -55,7 +55,7 @@ class TestExitCodeMapping:
         """CRITICAL: must NOT inherit from OrchestratorConfigError —
         otherwise the existing CLI catch arm at commands/run.py:252
         would swallow it and return exit 2 instead of 14."""
-        from oracle_ai_data_platform_fusion_bundle.schema.errors import (
+        from oracle_ai_data_platform_fusion_autopilot.schema.errors import (
             OrchestratorConfigError,
         )
         assert not issubclass(SchemaDriftDetectedError, OrchestratorConfigError)
@@ -72,7 +72,7 @@ def _make_bundle_dir(tmp_path: Path) -> Path:
     bundle.write_text(
         yaml.safe_dump(
             {
-                "apiVersion": "aidp-fusion-bundle/v1",
+                "apiVersion": "aidp-fusion-autopilot/v1",
                 "version": "0.2.0",
                 "project": "test",
                 "fusion": {
@@ -98,7 +98,7 @@ def _make_bundle_dir(tmp_path: Path) -> Path:
     config.write_text(
         yaml.safe_dump(
             {
-                "apiVersion": "aidp-fusion-bundle/v1",
+                "apiVersion": "aidp-fusion-autopilot/v1",
                 "project": "test",
                 "environments": {
                     "dev": {
@@ -122,7 +122,7 @@ class TestRunInlineDriftCatch:
 
     def test_drift_returns_exit_14(self, tmp_path: Path) -> None:
         from rich.console import Console
-        from oracle_ai_data_platform_fusion_bundle.commands.run import _run_inline
+        from oracle_ai_data_platform_fusion_autopilot.commands.run import _run_inline
 
         bundle_dir = _make_bundle_dir(tmp_path)
         console = Console()
@@ -156,8 +156,8 @@ class TestRunInlineDriftCatch:
         the existing one, drift would surface as exit 2. Verify exit
         14 vs 2 distinction."""
         from rich.console import Console
-        from oracle_ai_data_platform_fusion_bundle.commands.run import _run_inline
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.errors import (
+        from oracle_ai_data_platform_fusion_autopilot.commands.run import _run_inline
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.errors import (
             OrchestratorConfigError,
         )
 
@@ -202,7 +202,7 @@ class TestForceFingerprintSkipFlag:
         """Click's --force-fingerprint-skip flag is wired + flows
         through to commands.run.run."""
         from click.testing import CliRunner
-        from oracle_ai_data_platform_fusion_bundle.cli import main
+        from oracle_ai_data_platform_fusion_autopilot.cli import main
 
         runner = CliRunner()
         # --help shows the flag is accepted (hidden=True keeps it out
@@ -216,7 +216,7 @@ class TestForceFingerprintSkipFlag:
 
     def test_flag_threaded_to_orchestrator_run(self, tmp_path: Path) -> None:
         from rich.console import Console
-        from oracle_ai_data_platform_fusion_bundle.commands.run import _run_inline
+        from oracle_ai_data_platform_fusion_autopilot.commands.run import _run_inline
 
         bundle_dir = _make_bundle_dir(tmp_path)
         console = Console()
@@ -225,7 +225,7 @@ class TestForceFingerprintSkipFlag:
 
         def _capture(**kwargs):
             captured.update(kwargs)
-            from oracle_ai_data_platform_fusion_bundle.schema.run_summary import (
+            from oracle_ai_data_platform_fusion_autopilot.schema.run_summary import (
                 RunSummary,
             )
             return RunSummary.empty(bundle_project="test", mode=kwargs.get("mode", "seed"))

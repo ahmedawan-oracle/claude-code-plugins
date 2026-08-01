@@ -1,4 +1,4 @@
-"""Tests for `aidp-fusion-bundle use-pack` — one-command bundle->overlay wiring.
+"""Tests for `aidp-fusion-autopilot use-pack` — one-command bundle->overlay wiring.
 
 Covers the comment-preserving text surgery (append/replace top-level blocks,
 placeholder-password normalization) and an end-to-end wire against the shipped
@@ -14,7 +14,7 @@ import pytest
 _REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_REPO / "scripts"))
 
-from oracle_ai_data_platform_fusion_bundle.commands.use_pack import (  # noqa: E402
+from oracle_ai_data_platform_fusion_autopilot.commands.use_pack import (  # noqa: E402
     _PLACEHOLDER_PW,
     _replace_or_append_top_level_block,
     use_pack,
@@ -53,7 +53,7 @@ def test_end_to_end_wire_against_ar_ext_overlay(tmp_path):
         pytest.skip("fusion-finance-ar-ext overlay not present")
     bundle = tmp_path / "bundle.yaml"
     bundle.write_text(
-        "apiVersion: aidp-fusion-bundle/v1\nversion: \"0.2.0\"\nproject: t\n"
+        "apiVersion: aidp-fusion-autopilot/v1\nversion: \"0.2.0\"\nproject: t\n"
         "fusion:\n  serviceUrl: https://x\n  username: u\n"
         "  password: ${vault:ocid1.vaultsecret.oc1.iad.placeholder.fusion_password}\n"
         "  externalStorage: s\n"

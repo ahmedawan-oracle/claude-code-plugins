@@ -1,7 +1,7 @@
 # `medallion-author` skill — operator UX walkthrough
 
 Phase 3b ships an operator-side Tier-2 recovery path for the v2
-content-pack architecture: when `aidp-fusion-bundle bootstrap` fails
+content-pack architecture: when `aidp-fusion-autopilot bootstrap` fails
 to mechanically resolve a variation point (AIDPF-2010 / AIDPF-2011),
 operators open Claude Code in the project directory and invoke the
 `/medallion-author` skill to draft a content-pack overlay extending
@@ -157,13 +157,13 @@ Remediation:    overlays/saasfademo1-currency-fix/remediation.md (Option D)
 Next steps:
   1. Review the overlay + remediation.md.
   2. Wire the overlay into the pack chain:
-       aidp-fusion-bundle use-pack overlays/<overlay-name> --profile <tenant>
+       aidp-fusion-autopilot use-pack overlays/<overlay-name> --profile <tenant>
   3. Re-run bootstrap (NO --resolutions flag needed):
-       aidp-fusion-bundle bootstrap --operator "$USER"
+       aidp-fusion-autopilot bootstrap --operator "$USER"
   4. Apply Option D remediation per remediation.md:
-       aidp-fusion-bundle run --mode seed \
+       aidp-fusion-autopilot run --mode seed \
          --datasets supplier_spend,ap_aging
-  5. Resume scheduled `aidp-fusion-bundle run --mode incremental`.
+  5. Resume scheduled `aidp-fusion-autopilot run --mode incremental`.
 ```
 
 Phase 9 follow-up deleted the legacy backend (and the
@@ -203,7 +203,7 @@ The skill recommends and the operator chooses one of:
 |---|---|---|---|
 | **A — No action** | Free | Clean (rename only) | `riskLabel: likely-rename` |
 | **B — Surgical backfill MERGE** | Minutes | Operator-reviewed SQL | Advanced opt-in; large tables; column-substitution-only |
-| **C — Watermark rewind** | n/a | n/a | **DEFERRED to v0.4** — requires `aidp-fusion-bundle rewind` verb |
+| **C — Watermark rewind** | n/a | n/a | **DEFERRED to v0.4** — requires `aidp-fusion-autopilot rewind` verb |
 | **D — Targeted re-seed** *(default)* | Hours per affected node | Engine code path | All non-rename cases |
 | **E — Full re-seed** | Hours-to-days | Clean baseline | Audit reset (rare) |
 
@@ -229,7 +229,7 @@ recommends Option D for `dim_account`.
 
 ## What the skill explicitly does NOT do
 
-- It does NOT run during `aidp-fusion-bundle run` (per ADR-0017,
+- It does NOT run during `aidp-fusion-autopilot run` (per ADR-0017,
   engine has zero LLM dependency at runtime).
 - It does NOT modify `profiles/<tenant>.yaml` or `evidence/<tenant>/`
   — those are bootstrap's domain per PLAN §9.5.7 #6.

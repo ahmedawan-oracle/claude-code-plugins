@@ -10,7 +10,7 @@ plan reviews hammered on:
 
 from __future__ import annotations
 
-from oracle_ai_data_platform_fusion_bundle.orchestrator.coa_change import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.coa_change import (
     UNMAPPED,
     classify_coa_change,
     resolve_rendered,

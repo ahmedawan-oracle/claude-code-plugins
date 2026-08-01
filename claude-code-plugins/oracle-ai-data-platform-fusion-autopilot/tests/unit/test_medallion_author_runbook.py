@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.medallion_author.runbook import (
+from oracle_ai_data_platform_fusion_autopilot.medallion_author.runbook import (
     OptionDeferredError,
     RemediationArtifacts,
     draft_remediation,
@@ -159,13 +159,13 @@ class TestOptionAAndE:
         assert artifacts.sql is None
         # The actual command line lacks --datasets (the prose may
         # mention the flag when explaining what's omitted).
-        assert "aidp-fusion-bundle run --mode seed" in artifacts.runbook_markdown
+        assert "aidp-fusion-autopilot run --mode seed" in artifacts.runbook_markdown
         # Find the command-line code block; assert it has no --datasets.
         code_blocks = artifacts.runbook_markdown.split("```")
         # Code blocks are at odd indices: 1, 3, 5...
         command_blocks = [
             b for i, b in enumerate(code_blocks)
-            if i % 2 == 1 and "aidp-fusion-bundle run" in b
+            if i % 2 == 1 and "aidp-fusion-autopilot run" in b
         ]
         assert command_blocks, "no command code block found"
         for block in command_blocks:

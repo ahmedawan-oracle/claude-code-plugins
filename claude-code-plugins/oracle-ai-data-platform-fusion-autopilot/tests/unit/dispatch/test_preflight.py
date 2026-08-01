@@ -22,18 +22,18 @@ from unittest.mock import MagicMock, patch
 import oci
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.dispatch.preflight import (
+from oracle_ai_data_platform_fusion_autopilot.dispatch.preflight import (
     PreflightResult,
     any_failed,
     render,
     run_local_preflight,
     run_remote_preflight,
 )
-from oracle_ai_data_platform_fusion_bundle.dispatch.rest_client import (
+from oracle_ai_data_platform_fusion_autopilot.dispatch.rest_client import (
     AidpRestError,
     ClusterSummary,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.bundle import (
+from oracle_ai_data_platform_fusion_autopilot.schema.bundle import (
     AidpConfig,
     AuthSpec,
     EnvSpec,
@@ -46,7 +46,7 @@ from oracle_ai_data_platform_fusion_bundle.schema.bundle import (
 
 
 _GOOD_BUNDLE = """\
-apiVersion: aidp-fusion-bundle/v1
+apiVersion: aidp-fusion-autopilot/v1
 project: test-preflight
 fusion:
   serviceUrl: https://fusion.example.com
@@ -80,7 +80,7 @@ def _env(**overrides) -> EnvSpec:
 def _config() -> AidpConfig:
     return AidpConfig.model_validate(
         {
-            "apiVersion": "aidp-fusion-bundle/v1",
+            "apiVersion": "aidp-fusion-autopilot/v1",
             "project": "test",
             "environments": {"dev": _env().model_dump(by_alias=True)},
         }
@@ -97,7 +97,7 @@ class TestPhaseALocalPreflight:
         self, bundle_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         with patch(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.preflight.oci.config.from_file",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.preflight.oci.config.from_file",
             return_value={"tenancy": "t", "user": "u", "fingerprint": "f", "key_file": "/k"},
         ):
             results = run_local_preflight(
@@ -161,7 +161,7 @@ class TestPhaseALocalPreflight:
         self, bundle_path: Path
     ) -> None:
         with patch(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.preflight.oci.config.from_file",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.preflight.oci.config.from_file",
             side_effect=oci.exceptions.ProfileNotFound("no such profile"),
         ):
             results = run_local_preflight(
@@ -181,11 +181,11 @@ class TestPhaseALocalPreflight:
         cfg = {"tenancy": "t", "user": "u", "fingerprint": "f", "key_file": "/k"}
         with (
             patch(
-                "oracle_ai_data_platform_fusion_bundle.dispatch.preflight.oci.config.from_file",
+                "oracle_ai_data_platform_fusion_autopilot.dispatch.preflight.oci.config.from_file",
                 return_value=cfg,
             ),
             patch(
-                "oracle_ai_data_platform_fusion_bundle.dispatch.preflight.subprocess.run",
+                "oracle_ai_data_platform_fusion_autopilot.dispatch.preflight.subprocess.run",
                 side_effect=AssertionError("subprocess.run must not be called for API-key profiles"),
             ),
         ):
@@ -204,11 +204,11 @@ class TestPhaseALocalPreflight:
         }
         with (
             patch(
-                "oracle_ai_data_platform_fusion_bundle.dispatch.preflight.oci.config.from_file",
+                "oracle_ai_data_platform_fusion_autopilot.dispatch.preflight.oci.config.from_file",
                 return_value=cfg,
             ),
             patch(
-                "oracle_ai_data_platform_fusion_bundle.dispatch.preflight.subprocess.run",
+                "oracle_ai_data_platform_fusion_autopilot.dispatch.preflight.subprocess.run",
                 return_value=subprocess.CompletedProcess(
                     args=[], returncode=0, stdout="Session is valid", stderr=""
                 ),
@@ -231,11 +231,11 @@ class TestPhaseALocalPreflight:
         }
         with (
             patch(
-                "oracle_ai_data_platform_fusion_bundle.dispatch.preflight.oci.config.from_file",
+                "oracle_ai_data_platform_fusion_autopilot.dispatch.preflight.oci.config.from_file",
                 return_value=cfg,
             ),
             patch(
-                "oracle_ai_data_platform_fusion_bundle.dispatch.preflight.subprocess.run",
+                "oracle_ai_data_platform_fusion_autopilot.dispatch.preflight.subprocess.run",
                 return_value=subprocess.CompletedProcess(
                     args=[],
                     returncode=1,
@@ -264,11 +264,11 @@ class TestPhaseALocalPreflight:
         }
         with (
             patch(
-                "oracle_ai_data_platform_fusion_bundle.dispatch.preflight.oci.config.from_file",
+                "oracle_ai_data_platform_fusion_autopilot.dispatch.preflight.oci.config.from_file",
                 return_value=cfg,
             ),
             patch(
-                "oracle_ai_data_platform_fusion_bundle.dispatch.preflight.subprocess.run",
+                "oracle_ai_data_platform_fusion_autopilot.dispatch.preflight.subprocess.run",
                 side_effect=FileNotFoundError("oci"),
             ),
         ):

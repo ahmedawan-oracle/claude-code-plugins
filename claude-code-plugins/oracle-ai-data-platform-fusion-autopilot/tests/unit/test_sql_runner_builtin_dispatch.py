@@ -25,17 +25,17 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.orchestrator import sql_runner
-from oracle_ai_data_platform_fusion_bundle.orchestrator.builtins import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator import sql_runner
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.builtins import (
     dim_calendar_adapter,
 )
-from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack import load_pack
-from oracle_ai_data_platform_fusion_bundle.orchestrator.sql_renderer import RunContext
-from oracle_ai_data_platform_fusion_bundle.orchestrator.sql_runner import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack import load_pack
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.sql_renderer import RunContext
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.sql_runner import (
     AIDPF_5014_UNKNOWN_BUILTIN_DISPATCH,
     execute_node,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.tenant_profile import (
+from oracle_ai_data_platform_fusion_autopilot.schema.tenant_profile import (
     load_tenant_profile_from_string,
 )
 
@@ -68,7 +68,7 @@ id: dim_calendar
 layer: silver
 implementation:
   type: builtin
-  callable: oracle_ai_data_platform_fusion_bundle.dimensions.dim_calendar:build
+  callable: oracle_ai_data_platform_fusion_autopilot.dimensions.dim_calendar:build
 target: dim_calendar
 dependsOn:
   bronze: []
@@ -242,7 +242,7 @@ class TestBuiltinDispatchHappyPath:
         sql_runner._BUILTIN_REGISTRY.clear()
         sql_runner._ensure_registry_populated()
         assert (
-            "oracle_ai_data_platform_fusion_bundle.dimensions.dim_calendar:build"
+            "oracle_ai_data_platform_fusion_autopilot.dimensions.dim_calendar:build"
             in sql_runner._BUILTIN_REGISTRY
         )
         # Second call is idempotent.

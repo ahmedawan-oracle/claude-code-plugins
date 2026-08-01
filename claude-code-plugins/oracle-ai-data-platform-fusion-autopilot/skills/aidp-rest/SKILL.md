@@ -5,7 +5,7 @@ description: "AIDP control-plane REST client primitives: OCI signing, workspace/
 
 # aidp-rest — AIDP control-plane REST primitives
 
-> **Canonical location**: the Python client lives in the plugin source at `scripts/oracle_ai_data_platform_fusion_bundle/dispatch/rest_client.py`. The skill's `client.py` is a path-resolving re-export shim — it adds the checkout's `scripts/` directory to `sys.path` and re-exports the canonical names. Edits to the client land in the plugin first; this skill documents the contract and the empirically-confirmed gotchas.
+> **Canonical location**: the Python client lives in the plugin source at `scripts/oracle_ai_data_platform_fusion_autopilot/dispatch/rest_client.py`. The skill's `client.py` is a path-resolving re-export shim — it adds the checkout's `scripts/` directory to `sys.path` and re-exports the canonical names. Edits to the client land in the plugin first; this skill documents the contract and the empirically-confirmed gotchas.
 
 Reusable Python client for the AIDP `/aiDataPlatforms/<id>/workspaces/<key>/...` REST surface. Encapsulates OCI request signing (both API-key and session-token profiles), the empirically-confirmed request shapes, and the gotchas that aren't in Oracle's swagger.
 
@@ -50,7 +50,7 @@ client.upload_notebook("/Workspace/Shared/my-skill/run.ipynb", notebook_dict)
 job_key = client.create_notebook_job(
     name="my-skill-run", description="...",
     notebook_path="/Workspace/Shared/my-skill/run.ipynb",
-    cluster_key=cluster_key, cluster_name="fusion_bundle_dev",
+    cluster_key=cluster_key, cluster_name="fusion_autopilot_dev",
     task_key="main",
 )
 run_key = client.submit_run(job_key)
@@ -130,10 +130,10 @@ https://datalake.<region>.oci.oraclecloud.com/<apiVersion>/aiDataPlatforms/<aiDa
 5. **`taskRunKey` lives in `taskToTaskRunMap[<taskKey>]`** — research doc was silent. For single-task jobs, `next(iter(run["taskRunSummaryMap"]))` also works.
 6. **`fetchOutput` `outputKey: ""`** — empty string, NOT `"main"`. The 404 it returns for wrong values misleadingly cites the `taskRunKey`, not the bad `outputKey`.
 7. **Output payload at `data[0].value`** — NOT `data[0].content`. The executed notebook is a JSON string at `.value`.
-8. **`oidlUtils.notebook.exit(...)` is unreliable on `fusion_bundle_dev`** — module not installed there. Use the stdout-marker pattern instead: notebook prints `<MARKER_BEGIN> <json> <MARKER_END>`, REST caller walks `cells[*].outputs[*]` for it.
+8. **`oidlUtils.notebook.exit(...)` is unreliable on `fusion_autopilot_dev`** — module not installed there. Use the stdout-marker pattern instead: notebook prints `<MARKER_BEGIN> <json> <MARKER_END>`, REST caller walks `cells[*].outputs[*]` for it.
 9. **Poll loops must tolerate `ReadTimeout`** — the polling endpoint occasionally times out on a single request. Retry after a short sleep; don't fail the whole dispatch.
 10. **Plain `requests` returns raw API body** — no `{status, data}` envelope (unlike `oci raw-request` from the CLI which wraps it). Top-level keys are the resource fields directly.
 
 ## Source of truth
 
-The full empirical research log lives at `dev/RESEARCH_aidp_rest_api_probe_results.md` (Phases 1-4 confirmed against `amitV2` / `playground` / `fusion_bundle_dev`, 2026-05-17). When this skill's behavior diverges from that doc, the doc updates. When the doc diverges from Oracle's swagger, the doc wins because it was verified against live infrastructure.
+The full empirical research log lives at `dev/RESEARCH_aidp_rest_api_probe_results.md` (Phases 1-4 confirmed against `amitV2` / `playground` / `fusion_autopilot_dev`, 2026-05-17). When this skill's behavior diverges from that doc, the doc updates. When the doc diverges from Oracle's swagger, the doc wins because it was verified against live infrastructure.

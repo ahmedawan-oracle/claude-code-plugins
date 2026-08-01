@@ -27,18 +27,18 @@ from unittest.mock import MagicMock
 import pytest
 import yaml
 
-from oracle_ai_data_platform_fusion_bundle.commands.variation_phase import (
+from oracle_ai_data_platform_fusion_autopilot.commands.variation_phase import (
     VariationPhaseOptions,
     run_variation_phase,
     _is_skill_authored_overlay,
     _load_entry_overlay_provenance,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.bundle import Bundle
-from oracle_ai_data_platform_fusion_bundle.schema.incremental_impact import (
+from oracle_ai_data_platform_fusion_autopilot.schema.bundle import Bundle
+from oracle_ai_data_platform_fusion_autopilot.schema.incremental_impact import (
     IncrementalImpact,
     RemediationRecord,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.medallion_pack import (
+from oracle_ai_data_platform_fusion_autopilot.schema.medallion_pack import (
     PackProvenance,
     SkillProposalRecord,
 )
@@ -48,7 +48,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 STARTER_PACK = (
     REPO_ROOT
     / "scripts"
-    / "oracle_ai_data_platform_fusion_bundle"
+    / "oracle_ai_data_platform_fusion_autopilot"
     / "content_packs"
     / "fusion-finance-starter"
 )
@@ -224,7 +224,7 @@ def bundle_dir_with_skill_overlay(
     bundle_yaml.write_text(
         yaml.safe_dump(
             {
-                "apiVersion": "aidp-fusion-bundle/v1",
+                "apiVersion": "aidp-fusion-autopilot/v1",
                 "version": "0.2.0",
                 "project": "test",
                 "fusion": {
@@ -269,7 +269,7 @@ class TestSkillAuthoredDetection:
 
     def test_is_skill_authored_no_provenance(self) -> None:
         # Pack with no provenance → not skill-authored.
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack import (
             load_pack,
         )
         pack = load_pack(STARTER_PACK)

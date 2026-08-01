@@ -8,7 +8,7 @@ plugin-portability claim (``tests/live/TC<N>_seed_skill_results.md``).
 
 NOT collected by CI (filename is not ``test_*.py``). Operator-driven only:
 requires real identifiers (via flags or ``AIDP_*`` env vars) and the
-``aidp-fusion-bundle`` CLI installed. A real seed runs ONLY with ``--execute``;
+``aidp-fusion-autopilot`` CLI installed. A real seed runs ONLY with ``--execute``;
 without it the harness stops after the dry-run + guard decision (safe to run
 against any tenant).
 
@@ -63,7 +63,7 @@ def _known_nodes(cli: str, bundle: Path, config: Path, env: str) -> list[str]:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--cli", default="aidp-fusion-bundle", help="CLI entrypoint.")
+    ap.add_argument("--cli", default="aidp-fusion-autopilot", help="CLI entrypoint.")
     ap.add_argument("--bundle", type=Path, default=Path("bundle.yaml"))
     ap.add_argument("--config", type=Path, default=Path("aidp.config.yaml"))
     ap.add_argument("--env", default="dev")

@@ -16,7 +16,7 @@ def _reset_literal_warn_flag():
     introducing flaky tests. Cost is ~microseconds per test.
     """
     try:
-        from oracle_ai_data_platform_fusion_bundle.orchestrator import runtime
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator import runtime
     except ImportError:
         # Test modules that don't transitively import orchestrator
         # shouldn't fail on this fixture.

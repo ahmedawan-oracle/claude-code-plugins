@@ -1,4 +1,4 @@
-"""Unit tests for :mod:`oracle_ai_data_platform_fusion_bundle.commands.bronze_probe`.
+"""Unit tests for :mod:`oracle_ai_data_platform_fusion_autopilot.commands.bronze_probe`.
 
 Tests use ``unittest.mock.MagicMock`` to simulate a Spark session whose
 ``sql("DESCRIBE TABLE ...")`` returns fixture rows. The integration
@@ -12,11 +12,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.commands.bronze_probe import (
+from oracle_ai_data_platform_fusion_autopilot.commands.bronze_probe import (
     BronzeProbeFailure,
     describe_bronze,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.bronze_fingerprint import (
+from oracle_ai_data_platform_fusion_autopilot.schema.bronze_fingerprint import (
     ColumnInfo,
 )
 

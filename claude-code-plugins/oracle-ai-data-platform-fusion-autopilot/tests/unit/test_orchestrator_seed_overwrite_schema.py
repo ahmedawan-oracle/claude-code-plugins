@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from oracle_ai_data_platform_fusion_bundle.orchestrator.builtins import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.builtins import (
     bronze_extract_adapter,
 )
 

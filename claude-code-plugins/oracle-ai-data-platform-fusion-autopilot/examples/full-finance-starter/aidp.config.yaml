@@ -1,4 +1,4 @@
-apiVersion: aidp-fusion-bundle/v1
+apiVersion: aidp-fusion-autopilot/v1
 project: my-fusion-lake
 
 defaults:
@@ -13,7 +13,7 @@ environments:
 
     aiDataPlatformId: ocid1.datalake.oc1.iad.AIDP-ID-PLACEHOLDER
     clusterKey: CLUSTER-KEY-PLACEHOLDER
-    clusterName: fusion_bundle_dev
+    clusterName: fusion_autopilot_dev
 
     # AIDP credential-store entry used by REST-dispatched cluster jobs.
     biccSecretName: fusion_bicc_password

@@ -1,6 +1,6 @@
 # Diagnostic artifact contract (Phase 3a)
 
-Bootstrap (`aidp-fusion-bundle bootstrap`) writes structured diagnostic
+Bootstrap (`aidp-fusion-autopilot bootstrap`) writes structured diagnostic
 artifacts under `<bundle.yaml.parent>/.aidp/diagnostics/<run_id>/`
 when mechanical resolution cannot proceed. Feature #3
 (`v2-phase-3b-medallion-author-skill`) reads these to draft overlays;
@@ -39,7 +39,7 @@ consumers; breaking changes bump the literal.
 ## Pydantic models
 
 Defined in
-`scripts/oracle_ai_data_platform_fusion_bundle/schema/diagnostic_artifact.py`:
+`scripts/oracle_ai_data_platform_fusion_autopilot/schema/diagnostic_artifact.py`:
 
 * `DiagnosticArtifactBase` — shared header (`schemaVersion`, `runId`,
   `tenant`, `errorCode`, `errorMessage`, `generatedAt`).
@@ -147,7 +147,7 @@ Example: `AIDPF-2012.json`
   "runId": "cp-20260606120000-abcdef12",
   "tenant": "finance-default",
   "errorCode": "AIDPF-2012",
-  "errorMessage": "AIDPF-2012: bronze schema fingerprint diverged from pinned profile; run `aidp-fusion-bundle bootstrap --refresh` to re-pin.",
+  "errorMessage": "AIDPF-2012: bronze schema fingerprint diverged from pinned profile; run `aidp-fusion-autopilot bootstrap --refresh` to re-pin.",
   "generatedAt": "2026-06-06T12:00:00+00:00",
   "schemaDrift": {
     "priorFingerprint": "sha256:aaa…",
@@ -185,7 +185,7 @@ Example: `AIDPF-2012.json`
 | `schemaDrift.priorFingerprint` | Value pinned in the tenant profile (last `bootstrap` / `bootstrap --refresh`). |
 | `schemaDrift.currentFingerprint` | Live bronze fingerprint computed during preflight. |
 | `schemaDrift.pinnedAt` | Timestamp the prior fingerprint was pinned. |
-| `schemaDrift.datasetDeltas[]` | **Phase 3d** — per-dataset column-level diff: `addedColumns` / `removedColumns` / `typeChangedColumns`. Populated when the bootstrap-pinned `profiles/<tenant>.schema-snapshot.yaml` is present and self-consistent. Empty (with a one-time WARN log) when the snapshot is absent (pre-3d profile), unparseable, or fingerprint-desynced from the profile — remediation is `aidp-fusion-bundle bootstrap --refresh` to repin both atomically. Diff key canonicalisation mirrors the fingerprint algorithm: case- and whitespace-only differences are invisible; original casing is preserved on the surfaced entries for operator display. |
+| `schemaDrift.datasetDeltas[]` | **Phase 3d** — per-dataset column-level diff: `addedColumns` / `removedColumns` / `typeChangedColumns`. Populated when the bootstrap-pinned `profiles/<tenant>.schema-snapshot.yaml` is present and self-consistent. Empty (with a one-time WARN log) when the snapshot is absent (pre-3d profile), unparseable, or fingerprint-desynced from the profile — remediation is `aidp-fusion-autopilot bootstrap --refresh` to repin both atomically. Diff key canonicalisation mirrors the fingerprint algorithm: case- and whitespace-only differences are invisible; original casing is preserved on the surfaced entries for operator display. |
 | `schemaDrift.affectedVariationPoints[]` | Per-VP deltas — for each VP resolved in the profile, whether its pinned candidate is still present in the live bronze. Empty if every pinned candidate still matches (the fingerprint shifted for an unrelated reason — added/removed/retyped columns outside any VP). |
 
 The `medallion_author.reader.read_run` parses this alongside the
@@ -246,7 +246,7 @@ Pack-aware validation rules (enforced by
 A successful bootstrap also writes
 `<bundle.yaml.parent>/evidence/<tenant>/<ISO-ts>.yaml` recording the
 walker outcomes + approval metadata. Schema lives in
-`scripts/oracle_ai_data_platform_fusion_bundle/schema/evidence_snapshot.py`;
+`scripts/oracle_ai_data_platform_fusion_autopilot/schema/evidence_snapshot.py`;
 nested shape per PLAN §9.5.7 / §9.5.9:
 
 ```yaml

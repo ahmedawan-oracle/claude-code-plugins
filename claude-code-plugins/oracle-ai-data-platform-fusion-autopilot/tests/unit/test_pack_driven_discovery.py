@@ -18,11 +18,11 @@ import pathlib
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.orchestrator import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator import (
     PackNodeNotFoundError,
     _resolve_node_from_pack,
 )
-from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack import load_pack
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack import load_pack
 
 
 PACK_YAML = """
@@ -65,7 +65,7 @@ id: dim_calendar
 layer: silver
 implementation:
   type: builtin
-  callable: oracle_ai_data_platform_fusion_bundle.dimensions.dim_calendar:build
+  callable: oracle_ai_data_platform_fusion_autopilot.dimensions.dim_calendar:build
 target: dim_calendar
 dependsOn:
   bronze: []

@@ -15,20 +15,20 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.commands.variation_phase import (
+from oracle_ai_data_platform_fusion_autopilot.commands.variation_phase import (
     _ProbeResult,
     _probe_result_from_marker,
     VariationPhaseOptions,
 )
-from oracle_ai_data_platform_fusion_bundle.commands.variation_resolver import (
+from oracle_ai_data_platform_fusion_autopilot.commands.variation_resolver import (
     AutoResolved,
     MultiMatch,
     NoMatch,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.bronze_fingerprint import (
+from oracle_ai_data_platform_fusion_autopilot.schema.bronze_fingerprint import (
     ColumnInfo,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.cluster_probe_marker import (
+from oracle_ai_data_platform_fusion_autopilot.schema.cluster_probe_marker import (
     ClusterProbeMarker,
 )
 
@@ -167,7 +167,7 @@ class TestProbeResultFromMarkerNoMatch:
 
 class TestAcquireProbeResultClusterModeGuards:
     def test_cluster_mode_requires_dispatch_config(self) -> None:
-        from oracle_ai_data_platform_fusion_bundle.commands.variation_phase import (
+        from oracle_ai_data_platform_fusion_autopilot.commands.variation_phase import (
             _acquire_probe_result,
         )
 
@@ -187,7 +187,7 @@ class TestAcquireProbeResultClusterModeGuards:
             )
 
     def test_cluster_mode_requires_env(self) -> None:
-        from oracle_ai_data_platform_fusion_bundle.commands.variation_phase import (
+        from oracle_ai_data_platform_fusion_autopilot.commands.variation_phase import (
             _acquire_probe_result,
         )
 

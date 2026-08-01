@@ -42,7 +42,7 @@ seven skills to invoke, or in what order.
 
 | # | Step | Done when (detect) | Drive with | PAUSE before if |
 |---|---|---|---|---|
-| 1 | **Config** | `bundle.yaml` + `aidp.config.yaml` exist; coords non-placeholder | `aidp-fusion-bundle init` (scaffold if absent — fresh install) → `/aidp-fusion-config` for coords | missing `fusion:` connectivity (human-only) |
+| 1 | **Config** | `bundle.yaml` + `aidp.config.yaml` exist; coords non-placeholder | `aidp-fusion-autopilot init` (scaffold if absent — fresh install) → `/aidp-fusion-config` for coords | missing `fusion:` connectivity (human-only) |
 | **1b** | **OAC MCP connect** (front-loaded prerequisite — see §below) | `oac-mcp-server` tools answer a live `search_catalog` ping | project-scoped `dashboard mcp-setup`, then **restart/reconnect Claude Code** | **always when dead** — staging the connector needs a Claude Code restart before its tools work; write the resume checkpoint, then PAUSE for the restart |
 | 2 | **Bootstrap** | `profiles/<tenant>.yaml` present + fingerprint pinned | `/aidp-fusion-bootstrap` | multi-match variation needs a human pick (never `--non-interactive`); surface frozen picks |
 | 3 | **Seed** | live gold has the needed tables (probe) | `/aidp-fusion-seed` | always confirm the destructive guard's CONFIRM outcome |
@@ -80,7 +80,7 @@ before Bootstrap. On an already-configured tenant, probe it first thing.
 3. **Dead → set up + restart.** From the customer project directory, run:
    ```bash
    env -u OAC_URL -u OAC_MCP_USER -u OAC_MCP_PASSWORD -u OAC_ADMIN_USER -u OAC_ADMIN_PASSWORD \
-   aidp-fusion-bundle dashboard mcp-setup \
+   aidp-fusion-autopilot dashboard mcp-setup \
      --connector-js <path-to-oac-mcp-connect.js>
    ```
    This stages the connector, writes the 0600 connector config, and wires
@@ -128,14 +128,14 @@ If `bundle.yaml` / `aidp.config.yaml` don't exist yet (brand-new install), Step
 
 First, make sure the CLI exists. On a plugin-only install, the user may have
 downloaded the Claude Code plugin but not manually run `pip install -e`. Do not
-send them back to a setup guide for that. Check `command -v aidp-fusion-bundle`;
+send them back to a setup guide for that. Check `command -v aidp-fusion-autopilot`;
 if it is missing, install the CLI from the plugin root that contains this skill
 directory, then continue. The plugin root is two directories above this file
 (`skills/aidp-fusion-autopilot/../..`). Use the active Python, create or reuse
 the plugin repo's `.venv` only when needed, and keep the customer bundle
 directory separate.
 
-Then run **`aidp-fusion-bundle init`** from the clean customer bundle directory
+Then run **`aidp-fusion-autopilot init`** from the clean customer bundle directory
 to scaffold `bundle.yaml`, `aidp.config.yaml`, and `.env`, then
 `/aidp-fusion-config` to resolve the AIDP coords from names. Capture the user's
 goal first (even a rough one) so the rest of the journey has a target; if they

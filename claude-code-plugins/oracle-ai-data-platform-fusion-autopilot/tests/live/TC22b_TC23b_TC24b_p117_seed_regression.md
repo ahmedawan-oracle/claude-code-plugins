@@ -1,8 +1,8 @@
-# TC22b / TC23b / TC24b — P1.17 seed-mode regression on `fusion_bundle_dev`
+# TC22b / TC23b / TC24b — P1.17 seed-mode regression on `fusion_autopilot_dev`
 
 **Test case IDs**: TC22b / TC23b / TC24b (per BACKLOG — Phase α `dim_account` / `gl_balance` / `ap_aging` re-verifications under P1.17 seed mode).
 **Stage D plan item**: E3 (`docs/features/p1.17-incremental-merge/plan.md`).
-**Status**: ✅ **EXECUTED 2026-06-02** on `fusion_bundle_dev` cluster / `playground` workspace via the AIDP REST dispatch surface (TC26 narrow scope — `erp_suppliers` + `ap_invoices` + `dim_supplier` + `dim_calendar` + `supplier_spend`).
+**Status**: ✅ **EXECUTED 2026-06-02** on `fusion_autopilot_dev` cluster / `playground` workspace via the AIDP REST dispatch surface (TC26 narrow scope — `erp_suppliers` + `ap_invoices` + `dim_supplier` + `dim_calendar` + `supplier_spend`).
 
 ## What this verifies
 
@@ -53,8 +53,8 @@ Everything else — financial totals, row counts per natural-key bucket, dim att
 
 - AIDP REST host: `https://datalake.us-ashburn-1.oci.oraclecloud.com`
 - Workspace: `playground` (display name; UUID redacted)
-- Cluster: `fusion_bundle_dev` (display name; UUID redacted)
-- AIDP wheel: `oracle_ai_data_platform_fusion_bundle-0.1.0a0-py3-none-any.whl` (built from `HEAD` of `oussama-dev-p1.17-incremental-merge` post-Stage-C)
+- Cluster: `fusion_autopilot_dev` (display name; UUID redacted)
+- AIDP wheel: `oracle_ai_data_platform_fusion_autopilot-0.1.0a0-py3-none-any.whl` (built from `HEAD` of `oussama-dev-p1.17-incremental-merge` post-Stage-C)
 - jobKey / runKey / taskRunKey: operator-redacted (per-run identifiers, not material to the regression contract)
 - Bundle config: narrow scope (per TC26 NARROW_BUNDLE template in `.claude/skills/fusion-tc26-run/dispatch.py`)
 

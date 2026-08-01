@@ -11,7 +11,7 @@ import json
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.schema.resolutions_input import (
+from oracle_ai_data_platform_fusion_autopilot.schema.resolutions_input import (
     ResolutionsFileBadCandidate,
     ResolutionsFileDuplicate,
     ResolutionsFileExtraneousEntry,

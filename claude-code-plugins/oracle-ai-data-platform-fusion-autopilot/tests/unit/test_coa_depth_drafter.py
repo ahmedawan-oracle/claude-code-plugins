@@ -12,22 +12,22 @@ from pathlib import Path
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.medallion_author.drafter import (
+from oracle_ai_data_platform_fusion_autopilot.medallion_author.drafter import (
     OverlayValidationError,
     draft_coa_depth_overlay,
     validate_overlay,
 )
-from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack import (
     load_full_chain,
     load_pack,
 )
-from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack_validators import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack_validators import (
     validate_coa_semantic_roles,
 )
 
 REPO = Path(__file__).resolve().parents[2]
 SHIPPED = (
-    REPO / "scripts" / "oracle_ai_data_platform_fusion_bundle"
+    REPO / "scripts" / "oracle_ai_data_platform_fusion_autopilot"
     / "content_packs" / "fusion-finance-starter"
 )
 
@@ -96,7 +96,7 @@ def test_validate_overlay_rejects_neither_id() -> None:
 def test_drafted_overlay_merges_and_validates(tmp_path: Path) -> None:
     """Write the draft to disk, merge onto the shipped base, and confirm the
     merged chain passes COA validation (domain extended, contract-backed)."""
-    from oracle_ai_data_platform_fusion_bundle.medallion_author.drafter import write_overlay
+    from oracle_ai_data_platform_fusion_autopilot.medallion_author.drafter import write_overlay
 
     draft = _draft()
     pack_yaml_path = write_overlay(draft, workdir=tmp_path, overwrite=True)

@@ -1,4 +1,4 @@
-"""CLI integration tests for `aidp-fusion-bundle content-pack {list,info,validate}`.
+"""CLI integration tests for `aidp-fusion-autopilot content-pack {list,info,validate}`.
 
 Tests invoke the CLI via subprocess so the end-to-end click → command →
 loader/validator chain is exercised. Run with the editable-install Python
@@ -16,11 +16,11 @@ PLUGIN_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
 def _run_cli(*args: str) -> subprocess.CompletedProcess[str]:
-    """Run `aidp-fusion-bundle <args>` via the current Python's module entry."""
+    """Run `aidp-fusion-autopilot <args>` via the current Python's module entry."""
     cmd = [
         sys.executable,
         "-m",
-        "oracle_ai_data_platform_fusion_bundle.cli",
+        "oracle_ai_data_platform_fusion_autopilot.cli",
         *args,
     ]
     return subprocess.run(cmd, capture_output=True, text=True, cwd=PLUGIN_ROOT)
@@ -241,10 +241,10 @@ import copy  # noqa: E402
 
 import yaml as _yaml  # noqa: E402
 
-from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack import (  # noqa: E402
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack import (  # noqa: E402
     load_pack,
 )
-from oracle_ai_data_platform_fusion_bundle.orchestrator.sql_renderer import (  # noqa: E402
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.sql_renderer import (  # noqa: E402
     compute_contract_fingerprint,
     compute_fork_fingerprint,
 )

@@ -8,13 +8,13 @@ from datetime import datetime, timezone
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack import load_pack
-from oracle_ai_data_platform_fusion_bundle.orchestrator.fusion_pvo_drift import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack import load_pack
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.fusion_pvo_drift import (
     AIDPF_2072_FUSION_PVO_DRIFT_GATE_FAILED,
     FusionPvoDriftError,
     assert_fusion_pvo_compatibility,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.bronze_schema_snapshot import (
+from oracle_ai_data_platform_fusion_autopilot.schema.bronze_schema_snapshot import (
     BronzeSchemaSnapshotV1,
     SnapshotColumn,
     SnapshotDataset,

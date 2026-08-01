@@ -7,14 +7,14 @@ from unittest.mock import MagicMock
 import pytest
 import yaml
 
-from oracle_ai_data_platform_fusion_bundle.orchestrator.quality_runner import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.quality_runner import (
     AIDPF_8010_QUALITY_TEST_FAILED,
     AIDPF_8011_QUALITY_TEST_DEFERRED,
     QualityReport,
     run_quality_tests,
 )
-from oracle_ai_data_platform_fusion_bundle.orchestrator.sql_renderer import RunContext
-from oracle_ai_data_platform_fusion_bundle.schema.medallion_pack import NodeYaml
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.sql_renderer import RunContext
+from oracle_ai_data_platform_fusion_autopilot.schema.medallion_pack import NodeYaml
 
 
 def _ctx() -> RunContext:
@@ -122,7 +122,7 @@ class TestImplementedTests:
         a result and asserting the test result's type and status.
 
         Real pyspark integration is exercised in Step 13's integration
-        tests (gated by AIDP_FUSION_BUNDLE_RUN_SPARK_TESTS=1).
+        tests (gated by AIDP_FUSION_AUTOPILOT_RUN_SPARK_TESTS=1).
         """
         # row_count_min uses no pyspark helpers — covered above. The other
         # three (not_null/unique/accepted_values) require pyspark to be

@@ -12,16 +12,16 @@ from datetime import datetime, timezone
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.medallion_author.knowledge_base import (
+from oracle_ai_data_platform_fusion_autopilot.medallion_author.knowledge_base import (
     KNOWN_DELTAS_PATH,
     column_matches_pattern,
     load_known_deltas,
 )
-from oracle_ai_data_platform_fusion_bundle.medallion_author.reasoner import (
+from oracle_ai_data_platform_fusion_autopilot.medallion_author.reasoner import (
     classify_incremental_risk,
     score_candidates,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.diagnostic_artifact import (
+from oracle_ai_data_platform_fusion_autopilot.schema.diagnostic_artifact import (
     AIDPF_2010_COLUMN_ALIAS_UNRESOLVED,
     CandidateProbeOutcome,
     ObservedColumn,

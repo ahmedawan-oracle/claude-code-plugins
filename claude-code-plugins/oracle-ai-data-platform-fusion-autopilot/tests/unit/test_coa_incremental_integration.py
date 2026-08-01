@@ -20,27 +20,27 @@ from pathlib import Path
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.orchestrator import plan_hash as ph
-from oracle_ai_data_platform_fusion_bundle.orchestrator.coa_change import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator import plan_hash as ph
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.coa_change import (
     coa_projection_of,
 )
-from oracle_ai_data_platform_fusion_bundle.orchestrator.coa_incremental import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.coa_incremental import (
     CoaIncrementalContext,
 )
-from oracle_ai_data_platform_fusion_bundle.orchestrator.sql_renderer import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.sql_renderer import (
     RunContext,
     compute_rendered_sql_hash,
     render_node_sql,
 )
-from oracle_ai_data_platform_fusion_bundle.orchestrator.sql_runner import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.sql_runner import (
     _profile_with_prior_coa,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.medallion_pack import (
+from oracle_ai_data_platform_fusion_autopilot.schema.medallion_pack import (
     NodeYaml,
     PackYaml,
     ResolvedPack,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.tenant_profile import (
+from oracle_ai_data_platform_fusion_autopilot.schema.tenant_profile import (
     TenantProfile,
     compute_profile_hash,
 )

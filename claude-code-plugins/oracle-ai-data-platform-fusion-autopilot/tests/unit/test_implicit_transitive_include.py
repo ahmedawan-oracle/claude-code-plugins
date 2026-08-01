@@ -11,8 +11,8 @@ import pathlib
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack import load_pack
-from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack_plan_resolver import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack import load_pack
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack_plan_resolver import (
     AIDPF_1042_STRICT_SCOPE_MISSING_DEPENDENCY,
     AIDPF_1043_CLI_DATASET_OUTSIDE_BUNDLE_SCOPE,
     AIDPF_1045_LAYER_FILTER_EMPTIED_PLAN,

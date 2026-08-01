@@ -23,7 +23,7 @@ from pathlib import Path
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.schema.diagnostic_artifact import (
+from oracle_ai_data_platform_fusion_autopilot.schema.diagnostic_artifact import (
     AIDPF_2048_CLUSTER_BOOTSTRAP_DISPATCH_FAILED,
     AIDPF_2049_CLUSTER_BOOTSTRAP_MARKER_INVALID,
     ClusterDispatchDiagnosticV1,
@@ -165,7 +165,7 @@ class TestWriteClusterDispatchDiagnostic:
             write_cluster_dispatch_diagnostic(tmp_path, run_id, _dispatch_artifact())
 
     def test_rejects_unsafe_run_id(self, tmp_path: Path) -> None:
-        from oracle_ai_data_platform_fusion_bundle.schema.path_segment import (
+        from oracle_ai_data_platform_fusion_autopilot.schema.path_segment import (
             UnsafePathSegmentError,
         )
 

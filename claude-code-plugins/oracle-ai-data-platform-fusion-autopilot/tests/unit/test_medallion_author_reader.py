@@ -18,11 +18,11 @@ from pathlib import Path
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.medallion_author.reader import (
+from oracle_ai_data_platform_fusion_autopilot.medallion_author.reader import (
     DiagnosticReadResult,
     read_run,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.diagnostic_artifact import (
+from oracle_ai_data_platform_fusion_autopilot.schema.diagnostic_artifact import (
     AIDPF_1020_OPERATOR_IDENTITY_UNRESOLVED,
     AIDPF_2010_COLUMN_ALIAS_UNRESOLVED,
     AIDPF_2011_SEMANTIC_VARIANT_UNRESOLVED,
@@ -260,7 +260,7 @@ class TestPhase41ClusterDispatchScope:
     """
 
     def _write_2048(self, tmp_path: Path, run_id: str = "run-cluster") -> Path:
-        from oracle_ai_data_platform_fusion_bundle.schema.diagnostic_artifact import (
+        from oracle_ai_data_platform_fusion_autopilot.schema.diagnostic_artifact import (
             ClusterDispatchDiagnosticV1,
             write_cluster_dispatch_diagnostic,
         )
@@ -280,7 +280,7 @@ class TestPhase41ClusterDispatchScope:
         return write_cluster_dispatch_diagnostic(tmp_path, run_id, artifact)
 
     def _write_2049(self, tmp_path: Path, run_id: str = "run-cluster") -> Path:
-        from oracle_ai_data_platform_fusion_bundle.schema.diagnostic_artifact import (
+        from oracle_ai_data_platform_fusion_autopilot.schema.diagnostic_artifact import (
             ClusterMarkerDiagnosticV1,
             write_cluster_marker_diagnostic,
         )
@@ -347,7 +347,7 @@ class TestPhase41ClusterDispatchScope:
         # set still land in malformed_paths (today's existing
         # behaviour).
         run_id = "run-unknown"
-        from oracle_ai_data_platform_fusion_bundle.schema.diagnostic_artifact import (
+        from oracle_ai_data_platform_fusion_autopilot.schema.diagnostic_artifact import (
             _atomic_write_json,
             _diagnostics_dir,
         )
@@ -370,7 +370,7 @@ class TestPhase41ClusterDispatchScope:
 
 
 def _write_4071(tmp_path: Path, run_id: str, node: str = "ap_payments") -> None:
-    from oracle_ai_data_platform_fusion_bundle.schema.diagnostic_artifact import (
+    from oracle_ai_data_platform_fusion_autopilot.schema.diagnostic_artifact import (
         BronzeSourceColumnMissingV1,
         write_bronze_source_column_missing_diagnostic,
     )

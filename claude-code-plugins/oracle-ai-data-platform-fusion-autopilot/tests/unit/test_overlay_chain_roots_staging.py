@@ -15,7 +15,7 @@ from types import SimpleNamespace
 _REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_REPO / "scripts"))
 
-from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack_staging import (  # noqa: E402
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack_staging import (  # noqa: E402
     _resolve_chain_roots,
 )
 

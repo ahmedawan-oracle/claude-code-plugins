@@ -1,6 +1,6 @@
 ---
 name: aidpf-error-triage
-description: "Read-only triage router for Oracle AIDP Fusion bundle failures. Use when the user pastes CLI output, a traceback, an `.aidp/diagnostics` path, a run id, or says bootstrap, validate, seed, incremental, dashboard, OAC, or workbook failed. Extract `AIDPF-*` codes, affected run id, dataset, layer, variation point, or diagnostic artifact; explain the failure briefly; route to the correct skill or command such as `/aidp-fusion-config`, `/aidp-fusion-bootstrap`, `/medallion-author`, `/fusion-drift-doctor`, `/aidp-fusion-seed`, `/aidp-fusion-incremental`, `/oac-dataset-setup`, or `/workbook-authoring`. Also triage non-AIDPF OAC MCP disconnect symptoms. Never run destructive seed, never edit profiles or overlays, and never bypass drift gates."
+description: "Read-only triage router for Oracle AIDP Fusion Autopilot failures. Use when the user pastes CLI output, a traceback, an `.aidp/diagnostics` path, a run id, or says bootstrap, validate, seed, incremental, dashboard, OAC, or workbook failed. Extract `AIDPF-*` codes, affected run id, dataset, layer, variation point, or diagnostic artifact; explain the failure briefly; route to the correct skill or command such as `/aidp-fusion-config`, `/aidp-fusion-bootstrap`, `/medallion-author`, `/fusion-drift-doctor`, `/aidp-fusion-seed`, `/aidp-fusion-incremental`, `/oac-dataset-setup`, or `/workbook-authoring`. Also triage non-AIDPF OAC MCP disconnect symptoms. Never run destructive seed, never edit profiles or overlays, and never bypass drift gates."
 allowed-tools: Read, Bash, Glob, Grep
 ---
 
@@ -169,7 +169,7 @@ phase: OAC MCP
 meaning: MCP connection is unavailable; this is not proof that datasets are absent
 route: from the customer project directory run:
   env -u OAC_URL -u OAC_MCP_USER -u OAC_MCP_PASSWORD -u OAC_ADMIN_USER -u OAC_ADMIN_PASSWORD \
-  aidp-fusion-bundle dashboard mcp-setup --connector-js <path>
+  aidp-fusion-autopilot dashboard mcp-setup --connector-js <path>
   then write .aidp/autopilot/resume.md and reconnect Claude Code
 next: resume from .aidp/autopilot/resume.md and re-probe OAC
 ```

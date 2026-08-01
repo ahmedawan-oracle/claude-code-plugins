@@ -1,10 +1,10 @@
 # TC21 — `silver.dim_calendar` live verification (2026-05-07)
 
-> **Status**: ✅ **PASS (100% verification)** — calendar dim materialized end-to-end on `fusion_bundle_dev` cluster. Unlike `dim_supplier` / `supplier_spend` (which have data-shape variations across pods), `dim_calendar` is fully system-generated, so this single run covers the entire verification surface. No production-shape gap.
+> **Status**: ✅ **PASS (100% verification)** — calendar dim materialized end-to-end on `fusion_autopilot_dev` cluster. Unlike `dim_supplier` / `supplier_spend` (which have data-shape variations across pods), `dim_calendar` is fully system-generated, so this single run covers the entire verification surface. No production-shape gap.
 
 ## Test setup
 
-* **Cluster**: `fusion_bundle_dev` (id `<CLUSTER_KEY>`) in workspace `<WORKSPACE_KEY>`
+* **Cluster**: `fusion_autopilot_dev` (id `<CLUSTER_KEY>`) in workspace `<WORKSPACE_KEY>`
 * **SQL**: inlined from `dimensions/dim_calendar.py` with default parameters (range 2020-01-01 → 2030-12-31, fiscal_start_month=1)
 * **Source**: none — generated via Spark's `sequence(DATE, DATE, INTERVAL 1 DAY)` + `EXPLODE`
 
@@ -75,5 +75,5 @@ Highlights:
 
 ## References
 
-* Module: [`scripts/.../dimensions/dim_calendar.py`](../../scripts/oracle_ai_data_platform_fusion_bundle/dimensions/dim_calendar.py)
+* Module: [`scripts/.../dimensions/dim_calendar.py`](../../scripts/oracle_ai_data_platform_fusion_autopilot/dimensions/dim_calendar.py)
 * Unit tests: [`tests/unit/test_dim_calendar.py`](../unit/test_dim_calendar.py)

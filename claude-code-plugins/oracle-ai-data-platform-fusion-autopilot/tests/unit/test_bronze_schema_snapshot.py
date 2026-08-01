@@ -11,11 +11,11 @@ from pathlib import Path
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.schema.bronze_fingerprint import (
+from oracle_ai_data_platform_fusion_autopilot.schema.bronze_fingerprint import (
     ColumnInfo,
     compute_bronze_fingerprint,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.bronze_schema_snapshot import (
+from oracle_ai_data_platform_fusion_autopilot.schema.bronze_schema_snapshot import (
     BronzeSchemaSnapshotSchemaError,
     BronzeSchemaSnapshotV1,
     from_observed,
@@ -24,7 +24,7 @@ from oracle_ai_data_platform_fusion_bundle.schema.bronze_schema_snapshot import 
     snapshot_to_observed,
     write_bronze_schema_snapshot,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.path_segment import (
+from oracle_ai_data_platform_fusion_autopilot.schema.path_segment import (
     UnsafePathSegmentError,
 )
 

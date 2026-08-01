@@ -8,13 +8,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.config.paths import TablePaths
-from oracle_ai_data_platform_fusion_bundle.orchestrator.bronze_readiness import (
+from oracle_ai_data_platform_fusion_autopilot.config.paths import TablePaths
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.bronze_readiness import (
     AIDPF_2071_BRONZE_READINESS_GATE_FAILED,
     BronzeReadinessGateError,
     assert_bronze_readiness,
 )
-from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack import load_pack
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack import load_pack
 
 
 PACK_YAML = """

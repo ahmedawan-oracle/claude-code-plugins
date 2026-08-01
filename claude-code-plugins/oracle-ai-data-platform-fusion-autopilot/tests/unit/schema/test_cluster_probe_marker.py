@@ -14,10 +14,10 @@ from datetime import datetime, timezone
 import pytest
 from pydantic import ValidationError
 
-from oracle_ai_data_platform_fusion_bundle.schema.bronze_fingerprint import (
+from oracle_ai_data_platform_fusion_autopilot.schema.bronze_fingerprint import (
     ColumnInfo,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.cluster_probe_marker import (
+from oracle_ai_data_platform_fusion_autopilot.schema.cluster_probe_marker import (
     CandidateAttemptMarker,
     ClusterProbeEnvelope,
     ClusterProbeMarker,

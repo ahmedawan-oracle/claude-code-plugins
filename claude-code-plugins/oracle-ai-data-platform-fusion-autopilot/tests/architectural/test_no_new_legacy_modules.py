@@ -24,14 +24,14 @@ from __future__ import annotations
 from pathlib import Path
 
 # Repo layout: this test file lives at
-# `claude-code-plugins/oracle-ai-data-platform-fusion-bundle/tests/architectural/`.
+# `claude-code-plugins/oracle-ai-data-platform-fusion-autopilot/tests/architectural/`.
 # Plugin root is two levels up from this file.
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # Watched directories (relative to plugin root).
 WATCHED = [
-    PLUGIN_ROOT / "scripts" / "oracle_ai_data_platform_fusion_bundle" / "dimensions",
-    PLUGIN_ROOT / "scripts" / "oracle_ai_data_platform_fusion_bundle" / "transforms" / "gold",
+    PLUGIN_ROOT / "scripts" / "oracle_ai_data_platform_fusion_autopilot" / "dimensions",
+    PLUGIN_ROOT / "scripts" / "oracle_ai_data_platform_fusion_autopilot" / "transforms" / "gold",
 ]
 
 # File patterns that count as "legacy module shape" (per PLAN §15 Phase 0 step 9).

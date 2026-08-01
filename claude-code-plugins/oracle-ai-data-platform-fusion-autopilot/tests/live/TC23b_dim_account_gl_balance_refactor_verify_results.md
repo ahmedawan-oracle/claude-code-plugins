@@ -1,7 +1,7 @@
-# TC23b — `silver.dim_account` + `gold.gl_balance` refactor verify on `fusion_bundle_dev`
+# TC23b — `silver.dim_account` + `gold.gl_balance` refactor verify on `fusion_autopilot_dev`
 
 > Date: 2026-05-11
-> Cluster: `fusion_bundle_dev` (saasfademo1 demo pod)
+> Cluster: `fusion_autopilot_dev` (saasfademo1 demo pod)
 > Companion to: [`TC23_gl_balance_results.md`](TC23_gl_balance_results.md) (original P1.8 evidence)
 > Commits verified: `7d79c2f` (P1.11a — dim_account segment portability) + `50d450a` (gl_balance reads positional segment_NN)
 > Runner: `TC23b_dim_account_gl_balance_refactor_verify_runner.py` (local, gitignored)

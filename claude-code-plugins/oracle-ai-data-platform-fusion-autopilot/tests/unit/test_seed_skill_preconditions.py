@@ -44,7 +44,7 @@ def _config(tmp: Path, *, placeholder: bool = False, second_env_clean: bool = Fa
             clusterName: prod_cluster
         """
     return _write(tmp / "aidp.config.yaml", f"""
-        apiVersion: aidp-fusion-bundle/v1
+        apiVersion: aidp-fusion-autopilot/v1
         project: test-lake
         defaults:
           region: us-ashburn-1
@@ -66,7 +66,7 @@ def _bundle_with_profile(tmp: Path, profile_name: str | None) -> Path:
           profile: {profile_name}
     """ if profile_name else ""
     return _write(tmp / "bundle.yaml", f"""
-        apiVersion: aidp-fusion-bundle/v1
+        apiVersion: aidp-fusion-autopilot/v1
         version: "0.2.0"
         project: test-lake
         fusion:

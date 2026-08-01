@@ -15,7 +15,7 @@ These tests confirm:
   PLAN §9.5.7).
 
 Heavy Spark-side integration tests live in tests/integration/ and run
-under AIDP_FUSION_BUNDLE_RUN_SPARK_TESTS=1 (Step 13 plan note —
+under AIDP_FUSION_AUTOPILOT_RUN_SPARK_TESTS=1 (Step 13 plan note —
 deferred to gated CI; pyspark optional).
 """
 
@@ -25,20 +25,20 @@ import pathlib
 
 import yaml
 
-from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack import (
     load_full_chain,
     load_pack,
     make_filesystem_base_resolver,
 )
-from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack_staging import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack_staging import (
     materialize_staged_pack,
     stage_pack_files,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.bundle import (
+from oracle_ai_data_platform_fusion_autopilot.schema.bundle import (
     Bundle,
     resolve_content_pack_root,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.tenant_profile import (
+from oracle_ai_data_platform_fusion_autopilot.schema.tenant_profile import (
     load_tenant_profile,
     resolve_profile_path,
 )

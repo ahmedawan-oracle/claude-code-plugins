@@ -7,11 +7,11 @@ from pathlib import Path
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack import (
     load_full_chain,
     load_pack,
 )
-from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack_staging import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack_staging import (
     AIDPF_1039_PATH_TRAVERSAL,
     ContentPackPathTraversalError,
     materialize_staged_pack,

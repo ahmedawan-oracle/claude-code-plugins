@@ -17,12 +17,12 @@ from __future__ import annotations
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.orchestrator.fusion_pvo_drift import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.fusion_pvo_drift import (
     AIDPF_2072_FUSION_PVO_DRIFT_GATE_FAILED,
     FusionPvoDriftError,
     assert_fusion_pvo_compatibility,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.run_summary import RunStep
+from oracle_ai_data_platform_fusion_autopilot.schema.run_summary import RunStep
 
 
 class TestPvoDriftGateContract:

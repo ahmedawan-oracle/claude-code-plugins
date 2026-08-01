@@ -45,7 +45,7 @@ PII tags may be layered on as an **advisory overlay**, never as the evidence.
 - **Authoring the workbook itself** → use `workbook-authoring` (after the
   dataset exists).
 - **Creating a new gold mart** (new YAML + SQL) → the mart-authoring skill.
-- **Running the pipeline / materializing gold** → `aidp-fusion-bundle run --mode seed`
+- **Running the pipeline / materializing gold** → `aidp-fusion-autopilot run --mode seed`
   (or the `aidp-fusion-seed` skill).
 
 ## Helper
@@ -130,7 +130,7 @@ Compare the pack's `buildableMarts` columns against the dashboard intent:
 
 - **Pack CAN serve it** (a declared mart / column set covers the want) → the
   data just isn't materialized yet. Tell the operator to **run
-  `aidp-fusion-bundle run --mode seed`** (or `/aidp-fusion-seed`) to build it,
+  `aidp-fusion-autopilot run --mode seed`** (or `/aidp-fusion-seed`) to build it,
   then re-run this advisor. (Name which marts seeding will produce.)
 - **Pack CANNOT serve it** (even the declared marts lack the needed
   metric/dimension/grain) → this is a **GAP**. Tell the operator plainly:

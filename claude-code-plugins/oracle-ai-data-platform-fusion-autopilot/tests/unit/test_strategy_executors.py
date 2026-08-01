@@ -20,11 +20,11 @@ from unittest.mock import MagicMock, call
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.orchestrator.sql_renderer import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.sql_renderer import (
     RenderedSql,
     RunContext,
 )
-from oracle_ai_data_platform_fusion_bundle.orchestrator.strategy_executors import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.strategy_executors import (
     AIDPF_4030_UNSUPPORTED_STRATEGY,
     AIDPF_4031_TARGET_IDENTIFIER_REJECTED,
     StrategyExecutionResult,
@@ -34,7 +34,7 @@ from oracle_ai_data_platform_fusion_bundle.orchestrator.strategy_executors impor
     execute_replace,
     execute_strategy,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.medallion_pack import NodeYaml
+from oracle_ai_data_platform_fusion_autopilot.schema.medallion_pack import NodeYaml
 
 
 # ---------------------------------------------------------------------------
@@ -155,13 +155,13 @@ def _fake_spark_for_merge(*, probe_rows: int, target_row_count: int) -> MagicMoc
 
 class TestTargetIdentifierAllowlist:
     def test_safe_three_part_target_accepted(self) -> None:
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.strategy_executors import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.strategy_executors import (
             _check_target_identifier,
         )
         assert _check_target_identifier("fusion_catalog.silver.dim_thing") == "fusion_catalog.silver.dim_thing"
 
     def test_unsafe_target_rejected(self) -> None:
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.strategy_executors import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.strategy_executors import (
             _check_target_identifier,
         )
         with pytest.raises(TargetIdentifierError) as exc_info:
@@ -169,7 +169,7 @@ class TestTargetIdentifierAllowlist:
         assert AIDPF_4031_TARGET_IDENTIFIER_REJECTED in str(exc_info.value)
 
     def test_too_many_segments_rejected(self) -> None:
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.strategy_executors import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.strategy_executors import (
             _check_target_identifier,
         )
         with pytest.raises(TargetIdentifierError):
@@ -308,7 +308,7 @@ class TestExecuteMergeNonEmptyDelta:
         import inspect
         from unittest.mock import patch
 
-        from oracle_ai_data_platform_fusion_bundle.orchestrator import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator import (
             merge_helpers,
             state,
         )

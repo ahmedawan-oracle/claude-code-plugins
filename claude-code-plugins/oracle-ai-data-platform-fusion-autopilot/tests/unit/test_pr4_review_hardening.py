@@ -15,17 +15,17 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from oracle_ai_data_platform_fusion_bundle.dimensions.dim_calendar import (
+from oracle_ai_data_platform_fusion_autopilot.dimensions.dim_calendar import (
     build_dim_calendar_sql,
 )
-from oracle_ai_data_platform_fusion_bundle.orchestrator import _natural_key_join_sql
-from oracle_ai_data_platform_fusion_bundle.orchestrator.errors import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator import _natural_key_join_sql
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.errors import (
     ResumeRunNotResumableError,
 )
-from oracle_ai_data_platform_fusion_bundle.orchestrator.resume import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.resume import (
     check_identity_drift,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.medallion_pack import (
+from oracle_ai_data_platform_fusion_autopilot.schema.medallion_pack import (
     AIDPF_2082_INVALID_SQL_IDENTIFIER,
     AIDPF_2083_INVALID_CALENDAR_DATE,
     CalendarProfile,

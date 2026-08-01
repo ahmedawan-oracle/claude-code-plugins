@@ -6,7 +6,7 @@
      (the table may have been created by an earlier plugin build).
   3. ``ALTER TABLE ... ADD COLUMNS (...)`` only for missing columns.
      Skipped entirely when every fix21 column already exists.
-  4. ``CREATE OR REPLACE VIEW fusion_bundle_state_latest``
+  4. ``CREATE OR REPLACE VIEW fusion_autopilot_state_latest``
      — one-row-per-(run_id, dataset_id) projection. Idempotent.
   5. INSERT + DELETE sentinel probe — verifies writeability.
 
@@ -22,16 +22,16 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.config.paths import TablePaths
-from oracle_ai_data_platform_fusion_bundle.orchestrator import state as state_mod
-from oracle_ai_data_platform_fusion_bundle.orchestrator.state import (
+from oracle_ai_data_platform_fusion_autopilot.config.paths import TablePaths
+from oracle_ai_data_platform_fusion_autopilot.orchestrator import state as state_mod
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.state import (
     AIDPF_4021_STATE_LOCATION_ORPHANED,
     _extract_location_from_error,
     _is_non_empty_location_error,
     ensure_schemas,
     ensure_state_table,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.errors import (
+from oracle_ai_data_platform_fusion_autopilot.schema.errors import (
     OrchestratorConfigError,
 )
 
@@ -174,11 +174,11 @@ def test_ensure_schemas_targets_custom_catalog_and_schemas() -> None:
 
 
 _ORPHAN_LOC = (
-    "oci://bucket@ns/managed/fusion_catalog.cat/bronze.db/fusion_bundle_state"
+    "oci://bucket@ns/managed/fusion_catalog.cat/bronze.db/fusion_autopilot_state"
 )
 _NON_EMPTY_ERR = (
     "[DELTA_CREATE_TABLE_WITH_NON_EMPTY_LOCATION] Cannot create table "
-    f"('fusion_catalog.bronze.fusion_bundle_state'). The associated location "
+    f"('fusion_catalog.bronze.fusion_autopilot_state'). The associated location "
     f"('{_ORPHAN_LOC}') is not empty but it's not a Delta table."
 )
 
@@ -356,8 +356,8 @@ def test_alter_targets_three_part_table_path() -> None:
     )
     ensure_state_table(spark, paths)
     alter_sql = next(s for s in spark.sql_calls if "ALTER TABLE" in s)
-    # Three-part: catalog.bronze_schema.fusion_bundle_state
-    assert "cust_cat.cust_b.fusion_bundle_state" in alter_sql
+    # Three-part: catalog.bronze_schema.fusion_autopilot_state
+    assert "cust_cat.cust_b.fusion_autopilot_state" in alter_sql
 
 
 # ---------------------------------------------------------------------------
@@ -370,7 +370,7 @@ def test_create_view_emits_after_create_table() -> None:
     ensure_state_table(spark, _paths())
     view_sql = next(
         s for s in spark.sql_calls
-        if "CREATE OR REPLACE VIEW" in s and "fusion_bundle_state_latest" in s
+        if "CREATE OR REPLACE VIEW" in s and "fusion_autopilot_state_latest" in s
     )
     assert "ROW_NUMBER() OVER" in view_sql
     assert "PARTITION BY run_id, dataset_id" in view_sql

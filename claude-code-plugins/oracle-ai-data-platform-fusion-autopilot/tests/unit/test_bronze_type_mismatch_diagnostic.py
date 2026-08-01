@@ -8,18 +8,18 @@ from pathlib import Path
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.medallion_author.drafter import (
+from oracle_ai_data_platform_fusion_autopilot.medallion_author.drafter import (
     OverlayDraft,
     OverlayValidationError,
     draft_type_overlay,
     validate_overlay,
 )
-from oracle_ai_data_platform_fusion_bundle.medallion_author.reader import read_run
-from oracle_ai_data_platform_fusion_bundle.schema.diagnostic_artifact import (
+from oracle_ai_data_platform_fusion_autopilot.medallion_author.reader import read_run
+from oracle_ai_data_platform_fusion_autopilot.schema.diagnostic_artifact import (
     BronzeTypeMismatchV1,
     write_bronze_type_mismatch_diagnostic,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.medallion_pack import PackYaml
+from oracle_ai_data_platform_fusion_autopilot.schema.medallion_pack import PackYaml
 
 
 _DIAG = {

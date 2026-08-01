@@ -12,7 +12,7 @@ Used ONLY when the live gold layer is empty or doesn't cover the request, to
 route the operator between:
 
   * **seed** — the pack already declares a mart/columns that cover the want, so
-    `aidp-fusion-bundle run --mode seed` would materialize it; vs.
+    `aidp-fusion-autopilot run --mode seed` would materialize it; vs.
   * **gap**  — even the pack can't serve it -> a new mart is needed
     (mart-authoring skill).
 
@@ -52,7 +52,7 @@ _AUDIT_COLUMNS = frozenset({
 
 _INSTALLED_PACKS = (
     Path(__file__).resolve().parents[2]
-    / "scripts" / "oracle_ai_data_platform_fusion_bundle" / "content_packs"
+    / "scripts" / "oracle_ai_data_platform_fusion_autopilot" / "content_packs"
 )
 
 

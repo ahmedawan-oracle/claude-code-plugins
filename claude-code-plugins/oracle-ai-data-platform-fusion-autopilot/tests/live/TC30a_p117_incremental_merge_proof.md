@@ -1,8 +1,8 @@
-# TC30a — P1.17 incremental MERGE silver/gold proof (+ TC28b clock-skew) on `fusion_bundle_dev`
+# TC30a — P1.17 incremental MERGE silver/gold proof (+ TC28b clock-skew) on `fusion_autopilot_dev`
 
 **Test case ID**: TC30a (silver/gold MERGE path proof via synthetic Delta DML on the `saasfademo1` demo pod).
 **Stage E plan items**: E1a + E2 (`docs/features/p1.17-incremental-merge/plan.md`).
-**Status**: ✅ **EXECUTED 2026-06-02** on `fusion_bundle_dev` cluster / `playground` workspace. All 11 per-layer state-table assertions passed.
+**Status**: ✅ **EXECUTED 2026-06-02** on `fusion_autopilot_dev` cluster / `playground` workspace. All 11 per-layer state-table assertions passed.
 
 ## What this verifies
 
@@ -29,7 +29,7 @@ Narrow — `erp_suppliers` + `ap_invoices` bronze + `dim_supplier` + `dim_calend
 
 | run | mode | run_id | scope |
 |-----|------|--------|-------|
-| A | seed | `<run-A>` | Baseline materialization. Captures bronze + silver + gold cursors in `fusion_bundle_state`. |
+| A | seed | `<run-A>` | Baseline materialization. Captures bronze + silver + gold cursors in `fusion_autopilot_state`. |
 | B | incremental | `<run-B>` | After synthetic DML on BOTH bronze tables (one row each). |
 | C | incremental | `<run-C>` | No DML between B and C — true no-op cycle. |
 
@@ -118,7 +118,7 @@ These three gaps are explicit V1 scope boundaries (deferred to TC30b on a non-de
 
 - AIDP REST host: `https://datalake.us-ashburn-1.oci.oraclecloud.com`
 - Workspace: `playground` (display name; UUID redacted)
-- Cluster: `fusion_bundle_dev` (display name; UUID redacted)
+- Cluster: `fusion_autopilot_dev` (display name; UUID redacted)
 - Workspace path: `/Workspace/Shared/p1.17-stage-e/tc30a_e1a_e2.ipynb`
 - Wheel: P1.17 HEAD (built fresh on dispatch).
 - jobKey / jobRunKey / taskRunKey: operator-redacted.

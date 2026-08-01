@@ -16,7 +16,7 @@ from unittest.mock import MagicMock, patch
 import oci
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.dispatch.rest_client import (
+from oracle_ai_data_platform_fusion_autopilot.dispatch.rest_client import (
     AidpRestClient,
     AidpRestError,
     _build_signer,
@@ -35,7 +35,7 @@ class TestBuildSignerApiKeyProfile:
         }
         sentinel = MagicMock(name="api-key-signer")
         with patch(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.rest_client.oci.signer.Signer",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.rest_client.oci.signer.Signer",
             return_value=sentinel,
         ) as mock_signer:
             signer = _build_signer(cfg)
@@ -57,7 +57,7 @@ class TestBuildSignerApiKeyProfile:
             "key_file": "/path/to/key.pem",
         }
         with patch(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.rest_client.oci.signer.Signer",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.rest_client.oci.signer.Signer",
             return_value=MagicMock(),
         ) as mock_signer:
             _build_signer(cfg)
@@ -81,15 +81,15 @@ class TestBuildSignerSessionTokenProfile:
         sentinel_signer = MagicMock(name="security-token-signer")
         with (
             patch(
-                "oracle_ai_data_platform_fusion_bundle.dispatch.rest_client.oci.signer.load_private_key_from_file",
+                "oracle_ai_data_platform_fusion_autopilot.dispatch.rest_client.oci.signer.load_private_key_from_file",
                 return_value=sentinel_key,
             ) as mock_load,
             patch(
-                "oracle_ai_data_platform_fusion_bundle.dispatch.rest_client.oci.auth.signers.SecurityTokenSigner",
+                "oracle_ai_data_platform_fusion_autopilot.dispatch.rest_client.oci.auth.signers.SecurityTokenSigner",
                 return_value=sentinel_signer,
             ) as mock_signer,
             patch(
-                "oracle_ai_data_platform_fusion_bundle.dispatch.rest_client.oci.signer.Signer",
+                "oracle_ai_data_platform_fusion_autopilot.dispatch.rest_client.oci.signer.Signer",
                 side_effect=AssertionError("API-key signer must not be called"),
             ),
         ):
@@ -145,11 +145,11 @@ class TestBuildSignerSessionTokenProfile:
         }
         with (
             patch(
-                "oracle_ai_data_platform_fusion_bundle.dispatch.rest_client.oci.signer.load_private_key_from_file",
+                "oracle_ai_data_platform_fusion_autopilot.dispatch.rest_client.oci.signer.load_private_key_from_file",
                 return_value=MagicMock(),
             ),
             patch(
-                "oracle_ai_data_platform_fusion_bundle.dispatch.rest_client.oci.auth.signers.SecurityTokenSigner",
+                "oracle_ai_data_platform_fusion_autopilot.dispatch.rest_client.oci.auth.signers.SecurityTokenSigner",
                 return_value=MagicMock(),
             ) as mock_signer,
         ):
@@ -172,13 +172,13 @@ class TestBuildSignerSessionTokenProfile:
 
 def _make_client():
     """Build a client without touching ~/.oci/config."""
-    from oracle_ai_data_platform_fusion_bundle.dispatch.rest_client import (
+    from oracle_ai_data_platform_fusion_autopilot.dispatch.rest_client import (
         AidpRestClient,
     )
 
     with (
         patch(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.rest_client.oci.config.from_file",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.rest_client.oci.config.from_file",
             return_value={
                 "tenancy": "t",
                 "user": "u",
@@ -187,7 +187,7 @@ def _make_client():
             },
         ),
         patch(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.rest_client.oci.signer.Signer",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.rest_client.oci.signer.Signer",
             return_value=MagicMock(),
         ),
     ):
@@ -364,7 +364,7 @@ class TestExtractCellErrorsStderrStream:
         ename/evalue pair so dispatch_via_rest's enrichment can append
         it to DispatchRunFailedError's message."""
         # Shape captured verbatim from a live TC29b Phase 4 run against
-        # fusion_bundle_dev (run_id='tc29b-not-a-real-id'). Multi-line
+        # fusion_autopilot_dev (run_id='tc29b-not-a-real-id'). Multi-line
         # Python traceback in a single stream/stderr output.
         traceback_text = (
             "---------------------------------------------------------\n"
@@ -379,8 +379,8 @@ class TestExtractCellErrorsStderrStream:
             "File /tmp/.../orchestrator/state.py:954, in read_resumable_state(...)\n"
             "    953 if not rows:\n"
             "--> 954     raise ResumeRunNotFoundError(\n"
-            "ResumeRunNotFoundError: --resume: no rows in fusion_bundle_state for run_id='tc29b-not-a-real-id'. "
-            "Check the value (operator typo?) or use `aidp-fusion-bundle status` to list recent run_ids."
+            "ResumeRunNotFoundError: --resume: no rows in fusion_autopilot_state for run_id='tc29b-not-a-real-id'. "
+            "Check the value (operator typo?) or use `aidp-fusion-autopilot status` to list recent run_ids."
         )
         nb = {
             "cells": [
@@ -395,7 +395,7 @@ class TestExtractCellErrorsStderrStream:
         assert errors[0]["cell_index"] == 0
         assert errors[0]["ename"] == "ResumeRunNotFoundError"
         # Verbatim from state.py:954-955.
-        assert "--resume: no rows in fusion_bundle_state" in errors[0]["evalue"]
+        assert "--resume: no rows in fusion_autopilot_state" in errors[0]["evalue"]
         assert "'tc29b-not-a-real-id'" in errors[0]["evalue"]
 
     def test_stderr_stream_with_no_traceback_ignored(self) -> None:

@@ -26,25 +26,25 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.dispatch import dispatch_via_rest
-from oracle_ai_data_platform_fusion_bundle.dispatch.errors import (
+from oracle_ai_data_platform_fusion_autopilot.dispatch import dispatch_via_rest
+from oracle_ai_data_platform_fusion_autopilot.dispatch.errors import (
     DispatchRunFailedError,
 )
-from oracle_ai_data_platform_fusion_bundle.dispatch.rest_client import (
+from oracle_ai_data_platform_fusion_autopilot.dispatch.rest_client import (
     ClusterSummary,
     RunResult,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.bundle import (
+from oracle_ai_data_platform_fusion_autopilot.schema.bundle import (
     AidpConfig,
     EnvSpec,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.errors import (
+from oracle_ai_data_platform_fusion_autopilot.schema.errors import (
     SchemaDriftDetectedError,
 )
 
 
 _GOOD_BUNDLE = """\
-apiVersion: aidp-fusion-bundle/v1
+apiVersion: aidp-fusion-autopilot/v1
 project: test-dispatch
 fusion:
   serviceUrl: https://fusion.example.com
@@ -82,7 +82,7 @@ def _env() -> EnvSpec:
 def _config() -> AidpConfig:
     return AidpConfig.model_validate(
         {
-            "apiVersion": "aidp-fusion-bundle/v1",
+            "apiVersion": "aidp-fusion-autopilot/v1",
             "project": "test-dispatch",
             "environments": {"dev": _env().model_dump(by_alias=True)},
         }
@@ -104,21 +104,21 @@ def _stub_preflight_and_oci(monkeypatch: pytest.MonkeyPatch):
         }
 
     monkeypatch.setattr(
-        "oracle_ai_data_platform_fusion_bundle.dispatch.preflight.oci.config.from_file",
+        "oracle_ai_data_platform_fusion_autopilot.dispatch.preflight.oci.config.from_file",
         _ok_config,
     )
     monkeypatch.setattr(
-        "oracle_ai_data_platform_fusion_bundle.dispatch.preflight.subprocess.run",
+        "oracle_ai_data_platform_fusion_autopilot.dispatch.preflight.subprocess.run",
         lambda *a, **kw: subprocess.CompletedProcess(
             args=[], returncode=0, stdout="ok", stderr=""
         ),
     )
     monkeypatch.setattr(
-        "oracle_ai_data_platform_fusion_bundle.dispatch.rest_client.oci.config.from_file",
+        "oracle_ai_data_platform_fusion_autopilot.dispatch.rest_client.oci.config.from_file",
         _ok_config,
     )
     monkeypatch.setattr(
-        "oracle_ai_data_platform_fusion_bundle.dispatch.rest_client._build_signer",
+        "oracle_ai_data_platform_fusion_autopilot.dispatch.rest_client._build_signer",
         lambda cfg: MagicMock(name="signer"),
     )
 
@@ -126,7 +126,7 @@ def _stub_preflight_and_oci(monkeypatch: pytest.MonkeyPatch):
 def _stub_client(monkeypatch, **overrides):
     """Patch ``AidpRestClient`` with a configured mock, preserving real
     static methods for marker parsing."""
-    from oracle_ai_data_platform_fusion_bundle.dispatch.rest_client import (
+    from oracle_ai_data_platform_fusion_autopilot.dispatch.rest_client import (
         AidpRestClient as RealAidpRestClient,
     )
 
@@ -147,7 +147,7 @@ def _stub_client(monkeypatch, **overrides):
     factory.parse_marker = RealAidpRestClient.parse_marker
     factory.resolve_task_run_key = RealAidpRestClient.resolve_task_run_key
     monkeypatch.setattr(
-        "oracle_ai_data_platform_fusion_bundle.dispatch.AidpRestClient",
+        "oracle_ai_data_platform_fusion_autopilot.dispatch.AidpRestClient",
         factory,
     )
     return client_mock
@@ -155,11 +155,11 @@ def _stub_client(monkeypatch, **overrides):
 
 def _setup_build_stubs(monkeypatch):
     monkeypatch.setattr(
-        "oracle_ai_data_platform_fusion_bundle.dispatch.build_wheel",
+        "oracle_ai_data_platform_fusion_autopilot.dispatch.build_wheel",
         lambda **_: Path("/tmp/fake.whl"),
     )
     monkeypatch.setattr(
-        "oracle_ai_data_platform_fusion_bundle.dispatch.build_notebook",
+        "oracle_ai_data_platform_fusion_autopilot.dispatch.build_notebook",
         lambda **_: {"cells": [], "nbformat": 4, "nbformat_minor": 5},
     )
 
@@ -197,7 +197,7 @@ def _executed_notebook_with_drift_marker(
         "run_id": run_id,
         "summary": (
             "Bronze schema drift detected — run "
-            "`aidp-fusion-bundle bootstrap --refresh`."
+            "`aidp-fusion-autopilot bootstrap --refresh`."
         ),
         "prior_fingerprint": "sha256:" + "a" * 64,
         "current_fingerprint": "sha256:" + "b" * 64,
@@ -313,10 +313,10 @@ class TestSchemaDriftMarkerTranslation:
         cluster-side run cell sees the operator's break-glass intent.
         Without this thread, the REST path silently enforces the gate
         and the audit row is never written."""
-        from oracle_ai_data_platform_fusion_bundle.dispatch.rest_client import (
+        from oracle_ai_data_platform_fusion_autopilot.dispatch.rest_client import (
             RunResult,
         )
-        from oracle_ai_data_platform_fusion_bundle.schema.run_summary import (
+        from oracle_ai_data_platform_fusion_autopilot.schema.run_summary import (
             MARKER_SCHEMA_VERSION,
         )
 
@@ -350,11 +350,11 @@ class TestSchemaDriftMarkerTranslation:
             return {"cells": [], "nbformat": 4, "nbformat_minor": 5}
 
         monkeypatch.setattr(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.build_wheel",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.build_wheel",
             lambda **_: Path("/tmp/fake.whl"),
         )
         monkeypatch.setattr(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.build_notebook",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.build_notebook",
             _capturing_build_notebook,
         )
 
@@ -378,7 +378,7 @@ class TestSchemaDriftMarkerTranslation:
         NOT silently write an empty AIDPF-2012.json and exit 14. The
         operator would land in the drift recovery flow with no usable
         diagnostic. Reject as DispatchMarkerMissingError instead."""
-        from oracle_ai_data_platform_fusion_bundle.dispatch.errors import (
+        from oracle_ai_data_platform_fusion_autopilot.dispatch.errors import (
             DispatchMarkerMissingError,
         )
 
@@ -428,7 +428,7 @@ class TestSchemaDriftMarkerTranslation:
         """artifact_json present but unparseable → reject. The
         downstream reader / bootstrap flow expects a valid AIDPF-2012
         document; writing garbage would corrupt that interface."""
-        from oracle_ai_data_platform_fusion_bundle.dispatch.errors import (
+        from oracle_ai_data_platform_fusion_autopilot.dispatch.errors import (
             DispatchMarkerMissingError,
         )
 
@@ -467,7 +467,7 @@ class TestSchemaDriftMarkerTranslation:
         """artifact_json parses but its ``errorCode`` is not AIDPF-2012
         → reject. Guards against a cluster-side bug that puts an
         unrelated diagnostic in the drift slot."""
-        from oracle_ai_data_platform_fusion_bundle.dispatch.errors import (
+        from oracle_ai_data_platform_fusion_autopilot.dispatch.errors import (
             DispatchMarkerMissingError,
         )
 
@@ -510,7 +510,7 @@ class TestSchemaDriftMarkerTranslation:
         also hardened. A marker with ``run_id="../escape"`` must NOT
         write outside the workdir's .aidp/diagnostics tree, even if
         every other field validates."""
-        from oracle_ai_data_platform_fusion_bundle.dispatch.errors import (
+        from oracle_ai_data_platform_fusion_autopilot.dispatch.errors import (
             DispatchMarkerMissingError,
         )
 
@@ -554,7 +554,7 @@ class TestSchemaDriftMarkerTranslation:
         """Marker ``run_id="foo/bar"`` would land at
         ``.aidp/diagnostics/foo/bar/AIDPF-2012.json`` if accepted —
         unintended nesting that breaks reader auto-discovery."""
-        from oracle_ai_data_platform_fusion_bundle.dispatch.errors import (
+        from oracle_ai_data_platform_fusion_autopilot.dispatch.errors import (
             DispatchMarkerMissingError,
         )
 
@@ -594,7 +594,7 @@ class TestSchemaDriftMarkerTranslation:
         one of them is wrong — refuse to write rather than picking a
         winner. Cross-check guards against a cluster-side bug emitting
         a payload that targets a different run than its envelope claims."""
-        from oracle_ai_data_platform_fusion_bundle.dispatch.errors import (
+        from oracle_ai_data_platform_fusion_autopilot.dispatch.errors import (
             DispatchMarkerMissingError,
         )
 
@@ -636,7 +636,7 @@ class TestSchemaDriftMarkerTranslation:
         destroying the prior evidence would break the
         bootstrap/skill recovery flow. Refuse via
         DispatchMarkerMissingError."""
-        from oracle_ai_data_platform_fusion_bundle.dispatch.errors import (
+        from oracle_ai_data_platform_fusion_autopilot.dispatch.errors import (
             DispatchMarkerMissingError,
         )
 

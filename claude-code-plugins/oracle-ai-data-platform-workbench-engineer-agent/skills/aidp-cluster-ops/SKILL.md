@@ -131,7 +131,7 @@ AI Compute; Start/Stop frees/meters compute; attached flows show on the cluster'
 The cluster **Connection Details** tab provides the **simbaSpark JDBC** and **ODBC** drivers for DBeaver /
 Tableau / Power BI. JDBC driver class `com.simba.spark.jdbc.Driver`; use the JDBC URL from that tab. Auth:
 **token-based** (no `ociProfile` in the URL → browser SSO) or **API key** (append `ociProfile=<profile_name>`).
-OAC connection setup itself is OAC-side (the OAC/fusion-bundle plugin); here we only expose the AIDP driver/URL.
+OAC connection setup itself is OAC-side (the OAC/fusion-autopilot plugin); here we only expose the AIDP driver/URL.
 
 ## Notes
 - For Spark job/stage/task diagnostics on a running cluster, use `aidp-spark-debugging`.

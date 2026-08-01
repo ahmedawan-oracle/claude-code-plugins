@@ -1,6 +1,6 @@
 """CliRunner tests for the Phase 3a `bootstrap` click entry point.
 
-Drives ``aidp-fusion-bundle bootstrap`` through ``CliRunner.invoke()``
+Drives ``aidp-fusion-autopilot bootstrap`` through ``CliRunner.invoke()``
 to validate the click flag surface + the path that produces an exit
 code (the rest of the variation-phase coverage lives in
 :mod:`test_bootstrap_variation_phase` + :mod:`test_bootstrap_refresh_drift`).
@@ -18,14 +18,14 @@ import pytest
 import yaml
 from click.testing import CliRunner
 
-from oracle_ai_data_platform_fusion_bundle.cli import main
+from oracle_ai_data_platform_fusion_autopilot.cli import main
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PACK_ROOT = (
     REPO_ROOT
     / "scripts"
-    / "oracle_ai_data_platform_fusion_bundle"
+    / "oracle_ai_data_platform_fusion_autopilot"
     / "content_packs"
     / "fusion-finance-starter"
 )
@@ -68,7 +68,7 @@ def bundle_files(tmp_path: Path) -> tuple[Path, Path]:
     bundle.write_text(
         yaml.safe_dump(
             {
-                "apiVersion": "aidp-fusion-bundle/v1",
+                "apiVersion": "aidp-fusion-autopilot/v1",
                 "version": "0.2.0",
                 "project": "test",
                 "fusion": {
@@ -104,7 +104,7 @@ def bundle_files(tmp_path: Path) -> tuple[Path, Path]:
     config.write_text(
         yaml.safe_dump(
             {
-                "apiVersion": "aidp-fusion-bundle/v1",
+                "apiVersion": "aidp-fusion-autopilot/v1",
                 "project": "test",
                 "environments": {
                     "dev": {
@@ -147,7 +147,7 @@ class TestClickEntryPoint:
 
         # Patch Spark acquisition to return our mock.
         with patch(
-            "oracle_ai_data_platform_fusion_bundle.commands.variation_phase._acquire_local_spark",
+            "oracle_ai_data_platform_fusion_autopilot.commands.variation_phase._acquire_local_spark",
             return_value=_mock_spark(),
         ):
             runner = CliRunner()
@@ -188,7 +188,7 @@ class TestClickEntryPoint:
         bundle, config = bundle_files
 
         with patch(
-            "oracle_ai_data_platform_fusion_bundle.commands.variation_phase._acquire_local_spark",
+            "oracle_ai_data_platform_fusion_autopilot.commands.variation_phase._acquire_local_spark",
             return_value=_mock_spark(),
         ):
             runner = CliRunner()

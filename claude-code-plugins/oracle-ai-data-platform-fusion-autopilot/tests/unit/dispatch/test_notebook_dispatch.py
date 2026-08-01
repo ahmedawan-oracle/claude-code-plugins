@@ -18,7 +18,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.dispatch.errors import (
+from oracle_ai_data_platform_fusion_autopilot.dispatch.errors import (
     DispatchFetchOutputError,
     DispatchJobSubmitError,
     DispatchMarkerDecodeError,
@@ -27,10 +27,10 @@ from oracle_ai_data_platform_fusion_bundle.dispatch.errors import (
     DispatchRunFailedError,
     DispatchUploadError,
 )
-from oracle_ai_data_platform_fusion_bundle.dispatch.notebook_dispatch import (
+from oracle_ai_data_platform_fusion_autopilot.dispatch.notebook_dispatch import (
     dispatch_notebook_and_fetch_marker,
 )
-from oracle_ai_data_platform_fusion_bundle.dispatch.rest_client import (
+from oracle_ai_data_platform_fusion_autopilot.dispatch.rest_client import (
     AidpRestError,
     RunResult,
 )
@@ -120,10 +120,10 @@ def _client(
 def _call(client: MagicMock, **overrides):
     kwargs = dict(
         notebook={"cells": [], "nbformat": 4, "nbformat_minor": 5},
-        workspace_path="/Workspace/Shared/fusion-bundle-bootstrap/probe.ipynb",
+        workspace_path="/Workspace/Shared/fusion-autopilot-bootstrap/probe.ipynb",
         cluster_key="cluster-uuid",
         cluster_name="cluster_dev",
-        job_name="aidp_fusion_bundle_bootstrap_probe",
+        job_name="aidp_fusion_autopilot_bootstrap_probe",
         marker_begin=MARKER_BEGIN,
         marker_end=MARKER_END,
         marker_b64=True,
@@ -160,7 +160,7 @@ class TestHappyPath:
         kw = client.create_notebook_job.call_args.kwargs
         assert kw["cluster_key"] == "cluster-uuid"
         assert kw["cluster_name"] == "cluster_dev"
-        assert kw["name"] == "aidp_fusion_bundle_bootstrap_probe"
+        assert kw["name"] == "aidp_fusion_autopilot_bootstrap_probe"
         assert kw["task_key"] == "notebook_task"
 
 

@@ -37,23 +37,23 @@ from pathlib import Path
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack import load_pack
-from oracle_ai_data_platform_fusion_bundle.orchestrator.sql_renderer import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack import load_pack
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.sql_renderer import (
     RunContext,
     render_node_sql,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.tenant_profile import (
+from oracle_ai_data_platform_fusion_autopilot.schema.tenant_profile import (
     load_tenant_profile_from_string,
 )
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DIM_ACCOUNT_SQL = (
-    REPO_ROOT / "scripts" / "oracle_ai_data_platform_fusion_bundle"
+    REPO_ROOT / "scripts" / "oracle_ai_data_platform_fusion_autopilot"
     / "content_packs" / "fusion-finance-starter" / "silver" / "dim_account.sql"
 )
 PACK_ROOT = (
-    REPO_ROOT / "scripts" / "oracle_ai_data_platform_fusion_bundle"
+    REPO_ROOT / "scripts" / "oracle_ai_data_platform_fusion_autopilot"
     / "content_packs" / "fusion-finance-starter"
 )
 

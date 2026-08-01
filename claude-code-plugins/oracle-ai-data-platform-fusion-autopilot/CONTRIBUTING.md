@@ -1,4 +1,4 @@
-# Contributing — `oracle-ai-data-platform-fusion-bundle`
+# Contributing — `oracle-ai-data-platform-fusion-autopilot`
 
 > Mechanical PR-grading checklist. The working principles ("how to think about a change") live in [`CLAUDE.md`](CLAUDE.md). Read that first.
 
@@ -9,7 +9,7 @@
 ```bash
 # Clone + install in dev mode
 git clone https://github.com/ahmedawan-oracle/claude-code-plugins
-cd claude-code-plugins/claude-code-plugins/oracle-ai-data-platform-fusion-bundle
+cd claude-code-plugins/claude-code-plugins/oracle-ai-data-platform-fusion-autopilot
 
 # Editable install (quoted extras — zsh treats `.[dev,test]` as a glob otherwise)
 pip install -e '.[dev,test]'
@@ -36,7 +36,7 @@ Before you start coding a backlog item, **commit the claim directly to `main`** 
    - `### [ ] P1.X — <title>` → `### [~] P1.X — <title> (in progress — <your-handle>, <YYYY-MM-DD>)`
 2. Commit on `main` directly:
    ```
-   git commit -m "fusion-bundle: BACKLOG — claim P1.X (<your-handle>)"
+   git commit -m "fusion-autopilot: BACKLOG — claim P1.X (<your-handle>)"
    ```
 3. Push `main` immediately. **Don't batch claims with code** — the claim must land before others start their work, not after yours merges.
 4. *Then* branch off `main` for the implementation.
@@ -104,10 +104,10 @@ Use this as the PR template when shipping a new module.
 
 ### Wiring (CLI is the contract — see [`CLAUDE.md`](CLAUDE.md) §"Architecture")
 
-- [ ] Module added to the orchestrator DAG (`scripts/oracle_ai_data_platform_fusion_bundle/orchestrator/`) in dependency order in the **same PR** as the module itself. Leaf modules without a caller are not accepted.
+- [ ] Module added to the orchestrator DAG (`scripts/oracle_ai_data_platform_fusion_autopilot/orchestrator/`) in dependency order in the **same PR** as the module itself. Leaf modules without a caller are not accepted.
 - [ ] Orchestrator passes resolved 3-part paths from `bundle.yaml.aidp.*` (not the module's `Final[str]` defaults).
-- [ ] Orchestrator advances the watermark in `fusion_bundle_state` after a successful build. Modules never touch `fusion_bundle_state` directly.
-- [ ] `aidp-fusion-bundle run --mode seed` (from a clean checkout) materializes the new dim/mart end-to-end. If it doesn't, the PR is incomplete.
+- [ ] Orchestrator advances the watermark in `fusion_autopilot_state` after a successful build. Modules never touch `fusion_autopilot_state` directly.
+- [ ] `aidp-fusion-autopilot run --mode seed` (from a clean checkout) materializes the new dim/mart end-to-end. If it doesn't, the PR is incomplete.
 
 ---
 
@@ -131,16 +131,16 @@ pytest -k "test_currency" -v              # filter by name
 
 ### Live tests (gated)
 
-Live tests sit at `tests/live/test_<feature>_live.py` and the evidence narrative at `tests/live/TC<N>_<feature>_results.md`. They're gated behind `AIDP_FUSION_BUNDLE_INTEGRATION=1` so they don't fire in normal CI:
+Live tests sit at `tests/live/test_<feature>_live.py` and the evidence narrative at `tests/live/TC<N>_<feature>_results.md`. They're gated behind `AIDP_FUSION_AUTOPILOT_INTEGRATION=1` so they don't fire in normal CI:
 
 ```bash
-AIDP_FUSION_BUNDLE_INTEGRATION=1 pytest -m live -v
+AIDP_FUSION_AUTOPILOT_INTEGRATION=1 pytest -m live -v
 ```
 
 **TC numbering** is sequential across the bundle (TC1, TC2, …, TC10h-4, TC22, TC23, TC24, …). Pick the next unused number when adding evidence. Sub-variants append a letter (TC10h, TC10h-2, TC10h-3, TC10h-4). The TC ID goes in:
 - The `tests/live/TC<N>_<feature>_results.md` filename.
 - The `# TC<N> — <one-line title>` H1 of that file.
-- The commit message: `fusion-bundle: TC<N> — <one-line title>`.
+- The commit message: `fusion-autopilot: TC<N> — <one-line title>`.
 - The `[ ]` → `[x]` transition line in [`BACKLOG.md`](BACKLOG.md) (if applicable).
 
 ### Plugin-portability evidence
@@ -154,7 +154,7 @@ Per [`CLAUDE.md`](CLAUDE.md): any "portable" claim needs a live run on at least 
 - **New columns in existing dims/marts are non-breaking** — add them at the end of the SELECT projection. Customers' OAC workbooks, downstream notebooks, and dashboards join on column names.
 - **Renames and removals require a new module.** `dim_supplier_v2` ships alongside `dim_supplier` until the deprecation window closes. Don't break Type-1 consumers.
 - **Type-2 SCD is opt-in via a separate variant module** — `dim_account_history` is a sibling that depends on `dim_account`, not a flag on `dim_account.build()`.
-- **PVO names use the full AM-hierarchy from live BICC.** The curated catalog in [`schema/fusion_catalog.py`](scripts/oracle_ai_data_platform_fusion_bundle/schema/fusion_catalog.py) is the source of truth. Don't paste blog abbreviations.
+- **PVO names use the full AM-hierarchy from live BICC.** The curated catalog in [`schema/fusion_catalog.py`](scripts/oracle_ai_data_platform_fusion_autopilot/schema/fusion_catalog.py) is the source of truth. Don't paste blog abbreviations.
 
 ---
 
@@ -171,16 +171,16 @@ Per [`CLAUDE.md`](CLAUDE.md): any "portable" claim needs a live run on at least 
 ### Commit messages
 
 ```
-fusion-bundle: <P-id or TC-id> — <one-line summary in imperative voice>
+fusion-autopilot: <P-id or TC-id> — <one-line summary in imperative voice>
 
 <optional body explaining the why, not the what>
 <live-evidence link if applicable>
 ```
 
 Examples (from `git log`):
-- `fusion-bundle: P1.9 — gold.ap_aging + TC24 live verification`
-- `fusion-bundle: TC23b — live verify of dim_account + gl_balance refactor`
-- `fusion-bundle: plugin-portability — supplier_spend currency detect + ap_aging cancel-date alias`
+- `fusion-autopilot: P1.9 — gold.ap_aging + TC24 live verification`
+- `fusion-autopilot: TC23b — live verify of dim_account + gl_balance refactor`
+- `fusion-autopilot: plugin-portability — supplier_spend currency detect + ap_aging cancel-date alias`
 
 Atomic commits preferred — one P-id / TC-id per commit so backlog cross-refs are clean.
 
@@ -216,7 +216,7 @@ Atomic commits preferred — one P-id / TC-id per commit so backlog cross-refs a
 ## Live-test conventions
 
 - **Evidence file**: `tests/live/TC<N>_<feature>_results.md`. Markdown, narrative-first. Capture: tenant identity (pod URL, OAC instance, date), exact commands run, row counts, sample outputs, any anomalies. Pin every claim to a query you actually ran.
-- **Tenant identification**: name the pod (e.g. `saasfademo1` / `etap-dev5` / `fusion_bundle_dev`) at the top of every TC file. The portability story depends on knowing what was tested where.
+- **Tenant identification**: name the pod (e.g. `saasfademo1` / `etap-dev5` / `fusion_autopilot_dev`) at the top of every TC file. The portability story depends on knowing what was tested where.
 - **Anomaly handling**: when a live run surfaces something unexpected (NULL-propagation bug, schema variant, performance cliff), file the finding in the TC file AND open a backlog entry. Don't patch silently.
 - **Re-verification after refactors**: any code change to a module with an existing TC needs a TC<N>b suffix run before merge. The "I didn't change the SQL" hand-wave isn't sufficient — Catalyst plans shift on adjacent changes.
 
@@ -234,7 +234,7 @@ Atomic commits preferred — one P-id / TC-id per commit so backlog cross-refs a
 | [`CHANGELOG.md`](CHANGELOG.md) | Per-release decision history |
 | [`docs/oac_rest_api_setup.md`](docs/oac_rest_api_setup.md) | One-time IDCS confidential-app setup |
 | [`docs/oac_mcp_setup.md`](docs/oac_mcp_setup.md) | Per-user OAC MCP setup |
-| [`scripts/oracle_ai_data_platform_fusion_bundle/schema/fusion_catalog.py`](scripts/oracle_ai_data_platform_fusion_bundle/schema/fusion_catalog.py) | Curated PVO catalog (source of truth for datastore paths) |
+| [`scripts/oracle_ai_data_platform_fusion_autopilot/schema/fusion_catalog.py`](scripts/oracle_ai_data_platform_fusion_autopilot/schema/fusion_catalog.py) | Curated PVO catalog (source of truth for datastore paths) |
 | [`tests/live/`](tests/live/) | Live-evidence trail (TC1..TC24…) |
 
 ## Cross-references

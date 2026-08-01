@@ -27,7 +27,7 @@ registry source has been modified and the snapshot must be re-reviewed
 before regenerating. Regenerate the source fixture (only with explicit
 re-review) via:
 
-    git show P1.5ε-fix5:./scripts/oracle_ai_data_platform_fusion_bundle/schema/registry_metadata.py \\
+    git show P1.5ε-fix5:./scripts/oracle_ai_data_platform_fusion_autopilot/schema/registry_metadata.py \\
         > tests/fixtures/v1_registry_metadata_source.py
 
 Usage:
@@ -49,7 +49,7 @@ from pathlib import Path
 import yaml
 
 V1_BRANCH = "P1.5ε-fix5"
-V1_FILE_REL = "./scripts/oracle_ai_data_platform_fusion_bundle/schema/registry_metadata.py"
+V1_FILE_REL = "./scripts/oracle_ai_data_platform_fusion_autopilot/schema/registry_metadata.py"
 EXPECTED_HEAD = "650d6909655fd30618f56edbbded6e4b81d6cc3b"
 EXPECTED_BLOB = "02ec45a7fae7c1fa5b94a3940144727da69dcc13"
 

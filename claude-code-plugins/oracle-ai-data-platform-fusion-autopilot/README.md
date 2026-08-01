@@ -4,7 +4,7 @@
 >
 > Same pattern shown in the official Oracle blog [Bring Fusion Data into AIDP Workbench Using BICC](https://blogs.oracle.com/ai-data-platform/bring-fusion-data-into-oracle-ai-data-platform-workbench-using-bicc), productized.
 
-**Status**: alpha (`0.1.0a0`) — Tier-1 features complete and live-validated end-to-end against the saasfademo1 Fusion demo pod + multiple OAC instances (see [tests/live/](tests/live/)). The bundle now uses a single content-pack execution path. **1360 unit + 12 architectural + 5 integration tests pass, plus the conversational skill family's own unit suites.** **Live-validated 2026-06-15** on the `fusion_bundle_dev` cluster: a `mart-author` overlay seeded `gold.ar_invoice_summary` (49 rows) end-to-end, and OAC workbooks were created via the OAC MCP `save_catalog_content` write tool.
+**Status**: alpha (`0.1.0a0`) — Tier-1 features complete and live-validated end-to-end against the saasfademo1 Fusion demo pod + multiple OAC instances (see [tests/live/](tests/live/)). The bundle now uses a single content-pack execution path. **1360 unit + 12 architectural + 5 integration tests pass, plus the conversational skill family's own unit suites.** **Live-validated 2026-06-15** on the `fusion_autopilot_dev` cluster: a `mart-author` overlay seeded `gold.ar_invoice_summary` (49 rows) end-to-end, and OAC workbooks were created via the OAC MCP `save_catalog_content` write tool.
 
 Primary CLI commands wired: `init`, `init-config`, `use-pack`, `validate`,
 `bootstrap`, `catalog list/probe/probe-pvo`, `run`, `status`, `migrate-bundle`,
@@ -39,14 +39,14 @@ reference. The documentation map is [docs/README.md](docs/README.md).
 >   through the content-pack runner. The legacy `dimensions/dim_*.py`
 >   + `transforms/gold/*.py` modules + the `--execution-backend` CLI
 >   flag + the python_legacy adapter have been removed.
-> - **Content pack ships at** `scripts/oracle_ai_data_platform_fusion_bundle/content_packs/fusion-finance-starter/`
+> - **Content pack ships at** `scripts/oracle_ai_data_platform_fusion_autopilot/content_packs/fusion-finance-starter/`
 >   with per-file `bronze/<id>.yaml` (11 datasets), `silver/<id>.{yaml,sql}`
 >   (3 dims), `gold/<id>.{yaml,sql}` (3 marts) — all customer-extensible
 >   via overlay packs.
 > - **OAC integration**: operator MCP setup, MCP-native workbook
 >   authoring, `dashboard install` / `validate` / `uninstall` legacy
 >   REST flow, live-validated on disposable OAC1.
-> - **Customer extension**: `aidp-fusion-bundle catalog probe-pvo
+> - **Customer extension**: `aidp-fusion-autopilot catalog probe-pvo
 >   <id> --datastore X --bicc-schema Y --emit-pack-yaml <path>`
 >   drafts a bronze YAML from a metadata-only BICC probe.
 > - **1360 unit + 12 architectural + 5 integration tests pass.**
@@ -66,7 +66,7 @@ hand-running the CLI. The orchestrator routes through the rest:
 | `aidp-fusion-bootstrap` | Guided bootstrap: validate prerequisites, run `bootstrap --check-iam`, pin tenant variation into `profiles/`, and route `AIDPF-2010/2011` to `medallion-author`. |
 | `aidp-fusion-seed` | Natural-language → guarded `run --mode seed` (intent parse, precondition ladder, **fail-closed** destructive guard). |
 | `aidp-fusion-incremental` | Natural-language → guarded `run --mode incremental` for day-2 refresh, with cursor, watermark, and drift-gate checks. |
-| `aidp-fusion-status` | Read-only pipeline health — reconciles `fusion_bundle_state` with the **live** catalog (HEALTHY / STALE / FAILED / DEFERRED / UNTRACKED …). |
+| `aidp-fusion-status` | Read-only pipeline health — reconciles `fusion_autopilot_state` with the **live** catalog (HEALTHY / STALE / FAILED / DEFERRED / UNTRACKED …). |
 | `aidpf-error-triage` | Read-only `AIDPF-*` failure router: explain the code, name the evidence, and hand off to the right recovery skill or command. |
 | `fusion-drift-doctor` | Diagnoses schema/PVO/plan-hash drift gates and routes to bootstrap refresh, `medallion-author`, scoped reseed, or investigation. |
 | `oac-dataset-advisor` | Dashboard intent → which OAC dataset to create, grounded in the **live AIDP gold layer** (never pack YAMLs). |
@@ -77,7 +77,7 @@ hand-running the CLI. The orchestrator routes through the rest:
 | `workbook-authoring` | Generate schema-valid OAC workbook JSON and write it via OAC MCP. |
 | `aidp-rest` | Internal/control-plane REST helper skill for OCI-signed AIDP workspace, cluster, and notebook-dispatch operations. |
 
-`aidp-fusion-bundle` remains the discovery/reference skill (positioning, gotchas,
+`aidp-fusion-pipeline` remains the discovery/reference skill (positioning, gotchas,
 when-NOT-to-use). The CLI stays the contract; skills are guarded wrappers around it.
 
 ---
@@ -99,9 +99,9 @@ these slash commands in Claude Code:
 ```
 
 > **First-run CLI provisioning (automatic).** Claude Code copies the plugin to a
-> cache but never runs an install step, so the bundled `aidp-fusion-bundle` CLI
+> cache but never runs an install step, so the bundled `aidp-fusion-autopilot` CLI
 > provisions itself on its **first invocation**: it installs its dependencies
-> once into `~/.aidp-fusion-bundle/pylib/<key>` (override the home with
+> once into `~/.aidp-fusion-autopilot/pylib/<key>` (override the home with
 > `AIDP_FUSION_HOME`) and runs from the plugin's own source thereafter. No
 > `pip install` step is needed for the plugin route. Requirements:
 > **Python ≥ 3.10 on `PATH`, with `pip` available** (the bootstrap installs via
@@ -135,7 +135,7 @@ manual OAC connection/dataset UI step.
 **Route 2: manual CLI.** Use this when you want each command explicitly:
 
 ```bash
-cd Workspace/oracle-ai-data-platform-fusion-bundle
+cd Workspace/oracle-ai-data-platform-fusion-autopilot
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .
@@ -143,18 +143,18 @@ pip install -e .
 cd ..
 mkdir demo-fusion-cfo
 cd demo-fusion-cfo
-aidp-fusion-bundle init
-aidp-fusion-bundle init-config \
+aidp-fusion-autopilot init
+aidp-fusion-autopilot init-config \
   --aidp-id <aidp-ocid> \
   --workspace "<workspace name>" \
   --cluster "<cluster name>"
-aidp-fusion-bundle validate
+aidp-fusion-autopilot validate
 env -u OAC_URL -u OAC_MCP_USER -u OAC_MCP_PASSWORD \
   -u OAC_ADMIN_USER -u OAC_ADMIN_PASSWORD \
-  aidp-fusion-bundle dashboard mcp-setup \
+  aidp-fusion-autopilot dashboard mcp-setup \
   --connector-js /path/to/oac-mcp-connect.js
-aidp-fusion-bundle bootstrap --check-iam
-aidp-fusion-bundle run --mode seed
+aidp-fusion-autopilot bootstrap --check-iam
+aidp-fusion-autopilot run --mode seed
 ```
 
 Full first-run details, including the generated directory layout and OAC MCP
@@ -178,23 +178,23 @@ A 25-minute pipeline can hit a transient BICC outage, a cluster auto-termination
 
 ```bash
 # After an interrupted run, find the run_id you want to resume:
-aidp-fusion-bundle status      # surfaces the latest fusion_bundle_state per dataset_id
+aidp-fusion-autopilot status      # surfaces the latest fusion_autopilot_state per dataset_id
 
 # Resume by run_id. Normal laptop use dispatches to AIDP over REST; use
 # --inline only from an AIDP notebook/runtime with Spark already available.
-aidp-fusion-bundle run --mode seed --resume <run_id>
+aidp-fusion-autopilot run --mode seed --resume <run_id>
 ```
 
 What happens on resume:
 
-- The orchestrator reads `fusion_bundle_state` for `<run_id>`. Datasets whose latest terminal status is `success` or `resumed_skipped` carry forward without re-dispatch.
+- The orchestrator reads `fusion_autopilot_state` for `<run_id>`. Datasets whose latest terminal status is `success` or `resumed_skipped` carry forward without re-dispatch.
 - All other datasets re-attempt under the **original `run_id`**, preserving the medallion `<layer>_run_id` audit invariant (one logical pipeline = one `run_id` across the resumed history).
 - `preflight_bronze_schemas` only probes un-succeeded bronze nodes — already-succeeded schemas are pulled from the stored `plan_snapshot`.
 - A drift gate compares the current plan + execution identity (Fusion pod URL, BICC storage, Fusion username, AIDP target paths, plugin version) against the stored hash. Any change raises `ResumeBundleMismatchError` pre-dispatch with the diff rendered: identity changes first, dataset changes second, hash echo last.
 - Resume is supported on both normal REST dispatch and `--inline`; `--inline`
   is reserved for AIDP notebook/runtime sessions.
 
-The state table becomes append-only on resumed runs — multiple rows per `(run_id, dataset_id)` are expected (failed attempt + carry-forward + eventual success). **Always read from the `fusion_bundle_state_latest` Delta VIEW** (created automatically by `ensure_state_table`), which projects one row per `(run_id, dataset_id)` via `ROW_NUMBER() OVER (PARTITION BY run_id, dataset_id ORDER BY last_run_at DESC)`. See `LIMITS.md` §L-Resume for the full consumer-side contract.
+The state table becomes append-only on resumed runs — multiple rows per `(run_id, dataset_id)` are expected (failed attempt + carry-forward + eventual success). **Always read from the `fusion_autopilot_state_latest` Delta VIEW** (created automatically by `ensure_state_table`), which projects one row per `(run_id, dataset_id)` via `ROW_NUMBER() OVER (PARTITION BY run_id, dataset_id ORDER BY last_run_at DESC)`. See `LIMITS.md` §L-Resume for the full consumer-side contract.
 
 If a `--resume` raises one of:
 
@@ -220,10 +220,10 @@ Day-2 refresh uses `--mode incremental`:
 
 ```bash
 # First incremental run requires a prior --mode seed run to have populated each
-# layer's last_watermark in fusion_bundle_state. The orchestrator raises
+# layer's last_watermark in fusion_autopilot_state. The orchestrator raises
 # IncrementalCursorMissingError listing every silver/gold dataset that lacks one.
-aidp-fusion-bundle run --mode seed              # day 1
-aidp-fusion-bundle run --mode incremental       # day 2+
+aidp-fusion-autopilot run --mode seed              # day 1
+aidp-fusion-autopilot run --mode incremental       # day 2+
 ```
 
 Prefer the conversational path? Use `/aidp-fusion-incremental`. If the run
@@ -248,8 +248,8 @@ Before flipping a new tenant to `--mode incremental`, run the TC28b clock-skew p
 
 ```python
 from datetime import datetime, timezone
-from oracle_ai_data_platform_fusion_bundle.extractors import bicc as bicc_mod
-from oracle_ai_data_platform_fusion_bundle.schema import fusion_catalog
+from oracle_ai_data_platform_fusion_autopilot.extractors import bicc as bicc_mod
+from oracle_ai_data_platform_fusion_autopilot.schema import fusion_catalog
 
 pvo = fusion_catalog.get("erp_suppliers")
 t0 = datetime.now(timezone.utc)
@@ -269,7 +269,7 @@ If the assertion fails, widen `watermarkSafetyWindowSeconds` to comfortably exce
 Two cases land at the same place (preserved bronze cursor + a WARN-log marker):
 
 - **Empty delta** — BICC's `fusion.initial.extract-date` filter returned zero rows. Expected and harmless on a no-op cycle (Fusion didn't change between runs). The bronze cursor is preserved (NOT advanced) so the next run picks up the same time window. State-table row is written with `status='success'` and the prior `last_watermark` value.
-- **`watermark_read_soft_failed` WARN** — a transient metastore failure prevented reading the prior `fusion_bundle_state` cursor. The orchestrator logs a structured WARN with the `watermark_read_soft_failed` marker key (set up alerts on this string) and proceeds with `prior_watermark=None`, falling back to a full extract for that node. Re-running the same `--mode incremental` command after the metastore recovers usually clears it. If the WARN persists across multiple runs, see `LIMITS.md §L6`.
+- **`watermark_read_soft_failed` WARN** — a transient metastore failure prevented reading the prior `fusion_autopilot_state` cursor. The orchestrator logs a structured WARN with the `watermark_read_soft_failed` marker key (set up alerts on this string) and proceeds with `prior_watermark=None`, falling back to a full extract for that node. Re-running the same `--mode incremental` command after the metastore recovers usually clears it. If the WARN persists across multiple runs, see `LIMITS.md §L6`.
 
 Both signals show up in the orchestrator stdout under the same `[step]` line for the affected dataset — no separate audit table needed.
 
@@ -314,9 +314,9 @@ explicitly needed.
 | `ap_invoices` / `ap_payments` / `ap_aging_periods` | `InvoiceHeaderExtractPVO` / `PaymentHistoryDistributionExtractPVO` / `AgingPeriodHeaderExtractPVO` | live BICC catalog | ✅ |
 | `po_receipts` | `ReceivingReceiptTransactionExtractPVO` | live BICC catalog | ✅ |
 
-The table uses short display names. Run `aidp-fusion-bundle catalog list` for
+The table uses short display names. Run `aidp-fusion-autopilot catalog list` for
 the exact AM-hierarchy datastore paths used by the CLI, and
-`aidp-fusion-bundle catalog probe --pod <url>` to reconcile the catalog against
+`aidp-fusion-autopilot catalog probe --pod <url>` to reconcile the catalog against
 the tenant's live BICC console.
 
 ---

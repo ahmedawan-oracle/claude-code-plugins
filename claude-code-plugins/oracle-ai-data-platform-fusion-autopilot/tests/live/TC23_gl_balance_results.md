@@ -1,10 +1,10 @@
 # TC23 — `gold.gl_balance` live verification (2026-05-09)
 
-> **Status**: ✅ **PASS (full verification, production-shape data)** — first GL gold mart materialized end-to-end on `fusion_bundle_dev` against live `bronze.gl_period_balances`. All BACKLOG §P1.8 acceptance criteria satisfied. NULL-propagation regression on `closing_balance` was caught on first run and fixed by adding `COALESCE(..., 0)` to each cast inside the formula; second run confirms the fix lands `null_closing_balance = 0`.
+> **Status**: ✅ **PASS (full verification, production-shape data)** — first GL gold mart materialized end-to-end on `fusion_autopilot_dev` against live `bronze.gl_period_balances`. All BACKLOG §P1.8 acceptance criteria satisfied. NULL-propagation regression on `closing_balance` was caught on first run and fixed by adding `COALESCE(..., 0)` to each cast inside the formula; second run confirms the fix lands `null_closing_balance = 0`.
 
 ## Test setup
 
-* **Cluster**: `fusion_bundle_dev` (id `<CLUSTER_KEY>`) in workspace `<WORKSPACE_KEY>`
+* **Cluster**: `fusion_autopilot_dev` (id `<CLUSTER_KEY>`) in workspace `<WORKSPACE_KEY>`
 * **Sources**:
   * `bronze.gl_period_balances` (PVO `FscmTopModelAM.FinExtractAM.GlBiccExtractAM.BalanceExtractPVO`) — 11,211,211 rows / 36 cols, extracted via the internal bootstrap script (Step 7) (`schema='Financial'`, ~17 min, no L2 encoder bug fired)
   * `silver.dim_account` (P1.3 lineage; rebuilt defensively in this TC) — 63,464 rows
@@ -31,7 +31,7 @@ The fact has 11.2M rows total. v0.2.0's `actual_flag = 'A'` filter retains 10.18
 | `gold.gl_balance` build | **58.8s** |
 | Combined dim + mart | 72.8s |
 
-The mart build is dominated by the 10.18M-row `LEFT JOIN` to `dim_account` and the per-row `closing_balance` arithmetic. Sub-minute on `fusion_bundle_dev` is well within budget for nightly orchestration (P1.5).
+The mart build is dominated by the 10.18M-row `LEFT JOIN` to `dim_account` and the per-row `closing_balance` arithmetic. Sub-minute on `fusion_autopilot_dev` is well within budget for nightly orchestration (P1.5).
 
 ## `dim_account` join coverage
 
@@ -163,7 +163,7 @@ These are real Vision-style multi-segment CoA balances across multiple ledgers (
 | Criterion | Result |
 |---|---|
 | `transforms/gold/gl_balance.py` exists, follows `supplier_spend.py` pattern | ✅ |
-| Writes `gold.gl_balance` Delta on `fusion_bundle_dev` | ✅ — 10,184,102 rows landed |
+| Writes `gold.gl_balance` Delta on `fusion_autopilot_dev` | ✅ — 10,184,102 rows landed |
 | Unit-tested (≥13 new tests; 207 → ~220) | ✅ — 21 new tests; 207 → **228** total |
 | Sample SQL committed | ✅ — runner inlines verbatim, doubles as ad-hoc reproduction script |
 | Live evidence file | ✅ — this file (TC23) |
@@ -179,7 +179,7 @@ These are real Vision-style multi-segment CoA balances across multiple ledgers (
 
 ## Cross-references
 
-* Module: [`scripts/oracle_ai_data_platform_fusion_bundle/transforms/gold/gl_balance.py`](../../scripts/oracle_ai_data_platform_fusion_bundle/transforms/gold/gl_balance.py)
+* Module: [`scripts/oracle_ai_data_platform_fusion_autopilot/transforms/gold/gl_balance.py`](../../scripts/oracle_ai_data_platform_fusion_autopilot/transforms/gold/gl_balance.py)
 * Unit tests: [`tests/unit/test_gl_balance.py`](../unit/test_gl_balance.py)
 * Limit registry: [`LIMITS.md`](../../LIMITS.md) §L2 (encoder bug — did not fire here)
 * Pattern sibling: [`tests/live/TC22_dim_account_results.md`](TC22_dim_account_results.md)

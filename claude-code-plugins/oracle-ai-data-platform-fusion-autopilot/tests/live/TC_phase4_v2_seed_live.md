@@ -19,7 +19,7 @@
 | Region | `us-ashburn-1` |
 | AIDP id | `<REDACTED-AIDP-OCID>` (display name: amitV2) |
 | Workspace | `<REDACTED-WORKSPACE-UUID>` (display name: playground) |
-| Cluster name | `fusion_bundle_dev` |
+| Cluster name | `fusion_autopilot_dev` |
 | Fusion pod | `<REDACTED-POD-URL>` |
 | BICC user | `<REDACTED-BICC-USER>` |
 | Content pack | `fusion-finance-starter` v0.3 |
@@ -28,7 +28,7 @@
 ## Bootstrap (Phase 4.1 cluster dispatcher) — fresh resolve
 
 ```
-.venv/bin/aidp-fusion-bundle \
+.venv/bin/aidp-fusion-autopilot \
   --bundle dev/fusion-finance-starter.live.yaml \
   --config dev/aidp.config.yaml \
   --env dev \
@@ -49,7 +49,7 @@
 
 ```
 [02:11:24]  wheel cache miss (hash=74306ec9496c1cb9); running `python -m build`
-[02:11:30]  notebook_uploaded {'path': '/Workspace/Shared/fusion-bundle-bootstrap/probe-finance_default-<TS>.ipynb'}
+[02:11:30]  notebook_uploaded {'path': '/Workspace/Shared/fusion-autopilot-bootstrap/probe-finance_default-<TS>.ipynb'}
 [02:11:34]  job_created   jobKey=<REDACTED-JOB-UUID>
 [02:11:35]  jobRun_submitted   jobRunKey=<REDACTED-RUN-UUID>
 [02:11:36]  poll status=RUNNING
@@ -88,7 +88,7 @@ auto-resolve path end-to-end.
   --aidp-id <REDACTED-AIDP-OCID> \
   --workspace-key <REDACTED-WORKSPACE-UUID> \
   --cluster-key <REDACTED-CLUSTER-UUID> \
-  --cluster-name fusion_bundle_dev \
+  --cluster-name fusion_autopilot_dev \
   --bundle dev/fusion-finance-starter.live.yaml \
   --profile finance-default \
   --layers silver,gold

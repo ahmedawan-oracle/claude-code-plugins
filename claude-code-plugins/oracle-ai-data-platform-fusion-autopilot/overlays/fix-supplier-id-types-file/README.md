@@ -11,10 +11,10 @@ for a small retype.
 ## Apply
 
 ```bash
-aidp-fusion-bundle content-pack validate overlays/fix-supplier-id-types-file
-aidp-fusion-bundle use-pack overlays/fix-supplier-id-types-file --profile <profile> --no-align
-aidp-fusion-bundle validate
-aidp-fusion-bundle run --mode seed --datasets erp_suppliers --layers bronze
+aidp-fusion-autopilot content-pack validate overlays/fix-supplier-id-types-file
+aidp-fusion-autopilot use-pack overlays/fix-supplier-id-types-file --profile <profile> --no-align
+aidp-fusion-autopilot validate
+aidp-fusion-autopilot run --mode seed --datasets erp_suppliers --layers bronze
 # then verify VENDORID non-null + join overlap before rebuilding the marts.
 ```
 

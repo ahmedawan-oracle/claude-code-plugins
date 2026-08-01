@@ -12,7 +12,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from oracle_ai_data_platform_fusion_bundle.commands import bootstrap as bs
+from oracle_ai_data_platform_fusion_autopilot.commands import bootstrap as bs
 
 
 def _env(**overrides) -> SimpleNamespace:
@@ -42,7 +42,7 @@ class TestProbeAidpReusesCanonicalClient:
         with patch.object(
             bs, "_probe_aidp", wraps=bs._probe_aidp
         ), patch(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.rest_client.AidpRestClient",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.rest_client.AidpRestClient",
             return_value=client,
         ):
             bs._probe_aidp(_env(), results)
@@ -55,7 +55,7 @@ class TestProbeAidpReusesCanonicalClient:
         client = MagicMock()
         client.list_workspaces.return_value = [_ws("ws-other"), _ws("ws-third")]
         with patch(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.rest_client.AidpRestClient",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.rest_client.AidpRestClient",
             return_value=client,
         ):
             bs._probe_aidp(_env(), results)
@@ -70,7 +70,7 @@ class TestProbeAidpReusesCanonicalClient:
         assert "aiDataPlatformId" in results[0].detail
 
     def test_fail_on_rest_error(self) -> None:
-        from oracle_ai_data_platform_fusion_bundle.dispatch.rest_client import (
+        from oracle_ai_data_platform_fusion_autopilot.dispatch.rest_client import (
             AidpRestError,
         )
 
@@ -78,7 +78,7 @@ class TestProbeAidpReusesCanonicalClient:
         client = MagicMock()
         client.list_workspaces.side_effect = AidpRestError("HTTP 401 — unauthenticated")
         with patch(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.rest_client.AidpRestClient",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.rest_client.AidpRestClient",
             return_value=client,
         ):
             bs._probe_aidp(_env(), results)
@@ -90,7 +90,7 @@ class TestProbeAidpReusesCanonicalClient:
         # surfaced as FAIL, not crashed out of the probe phase.
         results: list = []
         with patch(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.rest_client.AidpRestClient",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.rest_client.AidpRestClient",
             side_effect=RuntimeError("oci config missing"),
         ):
             bs._probe_aidp(_env(), results)
@@ -108,7 +108,7 @@ class TestProbeAidpUrlAntiRegression:
         client = MagicMock()
         client.list_workspaces.return_value = [_ws("ws-key-123")]
         with patch(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.rest_client.AidpRestClient",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.rest_client.AidpRestClient",
             return_value=client,
         ), patch.object(bs, "requests") as requests_mock:
             bs._probe_aidp(_env(), results)

@@ -12,7 +12,7 @@ from unittest.mock import MagicMock
 import pytest
 import yaml
 
-from oracle_ai_data_platform_fusion_bundle.orchestrator.node_preflight import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.node_preflight import (
     AIDPF_2042_REQUIRED_COLUMN_MISSING,
     AIDPF_2043_WATERMARK_COLUMN_MISSING,
     AIDPF_2046_REQUIRED_COLUMN_UNRESOLVED_REF,
@@ -20,8 +20,8 @@ from oracle_ai_data_platform_fusion_bundle.orchestrator.node_preflight import (
     PreflightReport,
     preflight_node,
 )
-from oracle_ai_data_platform_fusion_bundle.orchestrator.sql_renderer import RunContext
-from oracle_ai_data_platform_fusion_bundle.schema.medallion_pack import NodeYaml
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.sql_renderer import RunContext
+from oracle_ai_data_platform_fusion_autopilot.schema.medallion_pack import NodeYaml
 
 
 NODE_YAML_REQUIRED_COLS = """
@@ -464,7 +464,7 @@ class TestPreflightDoesNotRender:
         spark = _fake_describe_spark(["VENDORID"])  # SEGMENT1 missing → preflight blocks
 
         # Patch the renderer so any accidental invocation raises.
-        from oracle_ai_data_platform_fusion_bundle.orchestrator import sql_renderer
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator import sql_renderer
 
         renderer_mock = MagicMock(side_effect=AssertionError(
             "render_node_sql MUST NOT be called from preflight_node"
@@ -481,7 +481,7 @@ class TestPreflightDoesNotRender:
         in execute_node Step 3, AFTER preflight returns ok."""
         spark = _fake_describe_spark(["SEGMENT1", "VENDORID", "_extract_ts"])
 
-        from oracle_ai_data_platform_fusion_bundle.orchestrator import sql_renderer
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator import sql_renderer
         renderer_mock = MagicMock(side_effect=AssertionError(
             "render_node_sql MUST NOT be called from preflight_node"
         ))

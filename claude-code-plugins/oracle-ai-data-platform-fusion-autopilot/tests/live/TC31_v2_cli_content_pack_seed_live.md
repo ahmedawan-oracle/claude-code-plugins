@@ -2,7 +2,7 @@
 
 **Status:** PASS — captured 2026-06-10/11 on `saasfademo1` via a dedicated
 dev cluster. Operator-driven REST dispatch through the production CLI
-(`aidp-fusion-bundle run`, content-pack backend — the only backend
+(`aidp-fusion-autopilot run`, content-pack backend — the only backend
 post-Phase-9).
 
 Infra identifiers (datalake OCID, workspace/cluster keys, pod URL, BICC
@@ -18,7 +18,7 @@ on a live Fusion tenant, plus the six fixes/features on branch
 
 ## A — full medallion seed (all 10 nodes)
 
-`aidp-fusion-bundle run --mode seed` (bundle declares the finance gold
+`aidp-fusion-autopilot run --mode seed` (bundle declares the finance gold
 marts; D-1 transitive include pulls silver + bronze). `run_id 6694262a…`,
 **10 success / 0 failed / 0 skipped**, ~28 min wall.
 
@@ -133,7 +133,7 @@ any mart runs. Live: dropped `bronze.erp_suppliers`, then
 
 ```
 [AIDPF-2071] bronze readiness gate failed for tables: ['erp_suppliers'].
-  - erp_suppliers: table missing (run `aidp-fusion-bundle run --layers bronze
+  - erp_suppliers: table missing (run `aidp-fusion-autopilot run --layers bronze
     --datasets erp_suppliers` first).
 ```
 

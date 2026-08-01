@@ -12,15 +12,15 @@ from datetime import datetime
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.orchestrator.required_column_resolver import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.required_column_resolver import (
     coa_role_union,
     resolve_required_column_entries,
 )
-from oracle_ai_data_platform_fusion_bundle.orchestrator.sql_renderer import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.sql_renderer import (
     UnresolvedVariationPointError,
     _render_coa_role,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.tenant_profile import TenantProfile
+from oracle_ai_data_platform_fusion_autopilot.schema.tenant_profile import TenantProfile
 
 
 def _profile(coa: dict) -> TenantProfile:

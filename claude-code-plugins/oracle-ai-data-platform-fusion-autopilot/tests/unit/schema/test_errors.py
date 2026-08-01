@@ -17,37 +17,37 @@ class TestSchemaErrorsIdentity:
     the same instances."""
 
     def test_orchestrator_config_error_identity(self) -> None:
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.errors import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.errors import (
             OrchestratorConfigError as FromOrchestrator,
         )
-        from oracle_ai_data_platform_fusion_bundle.schema.errors import (
+        from oracle_ai_data_platform_fusion_autopilot.schema.errors import (
             OrchestratorConfigError as FromSchema,
         )
         assert FromOrchestrator is FromSchema
 
     def test_bundle_load_error_identity(self) -> None:
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.errors import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.errors import (
             BundleLoadError as FromOrchestrator,
         )
-        from oracle_ai_data_platform_fusion_bundle.schema.errors import (
+        from oracle_ai_data_platform_fusion_autopilot.schema.errors import (
             BundleLoadError as FromSchema,
         )
         assert FromOrchestrator is FromSchema
 
     def test_bundle_version_mismatch_error_identity(self) -> None:
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.errors import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.errors import (
             BundleVersionMismatchError as FromOrchestrator,
         )
-        from oracle_ai_data_platform_fusion_bundle.schema.errors import (
+        from oracle_ai_data_platform_fusion_autopilot.schema.errors import (
             BundleVersionMismatchError as FromSchema,
         )
         assert FromOrchestrator is FromSchema
 
     def test_missing_dependency_error_identity(self) -> None:
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.errors import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.errors import (
             MissingDependencyError as FromOrchestrator,
         )
-        from oracle_ai_data_platform_fusion_bundle.schema.errors import (
+        from oracle_ai_data_platform_fusion_autopilot.schema.errors import (
             MissingDependencyError as FromSchema,
         )
         assert FromOrchestrator is FromSchema
@@ -80,7 +80,7 @@ class TestEngineOnlyErrorsStayOrchestratorSide:
         ],
     )
     def test_engine_only_error_not_in_schema(self, name: str) -> None:
-        from oracle_ai_data_platform_fusion_bundle.schema import errors as schema_errors
+        from oracle_ai_data_platform_fusion_autopilot.schema import errors as schema_errors
 
         assert not hasattr(schema_errors, name), (
             f"{name} must stay engine-side; schema.errors only carries the "
@@ -95,7 +95,7 @@ class TestInheritancePreserved:
     re-export shim."""
 
     def test_bundle_load_error_is_orchestrator_config_error(self) -> None:
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.errors import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.errors import (
             BundleLoadError,
             OrchestratorConfigError,
         )
@@ -103,7 +103,7 @@ class TestInheritancePreserved:
         assert isinstance(BundleLoadError("x"), OrchestratorConfigError)
 
     def test_bundle_version_mismatch_is_bundle_load_error(self) -> None:
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.errors import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.errors import (
             BundleLoadError,
             BundleVersionMismatchError,
             OrchestratorConfigError,
@@ -112,7 +112,7 @@ class TestInheritancePreserved:
         assert isinstance(BundleVersionMismatchError("x"), OrchestratorConfigError)
 
     def test_missing_dependency_is_orchestrator_config_error(self) -> None:
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.errors import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.errors import (
             MissingDependencyError,
             OrchestratorConfigError,
         )

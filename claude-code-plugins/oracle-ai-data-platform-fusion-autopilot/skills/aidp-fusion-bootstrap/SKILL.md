@@ -1,6 +1,6 @@
 ---
 name: aidp-fusion-bootstrap
-description: "Guide and run the Oracle AIDP Fusion bundle bootstrap phase. Validates bundle/config readiness, checks AIDP/Fusion/IAM prerequisites, runs `aidp-fusion-bundle bootstrap --check-iam` or `bootstrap --refresh`, surfaces tenant variation choices pinned into the active profile YAML and evidence snapshots, and routes unresolved variation failures (`AIDPF-2010` / `AIDPF-2011`) to `/medallion-author`. Use when the user says 'bootstrap', 'pin tenant variation', 'create the profile', 'run pre-seed checks', 'missing profile', 'bootstrap --refresh', or needs the setup phase before seed/incremental. NOT for seed runs, incremental refresh, OAC dataset/workbook work, or net-new mart authoring."
+description: "Guide and run the Oracle AIDP Fusion Autopilot bootstrap phase. Validates bundle/config readiness, checks AIDP/Fusion/IAM prerequisites, runs `aidp-fusion-autopilot bootstrap --check-iam` or `bootstrap --refresh`, surfaces tenant variation choices pinned into the active profile YAML and evidence snapshots, and routes unresolved variation failures (`AIDPF-2010` / `AIDPF-2011`) to `/medallion-author`. Use when the user says 'bootstrap', 'pin tenant variation', 'create the profile', 'run pre-seed checks', 'missing profile', 'bootstrap --refresh', or needs the setup phase before seed/incremental. NOT for seed runs, incremental refresh, OAC dataset/workbook work, or net-new mart authoring."
 allowed-tools: Read, Bash, Glob, Grep
 ---
 
@@ -8,7 +8,7 @@ allowed-tools: Read, Bash, Glob, Grep
 
 This skill owns the bootstrap phase only: validate the customer project, run the
 CLI bootstrap safely, surface what tenant variation was pinned, and route
-bootstrap-specific failures. It shells out to `aidp-fusion-bundle`; it never
+bootstrap-specific failures. It shells out to `aidp-fusion-autopilot`; it never
 edits `profiles/`, `evidence/`, or diagnostics directly.
 
 Bootstrap is the bridge between configuration and first seed. It probes
@@ -57,7 +57,7 @@ Run from the customer project root, where `bundle.yaml` and `aidp.config.yaml`
 live. Validate first:
 
 ```bash
-aidp-fusion-bundle validate
+aidp-fusion-autopilot validate
 ```
 
 If available, use the shared precondition helper for a structured view. Resolve
@@ -73,7 +73,7 @@ python3 ../aidp-fusion-seed/preconditions.py \
 
 Interpret `missing` for bootstrap this way:
 
-- `bundle`: stop and have the user run `aidp-fusion-bundle init` or fix `bundle.yaml`.
+- `bundle`: stop and have the user run `aidp-fusion-autopilot init` or fix `bundle.yaml`.
 - `config`: route to `/aidp-fusion-config`; bootstrap cannot invent AIDP coordinates.
 - `profile`: this is the bootstrap target; proceed unless another blocker exists.
 - `cluster`: start or fix the AIDP cluster before default cluster-dispatched bootstrap.
@@ -87,14 +87,14 @@ into chat.
 Use initial bootstrap when no valid profile exists:
 
 ```bash
-aidp-fusion-bundle bootstrap --check-iam
+aidp-fusion-autopilot bootstrap --check-iam
 ```
 
 Use refresh only when a prior profile exists and you are re-pinning against live
 bronze after drift or a Fusion release change:
 
 ```bash
-aidp-fusion-bundle bootstrap --refresh --check-iam
+aidp-fusion-autopilot bootstrap --refresh --check-iam
 ```
 
 Do not run `--refresh` as a blind fix for unrelated seed failures. Runtime drift
@@ -117,7 +117,7 @@ CI/sandbox behavior and accepts first-candidate auto-pick semantics.
 For audit identity issues (`AIDPF-1020`), ask for or set a concrete operator:
 
 ```bash
-aidp-fusion-bundle bootstrap --check-iam --operator "<operator-id>"
+aidp-fusion-autopilot bootstrap --check-iam --operator "<operator-id>"
 ```
 
 ### 4. Run bootstrap and classify the result

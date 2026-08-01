@@ -1,4 +1,4 @@
-# Makefile — aidp-fusion-bundle
+# Makefile — aidp-fusion-autopilot
 #
 # Override the Python interpreter to bypass $PATH:
 #   make test PYTHON=python3.11
@@ -8,7 +8,7 @@ PYTHON ?= python
 .PHONY: test test-all docs-check
 
 # Unit tests only (acceptance target for BACKLOG P2.4).
-# Live tests are gated by AIDP_FUSION_BUNDLE_INTEGRATION=1 and live under tests/live.
+# Live tests are gated by AIDP_FUSION_AUTOPILOT_INTEGRATION=1 and live under tests/live.
 test:
 	$(PYTHON) -m pytest tests/unit -q
 

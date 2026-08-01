@@ -1,4 +1,4 @@
-"""Unit tests for :mod:`oracle_ai_data_platform_fusion_bundle.commands.resolution_prompt`.
+"""Unit tests for :mod:`oracle_ai_data_platform_fusion_autopilot.commands.resolution_prompt`.
 
 Covers the three operator-interaction modes:
 
@@ -15,7 +15,7 @@ from io import StringIO
 import pytest
 from rich.console import Console
 
-from oracle_ai_data_platform_fusion_bundle.commands.resolution_prompt import (
+from oracle_ai_data_platform_fusion_autopilot.commands.resolution_prompt import (
     PromptResult,
     prompt_multi_match,
 )

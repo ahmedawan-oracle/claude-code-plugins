@@ -10,14 +10,14 @@ from __future__ import annotations
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.commands.bootstrap import (
+from oracle_ai_data_platform_fusion_autopilot.commands.bootstrap import (
     ResolvedClusterDispatchConfig,
     _ENV_VAR_CLUSTER_KEY,
     _ENV_VAR_CLUSTER_NAME,
     _ENV_VAR_WORKSPACE_DIR,
     _resolve_cluster_dispatch_config,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.bundle import Defaults, EnvSpec
+from oracle_ai_data_platform_fusion_autopilot.schema.bundle import Defaults, EnvSpec
 
 
 def _env(**overrides) -> EnvSpec:
@@ -88,13 +88,13 @@ class TestResolveClusterDispatchConfigDerived:
         resolved = _resolve_cluster_dispatch_config(
             _env(), _defaults(workspaceRoot="Team")
         )
-        assert resolved.workspace_dir == "/Workspace/Team/fusion-bundle-bootstrap"
+        assert resolved.workspace_dir == "/Workspace/Team/fusion-autopilot-bootstrap"
 
     def test_workspace_dir_uses_default_workspace_root(self, monkeypatch) -> None:
         monkeypatch.delenv(_ENV_VAR_WORKSPACE_DIR, raising=False)
         resolved = _resolve_cluster_dispatch_config(_env(), _defaults())
         # `Defaults.workspace_root` defaults to "Shared".
-        assert resolved.workspace_dir == "/Workspace/Shared/fusion-bundle-bootstrap"
+        assert resolved.workspace_dir == "/Workspace/Shared/fusion-autopilot-bootstrap"
 
     def test_missing_fields_when_cluster_coords_absent(self, monkeypatch) -> None:
         monkeypatch.delenv(_ENV_VAR_CLUSTER_KEY, raising=False)
@@ -137,7 +137,7 @@ class TestResolvedClusterDispatchConfigShape:
             cluster_name="cluster_dev",
             region="us-ashburn-1",
             oci_profile="DEFAULT",
-            workspace_dir="/Workspace/Shared/fusion-bundle-bootstrap",
+            workspace_dir="/Workspace/Shared/fusion-autopilot-bootstrap",
         )
         assert cfg.missing_fields() == []
 
@@ -161,7 +161,7 @@ class TestAIDPF2047Gates:
         bundle_path = tmp_path / "bundle.yaml"
         config_path = tmp_path / "aidp.config.yaml"
         bundle_path.write_text(
-            "apiVersion: aidp-fusion-bundle/v1\n"
+            "apiVersion: aidp-fusion-autopilot/v1\n"
             "name: test-bundle\n"
             "aidp:\n"
             "  catalog: fusion_catalog\n"
@@ -177,7 +177,7 @@ class TestAIDPF2047Gates:
             encoding="utf-8",
         )
         config_path.write_text(
-            "apiVersion: aidp-fusion-bundle/v1\n"
+            "apiVersion: aidp-fusion-autopilot/v1\n"
             "project: test\n"
             "environments:\n"
             "  dev:\n"
@@ -188,7 +188,7 @@ class TestAIDPF2047Gates:
 
     def test_cluster_plus_skip_probes_emits_conflicting_flags(self, tmp_path) -> None:
         from click.testing import CliRunner
-        from oracle_ai_data_platform_fusion_bundle.cli import main
+        from oracle_ai_data_platform_fusion_autopilot.cli import main
 
         bundle_path, config_path = self._bundle_files(tmp_path)
         runner = CliRunner()
@@ -221,7 +221,7 @@ class TestAIDPF2047Gates:
 
         from rich.console import Console
 
-        from oracle_ai_data_platform_fusion_bundle.commands.bootstrap import (
+        from oracle_ai_data_platform_fusion_autopilot.commands.bootstrap import (
             _ProbeResult,
             bootstrap as bootstrap_impl,
         )
@@ -246,12 +246,12 @@ class TestAIDPF2047Gates:
             return fake_bundle, fake_config
 
         with patch(
-            "oracle_ai_data_platform_fusion_bundle.commands.bootstrap._load",
+            "oracle_ai_data_platform_fusion_autopilot.commands.bootstrap._load",
             side_effect=_fake_load,
         ), patch(
-            "oracle_ai_data_platform_fusion_bundle.commands.bootstrap._probe_bicc"
+            "oracle_ai_data_platform_fusion_autopilot.commands.bootstrap._probe_bicc"
         ), patch(
-            "oracle_ai_data_platform_fusion_bundle.commands.bootstrap._probe_aidp",
+            "oracle_ai_data_platform_fusion_autopilot.commands.bootstrap._probe_aidp",
             side_effect=lambda env, results: results.append(
                 _ProbeResult("aidp-rest", "PASS", "workspace reachable")
             ),

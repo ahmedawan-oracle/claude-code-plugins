@@ -1,4 +1,4 @@
-"""Phase 9 Step 10: `aidp-fusion-bundle catalog probe-pvo --emit-pack-yaml`.
+"""Phase 9 Step 10: `aidp-fusion-autopilot catalog probe-pvo --emit-pack-yaml`.
 
 Verifies the draft-YAML emitter writes a load-clean ``NodeYaml``-shape
 with the discovered columns, the standard audit columns, and the
@@ -16,9 +16,9 @@ import pytest
 import yaml as pyyaml
 from click.testing import CliRunner
 
-from oracle_ai_data_platform_fusion_bundle import cli
-from oracle_ai_data_platform_fusion_bundle.commands.catalog import _spark_type_to_yaml
-from oracle_ai_data_platform_fusion_bundle.schema.medallion_pack import NodeYaml
+from oracle_ai_data_platform_fusion_autopilot import cli
+from oracle_ai_data_platform_fusion_autopilot.commands.catalog import _spark_type_to_yaml
+from oracle_ai_data_platform_fusion_autopilot.schema.medallion_pack import NodeYaml
 
 # Tests that mock ``pyspark.sql.SparkSession`` need pyspark importable. The
 # ``spark=no`` CI matrix leg does not install it, so skip those (the type-mapper
@@ -82,7 +82,7 @@ def minimal_bundle(tmp_path: Path) -> Path:
     fusion credentials. Returns the path."""
     bundle_path = tmp_path / "bundle.yaml"
     bundle_path.write_text("""\
-apiVersion: aidp-fusion-bundle/v1
+apiVersion: aidp-fusion-autopilot/v1
 project: probe-test
 fusion:
   serviceUrl: https://example.fa.us-phoenix-1.oraclecloud.com
@@ -117,13 +117,13 @@ class TestProbePvoEmitsLoadCleanYaml:
 
         with patch("pyspark.sql.SparkSession", spark), \
              patch(
-                 "oracle_ai_data_platform_fusion_bundle.extractors.bicc.extract_pvo"
+                 "oracle_ai_data_platform_fusion_autopilot.extractors.bicc.extract_pvo"
              ) as mock_extract:
             mock_df = MagicMock()
             mock_df.schema = fake_schema
             mock_extract.return_value = mock_df
 
-            from oracle_ai_data_platform_fusion_bundle.commands.catalog import (
+            from oracle_ai_data_platform_fusion_autopilot.commands.catalog import (
                 probe_pvo_emit_pack_yaml,
             )
             exit_code = probe_pvo_emit_pack_yaml(
@@ -179,11 +179,11 @@ class TestProbePvoEmitsLoadCleanYaml:
 
         with patch("pyspark.sql.SparkSession", spark), \
              patch(
-                 "oracle_ai_data_platform_fusion_bundle.extractors.bicc.extract_pvo"
+                 "oracle_ai_data_platform_fusion_autopilot.extractors.bicc.extract_pvo"
              ) as mock_extract:
             mock_extract.return_value = MagicMock(schema=fake_schema)
 
-            from oracle_ai_data_platform_fusion_bundle.commands.catalog import (
+            from oracle_ai_data_platform_fusion_autopilot.commands.catalog import (
                 probe_pvo_emit_pack_yaml,
             )
             probe_pvo_emit_pack_yaml(
@@ -216,11 +216,11 @@ class TestProbePvoEmitsLoadCleanYaml:
 
         with patch("pyspark.sql.SparkSession", spark), \
              patch(
-                 "oracle_ai_data_platform_fusion_bundle.extractors.bicc.extract_pvo"
+                 "oracle_ai_data_platform_fusion_autopilot.extractors.bicc.extract_pvo"
              ) as mock_extract:
             mock_extract.return_value = MagicMock(schema=fake_schema)
 
-            from oracle_ai_data_platform_fusion_bundle.commands.catalog import (
+            from oracle_ai_data_platform_fusion_autopilot.commands.catalog import (
                 probe_pvo_emit_pack_yaml,
             )
             probe_pvo_emit_pack_yaml(
@@ -250,11 +250,11 @@ class TestProbePvoEmitsLoadCleanYaml:
 
         with patch("pyspark.sql.SparkSession", spark), \
              patch(
-                 "oracle_ai_data_platform_fusion_bundle.extractors.bicc.extract_pvo"
+                 "oracle_ai_data_platform_fusion_autopilot.extractors.bicc.extract_pvo"
              ) as mock_extract:
             mock_extract.return_value = MagicMock(schema=fake_schema)
 
-            from oracle_ai_data_platform_fusion_bundle.commands.catalog import (
+            from oracle_ai_data_platform_fusion_autopilot.commands.catalog import (
                 probe_pvo_emit_pack_yaml,
             )
             probe_pvo_emit_pack_yaml(
@@ -276,7 +276,7 @@ class TestProbePvoEmitsLoadCleanYaml:
 
     def test_no_bundle_path_returns_error_code(self) -> None:
         """The emitter requires a bundle for BICC connectivity."""
-        from oracle_ai_data_platform_fusion_bundle.commands.catalog import (
+        from oracle_ai_data_platform_fusion_autopilot.commands.catalog import (
             probe_pvo_emit_pack_yaml,
         )
         exit_code = probe_pvo_emit_pack_yaml(

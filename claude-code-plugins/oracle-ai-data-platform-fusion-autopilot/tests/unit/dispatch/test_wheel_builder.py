@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.dispatch.wheel_builder import (
+from oracle_ai_data_platform_fusion_autopilot.dispatch.wheel_builder import (
     DispatchWheelBuildError,
     _compute_source_hash,
     build_wheel,
@@ -21,7 +21,7 @@ def test_wheel_builder_reuses_canonical_dispatch_error() -> None:
     subclass) so the CLI's ``except (DispatchError, OrchestratorConfigError)``
     catch covers wheel-build failures with the stable DISPATCH_* code instead
     of letting a raw RuntimeError escape as a traceback to the operator."""
-    from oracle_ai_data_platform_fusion_bundle.dispatch.errors import (
+    from oracle_ai_data_platform_fusion_autopilot.dispatch.errors import (
         DispatchError,
         DispatchWheelBuildError as CanonicalError,
     )
@@ -35,7 +35,7 @@ def _make_checkout(root: Path) -> Path:
     """Build a minimal plugin-checkout layout the hash function can walk."""
     root.mkdir(parents=True, exist_ok=True)
     (root / "pyproject.toml").write_text("[project]\nname = 'fake'\nversion = '0.1.0'\n")
-    pkg = root / "scripts" / "oracle_ai_data_platform_fusion_bundle"
+    pkg = root / "scripts" / "oracle_ai_data_platform_fusion_autopilot"
     pkg.mkdir(parents=True)
     (pkg / "__init__.py").write_text("__version__ = '0.1.0'\n")
     (pkg / "module_a.py").write_text("VALUE = 1\n")
@@ -62,7 +62,7 @@ class TestSourceHash:
     def test_source_change_changes_hash(self, tmp_path: Path) -> None:
         checkout = _make_checkout(tmp_path)
         before = _compute_source_hash(checkout)
-        (checkout / "scripts" / "oracle_ai_data_platform_fusion_bundle" / "module_a.py").write_text(
+        (checkout / "scripts" / "oracle_ai_data_platform_fusion_autopilot" / "module_a.py").write_text(
             "VALUE = 99\n"
         )
         after = _compute_source_hash(checkout)
@@ -89,7 +89,7 @@ class TestSourceHash:
 
     def test_pycache_change_does_not_change_hash(self, tmp_path: Path) -> None:
         checkout = _make_checkout(tmp_path)
-        pycache = checkout / "scripts" / "oracle_ai_data_platform_fusion_bundle" / "__pycache__"
+        pycache = checkout / "scripts" / "oracle_ai_data_platform_fusion_autopilot" / "__pycache__"
         pycache.mkdir()
         (pycache / "module_a.cpython-313.pyc").write_text("bytecode-stand-in")
         # Hashing skips __pycache__ contents entirely — the file's presence
@@ -117,7 +117,7 @@ class TestBuildWheelCache:
             outdir_str = cmd[cmd.index("--outdir") + 1]
             outdir = Path(outdir_str)
             if rc == 0 and produce_wheel:
-                (outdir / "oracle_ai_data_platform_fusion_bundle-0.1.0-py3-none-any.whl").write_bytes(
+                (outdir / "oracle_ai_data_platform_fusion_autopilot-0.1.0-py3-none-any.whl").write_bytes(
                     b"PK\x03\x04 fake wheel bytes"
                 )
             return subprocess.CompletedProcess(
@@ -125,7 +125,7 @@ class TestBuildWheelCache:
             )
 
         return patch(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.wheel_builder.subprocess.run",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.wheel_builder.subprocess.run",
             side_effect=fake_run,
         )
 
@@ -159,7 +159,7 @@ class TestBuildWheelCache:
         cache_dir = tmp_path / "cache"
         with self._patch_build_subprocess() as mock_run:
             build_wheel(plugin_checkout=checkout, cache_dir=cache_dir)
-            (checkout / "scripts" / "oracle_ai_data_platform_fusion_bundle" / "module_a.py").write_text(
+            (checkout / "scripts" / "oracle_ai_data_platform_fusion_autopilot" / "module_a.py").write_text(
                 "VALUE = 999\n"
             )
             build_wheel(plugin_checkout=checkout, cache_dir=cache_dir)
@@ -205,11 +205,11 @@ class TestBuildWheelCache:
         cache_dir = tmp_path / "cache"
         with (
             patch(
-                "oracle_ai_data_platform_fusion_bundle.dispatch.wheel_builder.importlib.util.find_spec",
+                "oracle_ai_data_platform_fusion_autopilot.dispatch.wheel_builder.importlib.util.find_spec",
                 return_value=None,  # simulate `build` not installed
             ),
             patch(
-                "oracle_ai_data_platform_fusion_bundle.dispatch.wheel_builder.subprocess.run",
+                "oracle_ai_data_platform_fusion_autopilot.dispatch.wheel_builder.subprocess.run",
                 side_effect=AssertionError("subprocess.run must not be reached"),
             ),
         ):

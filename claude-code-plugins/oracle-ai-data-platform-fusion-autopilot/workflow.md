@@ -35,7 +35,7 @@ Autopilot follows this order:
 
 | Phase | Purpose | Driver | Stops for |
 |---|---|---|---|
-| 1. Config | Create/validate `bundle.yaml` and `aidp.config.yaml` | `aidp-fusion-bundle init`, `/aidp-fusion-config` | Missing Fusion connectivity |
+| 1. Config | Create/validate `bundle.yaml` and `aidp.config.yaml` | `aidp-fusion-autopilot init`, `/aidp-fusion-config` | Missing Fusion connectivity |
 | 1b. OAC MCP connect | Make OAC tools available before OAC phases | `dashboard mcp-setup` | Claude Code restart/reconnect |
 | 2. Bootstrap | Probe prerequisites and pin tenant variation | `/aidp-fusion-bootstrap` | Variation choices |
 | 3. Seed | Materialize AIDP bronze/silver/gold | `/aidp-fusion-seed` | Destructive seed confirmation |
@@ -63,8 +63,8 @@ Recommended route: install the Claude Code plugin, open Claude Code from a
 clean customer bundle directory, and let `aidp-fusion-autopilot` drive setup.
 
 ```text
-/plugin marketplace add repo/oracle-ai-data-platform-fusion-bundle
-/plugin install oracle-ai-data-platform-fusion-bundle@aidp-fusion-bundle
+/plugin marketplace add repo/oracle-ai-data-platform-fusion-autopilot
+/plugin install oracle-ai-data-platform-fusion-autopilot@aidp-fusion-autopilot
 ```
 
 Keep the customer implementation separate from the plugin source:
@@ -85,13 +85,13 @@ Manual route: install the CLI from the plugin checkout, then scaffold the
 customer project from the Phase 9 starter template:
 
 ```bash
-cd Workspace/oracle-ai-data-platform-fusion-bundle
+cd Workspace/oracle-ai-data-platform-fusion-autopilot
 pip install -e .
 
 cd ..
 mkdir demo-fusion-cfo
 cd demo-fusion-cfo
-aidp-fusion-bundle init
+aidp-fusion-autopilot init
 ```
 
 Make sure the bundle uses the current content-pack shape. A starter bundle
@@ -106,7 +106,7 @@ contentPack:
 Resolve AIDP coordinates by name instead of hand-copying every key:
 
 ```bash
-aidp-fusion-bundle init-config \
+aidp-fusion-autopilot init-config \
   --aidp-id <aidp-or-datalake-ocid> \
   --workspace "<workspace display name>" \
   --cluster "<cluster display name>"
@@ -120,7 +120,7 @@ plugin.
 Validate before touching live systems:
 
 ```bash
-aidp-fusion-bundle validate
+aidp-fusion-autopilot validate
 ```
 
 ## Phase 1b: Connect OAC MCP Early
@@ -131,7 +131,7 @@ to the long-running pipeline phases.
 For Claude Code, use the supported setup command:
 
 ```bash
-aidp-fusion-bundle dashboard mcp-setup \
+aidp-fusion-autopilot dashboard mcp-setup \
   --connector-js <path-to-oac-mcp-connect.js>
 ```
 
@@ -168,7 +168,7 @@ OAC grants.
 Run bootstrap after config is valid, preferably through `/aidp-fusion-bootstrap`:
 
 ```bash
-aidp-fusion-bundle bootstrap
+aidp-fusion-autopilot bootstrap
 ```
 
 Bootstrap does two things:
@@ -188,7 +188,7 @@ pack's candidate lists. Bootstrap remains the only writer to `profiles/` and
 First materialization is a seed:
 
 ```bash
-aidp-fusion-bundle run --mode seed
+aidp-fusion-autopilot run --mode seed
 ```
 
 Normal laptop use dispatches a generated notebook to the AIDP cluster over
@@ -198,20 +198,20 @@ AIDP runtime globals are already available.
 Scoped examples:
 
 ```bash
-aidp-fusion-bundle run --mode seed --datasets supplier_spend
-aidp-fusion-bundle run --mode seed --layers bronze
-aidp-fusion-bundle run --mode seed --datasets ar_invoice_summary --layers gold
+aidp-fusion-autopilot run --mode seed --datasets supplier_spend
+aidp-fusion-autopilot run --mode seed --layers bronze
+aidp-fusion-autopilot run --mode seed --datasets ar_invoice_summary --layers gold
 ```
 
 Seed can replace silver and gold targets. The conversational seed skill is
 fail-closed: with the current CLI it cannot prove physical target tables are
 empty from the laptop, so it requires confirmation before every real seed.
-`fusion_bundle_state` is run metadata, not proof that target tables are empty.
+`fusion_autopilot_state` is run metadata, not proof that target tables are empty.
 
 Preview a run without dispatching:
 
 ```bash
-aidp-fusion-bundle run --mode seed --dry-run
+aidp-fusion-autopilot run --mode seed --dry-run
 ```
 
 ## Resume
@@ -219,7 +219,7 @@ aidp-fusion-bundle run --mode seed --dry-run
 If a run is interrupted, resume by run id:
 
 ```bash
-aidp-fusion-bundle run --mode seed --resume <run_id>
+aidp-fusion-autopilot run --mode seed --resume <run_id>
 ```
 
 The resumed run reuses the original `run_id`, skips already-successful nodes,
@@ -231,10 +231,10 @@ and preserves the medallion audit invariant in `silver_run_id` and
 After a successful seed, day-2 refresh uses:
 
 ```bash
-aidp-fusion-bundle run --mode incremental
+aidp-fusion-autopilot run --mode incremental
 ```
 
-Incremental requires prior watermarks in `fusion_bundle_state`. If a node has
+Incremental requires prior watermarks in `fusion_autopilot_state`. If a node has
 never been seeded, seed it first. If incremental fails with schema drift,
 Fusion PVO drift, or plan-hash drift, route to `/fusion-drift-doctor`.
 
@@ -283,11 +283,11 @@ For user-facing examples, including how to override shipped mart SQL, see
 After authoring, validate and wire the overlay:
 
 ```bash
-aidp-fusion-bundle content-pack validate overlays/<name>
+aidp-fusion-autopilot content-pack validate overlays/<name>
 # --no-align keeps a narrow bundle / one-mart override as-is; the default
 # --align broadens datasets/gold.marts to every node in the resolved pack
-aidp-fusion-bundle use-pack overlays/<name> --profile <profile>
-aidp-fusion-bundle validate
+aidp-fusion-autopilot use-pack overlays/<name> --profile <profile>
+aidp-fusion-autopilot validate
 ```
 
 Then seed the new node and re-run the advisor against the live catalog.
@@ -307,7 +307,7 @@ the AIDP JDBC/`idljdbc` connection shape.
 The bundle can generate the six-key connection JSON:
 
 ```bash
-aidp-fusion-bundle dashboard install --target oac \
+aidp-fusion-autopilot dashboard install --target oac \
   --oac-url <oac-url> \
   --print-only \
   ...connection args...
@@ -420,7 +420,7 @@ clients to OAC MCP. Follow `docs/oac_mcp_setup.md`.
 For Claude Code, the same non-interactive auth guidance applies:
 
 ```bash
-aidp-fusion-bundle dashboard mcp-setup \
+aidp-fusion-autopilot dashboard mcp-setup \
   --connector-js <path-to-oac-mcp-connect.js>
 ```
 
@@ -443,35 +443,35 @@ in addition to query tools, so permissions must be controlled by OAC grants.
 
 ```bash
 # Validate local config
-aidp-fusion-bundle validate
+aidp-fusion-autopilot validate
 
 # Resolve AIDP config by names
-aidp-fusion-bundle init-config \
+aidp-fusion-autopilot init-config \
   --aidp-id <ocid> --workspace "<name>" --cluster "<name>"
 
 # Set up operator OAC MCP for Claude Code, then restart/reconnect
-aidp-fusion-bundle dashboard mcp-setup \
+aidp-fusion-autopilot dashboard mcp-setup \
   --connector-js <path-to-oac-mcp-connect.js>
 
 # Bootstrap tenant variation
-aidp-fusion-bundle bootstrap
+aidp-fusion-autopilot bootstrap
 
 # Preview and run seed
-aidp-fusion-bundle run --mode seed --dry-run
-aidp-fusion-bundle run --mode seed
+aidp-fusion-autopilot run --mode seed --dry-run
+aidp-fusion-autopilot run --mode seed
 
 # Resume
-aidp-fusion-bundle run --mode seed --resume <run_id>
+aidp-fusion-autopilot run --mode seed --resume <run_id>
 
 # Day-2 refresh
-aidp-fusion-bundle run --mode incremental
+aidp-fusion-autopilot run --mode incremental
 
 # Inspect and validate packs
-aidp-fusion-bundle content-pack list
-aidp-fusion-bundle content-pack info fusion-finance-starter
-aidp-fusion-bundle content-pack validate fusion-finance-starter
+aidp-fusion-autopilot content-pack list
+aidp-fusion-autopilot content-pack info fusion-finance-starter
+aidp-fusion-autopilot content-pack validate fusion-finance-starter
 
 # Wire an overlay (add --no-align for a narrow bundle / one-mart override —
 # keeps existing datasets/gold.marts instead of aligning to the full pack)
-aidp-fusion-bundle use-pack overlays/<name> --profile <profile>
+aidp-fusion-autopilot use-pack overlays/<name> --profile <profile>
 ```

@@ -13,8 +13,8 @@ import yaml
 
 from unittest.mock import MagicMock
 
-from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack import load_pack
-from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack_validators import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack import load_pack
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack_validators import (
     AIDPF_2003_SQL_FILE_MISSING,
     AIDPF_2005_RESERVED_NODE_ID,
     AIDPF_2040_DAG_CYCLE,
@@ -933,7 +933,7 @@ def test_column_contract_alias_demand_profile_aware(tmp_path: Path) -> None:
 
 def test_starter_pack_passes_column_contract_gate() -> None:
     """Non-regression: the shipped starter pack passes the gate unchanged."""
-    from oracle_ai_data_platform_fusion_bundle.commands.content_pack import (
+    from oracle_ai_data_platform_fusion_autopilot.commands.content_pack import (
         _load_full_chain,
         resolve_pack_path,
     )

@@ -22,17 +22,17 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.orchestrator.bronze_readiness import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.bronze_readiness import (
     AIDPF_2071_BRONZE_READINESS_GATE_FAILED,
     BronzeReadinessGateError,
     assert_bronze_readiness,
 )
-from oracle_ai_data_platform_fusion_bundle.orchestrator.fusion_pvo_drift import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.fusion_pvo_drift import (
     AIDPF_2072_FUSION_PVO_DRIFT_GATE_FAILED,
     FusionPvoDriftError,
     assert_fusion_pvo_compatibility,
 )
-from oracle_ai_data_platform_fusion_bundle.orchestrator.required_column_resolver import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.required_column_resolver import (
     resolve_required_column_entries,
 )
 

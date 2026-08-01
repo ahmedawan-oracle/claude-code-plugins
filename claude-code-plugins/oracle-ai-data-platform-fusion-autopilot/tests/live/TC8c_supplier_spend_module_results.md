@@ -1,6 +1,6 @@
 # TC8c — `gold.supplier_spend` mart live verification (2026-05-07)
 
-> **Status**: ✅ **PASS (live, spend-only fallback path)** — `gold.supplier_spend` materialized end-to-end on `fusion_bundle_dev` cluster against `bronze.ap_invoices` (49,552 rows) and `silver.dim_supplier` (209 rows). Reproduces TC8's $3.2B aggregate within 2% on the eseb-test pod. Picker correctly chose the spend-only fallback path (eseb-test has all-NULL `vendor_id`).
+> **Status**: ✅ **PASS (live, spend-only fallback path)** — `gold.supplier_spend` materialized end-to-end on `fusion_autopilot_dev` cluster against `bronze.ap_invoices` (49,552 rows) and `silver.dim_supplier` (209 rows). Reproduces TC8's $3.2B aggregate within 2% on the eseb-test pod. Picker correctly chose the spend-only fallback path (eseb-test has all-NULL `vendor_id`).
 
 ## Test lineage
 
@@ -88,5 +88,5 @@ gold_built_at          timestamp
 
 * TC8 original prototype evidence: [`TC8_supplier_spend_results.md`](TC8_supplier_spend_results.md)
 * TC8b dim_supplier module: [`TC8b_dim_supplier_module_results.md`](TC8b_dim_supplier_module_results.md)
-* Module: [`scripts/.../transforms/gold/supplier_spend.py`](../../scripts/oracle_ai_data_platform_fusion_bundle/transforms/gold/supplier_spend.py)
+* Module: [`scripts/.../transforms/gold/supplier_spend.py`](../../scripts/oracle_ai_data_platform_fusion_autopilot/transforms/gold/supplier_spend.py)
 * Unit tests: [`tests/unit/test_supplier_spend.py`](../unit/test_supplier_spend.py)

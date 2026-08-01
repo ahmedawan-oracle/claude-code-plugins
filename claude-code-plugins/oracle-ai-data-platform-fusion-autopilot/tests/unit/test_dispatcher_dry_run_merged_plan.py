@@ -21,12 +21,12 @@ from pathlib import Path
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle import orchestrator
-from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack import (
+from oracle_ai_data_platform_fusion_autopilot import orchestrator
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack import (
     load_full_chain,
     make_filesystem_base_resolver,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.tenant_profile import (
+from oracle_ai_data_platform_fusion_autopilot.schema.tenant_profile import (
     load_tenant_profile,
 )
 
@@ -149,7 +149,7 @@ profile:
 """
 
 _BUNDLE_YAML = """\
-apiVersion: aidp-fusion-bundle/v1
+apiVersion: aidp-fusion-autopilot/v1
 project: dry-run-merge
 fusion:
   serviceUrl: https://example.com
@@ -290,7 +290,7 @@ class TestDispatcherDryRunMergedPlan:
         so a typo in ``--datasets`` fails the same way on planning as
         it would on execution (Phase 9: AIDPF-1034 from the content-
         pack plan resolver)."""
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack_plan_resolver import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack_plan_resolver import (
             UnknownDatasetFilterError,
         )
 

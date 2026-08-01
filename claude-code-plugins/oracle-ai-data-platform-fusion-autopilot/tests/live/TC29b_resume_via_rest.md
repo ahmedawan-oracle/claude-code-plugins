@@ -1,7 +1,7 @@
 # TC29b — Resume via REST dispatch (P1.5ε-fix5 live evidence)
 
 **Run date**: 2026-06-03
-**Tenant**: `fusion_bundle_dev` cluster on `<aidp-workspace>`, region `us-ashburn-1`
+**Tenant**: `fusion_autopilot_dev` cluster on `<aidp-workspace>`, region `us-ashburn-1`
 **Plugin commit**: `aea53ac` (P1.5ε-fix5 source pre-extract_cell_errors hardening) + a follow-on commit shipping the stderr-stream support in `extract_cell_errors` (the live-evidence-driven discovery captured below).
 **Dispatcher**: `.claude/skills/fusion-tc26-run/tc29b_resume_dispatch.py`
 **Bundle**: narrow scope (2 bronze + 2 silver + 1 gold) — same template the TC27 evidence uses, so Phase wall times are directly comparable.
@@ -89,7 +89,7 @@ Inspection of the executed-notebook marker body confirms the exact JSON corrupti
 
 ## Phase 3 — Resume (the productized resume_run_id plumbing proof)
 
-Drives the productized `build_notebook(resume_run_id="66aa575a…")` — the cluster-side run cell sees `orchestrator.run(..., resume_run_id="66aa575a…")` and reads the existing `fusion_bundle_state` rows. Per-step summary:
+Drives the productized `build_notebook(resume_run_id="66aa575a…")` — the cluster-side run cell sees `orchestrator.run(..., resume_run_id="66aa575a…")` and reads the existing `fusion_autopilot_state` rows. Per-step summary:
 
 ```text
 run_id=66aa575a…  ← same run_id as Phase 2 (SOX-trail invariant)
@@ -103,7 +103,7 @@ steps: 2 ok, 0 failed, 0 skipped, 0 deferred (62.7s reported / 120.4s wall)
 
 Counter check: 3× resumed_skipped (the datasets that succeeded in Phase 2) + 2× new success (the previously-failed dim_supplier re-attempts and the cascade-skipped supplier_spend re-dispatches) = 5 total, matching the Phase 1 baseline cardinality.
 
-**Latest-per-(run_id, dataset_id) projection of `fusion_bundle_state` for `run_id=66aa575a…`** (verify-cell output):
+**Latest-per-(run_id, dataset_id) projection of `fusion_autopilot_state` for `run_id=66aa575a…`** (verify-cell output):
 
 ```text
 +--------------+------+----+---------------+---------+-----------+------------------+
@@ -137,8 +137,8 @@ Both materialized layers' audit columns carry `66aa575a…` — the **original**
 Drives `build_notebook(resume_run_id="tc29b-not-a-real-id")`. The cluster job fails at cell 3 because `state.read_resumable_state(...)` finds no rows for that run_id and raises:
 
 ```text
-ResumeRunNotFoundError: --resume: no rows in fusion_bundle_state for run_id='tc29b-not-a-real-id'.
-Check the value (operator typo?) or use `aidp-fusion-bundle status` to list recent run_ids.
+ResumeRunNotFoundError: --resume: no rows in fusion_autopilot_state for run_id='tc29b-not-a-real-id'.
+Check the value (operator typo?) or use `aidp-fusion-autopilot status` to list recent run_ids.
 ```
 
 — matching the exact message shape from `orchestrator/state.py:954-955` (the literal `evalue` that the Step 8 unit tests assert against).
@@ -160,8 +160,8 @@ text: "Command ID <run-key>_… failed with java.lang.RuntimeException: [Command
        File /tmp/.../orchestrator/state.py:954, in read_resumable_state(spark, paths, run_id)
            953 if not rows:
        --> 954     raise ResumeRunNotFoundError(
-           955         f"--resume: no rows in fusion_bundle_state for run_id={run_id!r}. ...
-       ResumeRunNotFoundError: --resume: no rows in fusion_bundle_state for run_id='tc29b-not-a-real-id'. Check the value (operator typo?) or use `aidp-fusion-bundle status` to list recent run_ids."
+           955         f"--resume: no rows in fusion_autopilot_state for run_id={run_id!r}. ...
+       ResumeRunNotFoundError: --resume: no rows in fusion_autopilot_state for run_id='tc29b-not-a-real-id'. Check the value (operator typo?) or use `aidp-fusion-autopilot status` to list recent run_ids."
 ```
 
 ### Fix applied in this branch
@@ -171,7 +171,7 @@ text: "Command ID <run-key>_… failed with java.lang.RuntimeException: [Command
 After the fix, re-parsing the same Phase 4 executed notebook (no re-dispatch — the saved `.ipynb` is the ground-truth fixture) yields:
 
 ```text
-cell 3: ResumeRunNotFoundError: --resume: no rows in fusion_bundle_state for run_id='tc29b-not-a-real-id'. Check the value (operator typo?) or use `aidp-fusion-bundle status` to list recent run_ids.
+cell 3: ResumeRunNotFoundError: --resume: no rows in fusion_autopilot_state for run_id='tc29b-not-a-real-id'. Check the value (operator typo?) or use `aidp-fusion-autopilot status` to list recent run_ids.
 ```
 
 — exactly the shape Step 8's enrichment path appends to `DispatchRunFailedError`'s message. The CLI catch at `commands/run.py:229` then renders this in the operator's red error block. Locked by 6 new unit tests in `tests/unit/dispatch/test_rest_client.py::TestExtractCellErrorsStderrStream`:
@@ -189,8 +189,8 @@ cell 3: ResumeRunNotFoundError: --resume: no rows in fusion_bundle_state for run
 
 - **The custom Phase 2 notebook is a TC27-style monkeypatch** — there's no operator-facing hook in the productized CLI to inject a runtime failure into a specific silver builder. Phases 1, 3, and 4 use the productized `build_notebook` end-to-end so the resume_run_id `repr()`-injection path (fix5 Step 1) gets live exercise. Phase 2's custom notebook still emits the marker via the productized `summary.to_marker_dict()`, so the marker-parser exercise is faithful to what `build_notebook`'s run cell would produce on a real failed run.
 - **Marker branch on Phase 2 is data-dependent**: when a real production run fails such that `repr(exc)` happens to contain no nested quote characters (e.g., a `KeyError('foo')` with a single-quoted argument), the JSON parse will succeed cleanly and the dispatcher returns a normal `RunSummary` (exit 1 with rendered failed-step table). The regex-fallback branch fires for the typical `RuntimeError("message")` / `ValueError("message")` / `RuntimeError(repr(...))` shapes — anything where `repr(exc)` embeds double quotes. TC29b Phase 2's induced `RuntimeError("…")` triggers the fallback by construction; production users will see one branch or the other depending on the cluster-side exception class.
-- **Single-tenant evidence** — this captures the dispatch-layer plumbing claim against `fusion_bundle_dev`. Multi-tenant portability (P3.7 / P3.9) is tracked separately and is not in scope for fix5.
-- **No `aidp-fusion-bundle status` CLI yet** — the remediation hint in the `ResumeRunNotFoundError` message refers to a future helper. Today operators query `fusion_bundle_state` directly.
+- **Single-tenant evidence** — this captures the dispatch-layer plumbing claim against `fusion_autopilot_dev`. Multi-tenant portability (P3.7 / P3.9) is tracked separately and is not in scope for fix5.
+- **No `aidp-fusion-autopilot status` CLI yet** — the remediation hint in the `ResumeRunNotFoundError` message refers to a future helper. Today operators query `fusion_autopilot_state` directly.
 - **Cluster auto-termination interaction**: between Phase 3 (12:14:14) and Phase 4 (12:14:20) the cluster stayed warm — no re-init pause. If running TC29b after a cluster STOP, the first phase will absorb ~30-60 s of warm-up; subsequent phases reuse the same context.
 - **Cleanup** — Phase 2's monkeypatch is reverted at the end of the run cell, so the cluster-side process state is clean for any subsequent dispatch.
 
@@ -201,6 +201,6 @@ cell 3: ResumeRunNotFoundError: --resume: no rows in fusion_bundle_state for run
 - TC27 evidence file (`tests/live/TC27_resume_from_checkpoint_results.md`) — original `--inline` resume validation + the deferred marker-parse-fragility note that fix5 closes.
 - TC29 evidence file (`tests/live/TC29_rest_dispatch.md`) — REST-dispatch baseline that fix5 builds on.
 - `.claude/skills/fusion-tc26-run/tc29b_resume_dispatch.py` — the 4-phase orchestration script (modeled on `tc27_dispatch.py`).
-- `scripts/oracle_ai_data_platform_fusion_bundle/dispatch/rest_client.py` — `parse_marker` regex fallback + `extract_cell_errors` stderr-stream support.
-- `scripts/oracle_ai_data_platform_fusion_bundle/dispatch/errors.py` — `DispatchMarkerDegradedError` typed exception (stable code `DISPATCH_MARKER_DEGRADED`).
-- `scripts/oracle_ai_data_platform_fusion_bundle/dispatch/__init__.py` — sentinel handling + cell-error enrichment integration points.
+- `scripts/oracle_ai_data_platform_fusion_autopilot/dispatch/rest_client.py` — `parse_marker` regex fallback + `extract_cell_errors` stderr-stream support.
+- `scripts/oracle_ai_data_platform_fusion_autopilot/dispatch/errors.py` — `DispatchMarkerDegradedError` typed exception (stable code `DISPATCH_MARKER_DEGRADED`).
+- `scripts/oracle_ai_data_platform_fusion_autopilot/dispatch/__init__.py` — sentinel handling + cell-error enrichment integration points.

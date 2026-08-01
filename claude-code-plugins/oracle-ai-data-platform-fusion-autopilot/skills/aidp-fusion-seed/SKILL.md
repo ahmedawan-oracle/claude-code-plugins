@@ -1,6 +1,6 @@
 ---
 name: aidp-fusion-seed
-description: "Turn a natural-language seed request into a correct, guarded `aidp-fusion-bundle run --mode seed`. Parses intent into scope flags (--datasets / --layers / --strict-scope / --resume), auto-satisfies preconditions (validate + `/aidp-fusion-bootstrap` + cluster), guards the destructive replace-on-silver/gold behaviour with a fail-closed confirmation, then dispatches and offers resume on failure. Use when the user says 'seed', 'seed supplier_spend', 'seed the bronze layer', 'seed the marts', 'resume the seed', 'materialize bronze/silver/gold', or otherwise wants a first-run / re-run of the medallion pipeline. NOT for incremental runs (--mode incremental), bootstrap-only variation resolution (use `/aidp-fusion-bootstrap`), or dashboard install."
+description: "Turn a natural-language seed request into a correct, guarded `aidp-fusion-autopilot run --mode seed`. Parses intent into scope flags (--datasets / --layers / --strict-scope / --resume), auto-satisfies preconditions (validate + `/aidp-fusion-bootstrap` + cluster), guards the destructive replace-on-silver/gold behaviour with a fail-closed confirmation, then dispatches and offers resume on failure. Use when the user says 'seed', 'seed supplier_spend', 'seed the bronze layer', 'seed the marts', 'resume the seed', 'materialize bronze/silver/gold', or otherwise wants a first-run / re-run of the medallion pipeline. NOT for incremental runs (--mode incremental), bootstrap-only variation resolution (use `/aidp-fusion-bootstrap`), or dashboard install."
 allowed-tools: Read, Bash, Glob, Grep
 ---
 
@@ -8,11 +8,11 @@ allowed-tools: Read, Bash, Glob, Grep
 
 This skill turns a loose ask — "seed", "seed supplier_spend", "seed just
 bronze", "resume the seed" — into a correct, guarded
-`aidp-fusion-bundle run --mode seed` invocation. It owns ONLY: intent
+`aidp-fusion-autopilot run --mode seed` invocation. It owns ONLY: intent
 parsing, precondition orchestration, the destructive guard, dispatch, and
 result presentation. **It shells out to the existing CLI for every stateful
 action** — it never imports the orchestrator and never touches
-`fusion_bundle_state` directly (CLAUDE.md "the CLI is the contract" +
+`fusion_autopilot_state` directly (CLAUDE.md "the CLI is the contract" +
 layering rule).
 
 `seed` materializes bronze + silver + gold end-to-end and uses **replace
@@ -64,9 +64,9 @@ target from a typo. The union of:
 
 - bronze dataset ids — from `bundle.yaml`'s `datasets[].id`;
 - silver + gold node ids — from
-  `aidp-fusion-bundle content-pack info <pack> --json` (`.nodes.silver` +
+  `aidp-fusion-autopilot content-pack info <pack> --json` (`.nodes.silver` +
   `.nodes.gold`). Resolve `<pack>` from `bundle.yaml`'s `contentPack.name`
-  (fall back to `aidp-fusion-bundle content-pack list --json` if only one is
+  (fall back to `aidp-fusion-autopilot content-pack list --json` if only one is
   installed).
 
 Then parse:
@@ -88,7 +88,7 @@ The JSON result tells you what to do next:
   discover the run_id today (`status` does not print run_ids, and
   `.aidp/diagnostics/` is not a complete index). **Ask the user for the
   explicit run_id.** Do NOT scrape `status` text or guess from diagnostics dirs.
-  (When `aidp-fusion-bundle status --recent-runs --json` ships, feed its output
+  (When `aidp-fusion-autopilot status --recent-runs --json` ships, feed its output
   to `intent.resolve_resume_run_id(recent_runs)` — it returns a single
   resumable run_id, or forces an ask on zero / multiple. Still ask on either.)
 - Otherwise → `argv` is the resolved `run` invocation. Show the user the
@@ -116,7 +116,7 @@ cluster_state, config_placeholders[], validate_ok, details{}}`. Act on
   are resolvable from human-friendly names — do NOT dead-end. Tell the user to
   run **`/aidp-fusion-config`**, or shell out to:
   ```bash
-  aidp-fusion-bundle init-config --aidp-id <OCID> --workspace "<name>" --cluster "<name>"
+  aidp-fusion-autopilot init-config --aidp-id <OCID> --workspace "<name>" --cluster "<name>"
   ```
   which resolves the keys so they never hand-copy OCIDs. (Still stop-and-ask on
   missing `fusion:` connectivity — `init-config` cannot supply that.)
@@ -124,7 +124,7 @@ cluster_state, config_placeholders[], validate_ok, details{}}`. Act on
 - **`missing` contains `"profile"`** (no `contentPack.profile`, or
   `profiles/<tenant>.yaml` absent) → **route through `/aidp-fusion-bootstrap`**:
   ```bash
-  aidp-fusion-bundle bootstrap --check-iam
+  aidp-fusion-autopilot bootstrap --check-iam
   ```
   ⚠️ Bootstrap **freezes tenant variation choices** (column-alias /
   semantic-variant picks) into the profile. **Surface what it resolved** to the
@@ -142,7 +142,7 @@ cluster_state, config_placeholders[], validate_ok, details{}}`. Act on
   only knows nodes in the **active** `contentPack`, so a node not in it parses
   as unknown. Wire it for the client with the one-command verb:
   ```bash
-  aidp-fusion-bundle use-pack overlays/<name> --profile <tenant>
+  aidp-fusion-autopilot use-pack overlays/<name> --profile <tenant>
   ```
   (sets `contentPack`, aligns `dimensions`/`marts`, normalizes the credential
   ref — see `mart-author` step 7), then re-run. For a **narrow bundle** or a
@@ -172,8 +172,8 @@ both probes and classify the outcome into **three** buckets — and the bar for
 "proceed" is high:
 
 ```bash
-aidp-fusion-bundle status                                   # informational
-aidp-fusion-bundle run --mode seed <scope flags> --dry-run  # resolved plan
+aidp-fusion-autopilot status                                   # informational
+aidp-fusion-autopilot run --mode seed <scope flags> --dry-run  # resolved plan
 ```
 
 `--dry-run` prints the **"Would dispatch"** table (every in-scope
@@ -194,7 +194,7 @@ Classify:
 > **"Proven empty" is a PHYSICAL TARGET-TABLE check, never a state-row check.**
 > Two fail-open traps you MUST close:
 >
-> 1. **State ≠ tables.** `aidp-fusion-bundle status` reads `fusion_bundle_state`
+> 1. **State ≠ tables.** `aidp-fusion-autopilot status` reads `fusion_autopilot_state`
 >    (run metadata), NOT the physical silver/gold marts. An empty or stale
 >    state table can read "empty" while populated `dim_supplier` /
 >    `supplier_spend` already exist. **State rows are a hint, never proof.**
@@ -232,20 +232,20 @@ cluster-dispatch path): "proven empty" holds **only if every** resolved
 in-scope target is `readable: true` AND (`target_exists: false` OR
 `target_row_count == 0`). If **any** resolved target is `readable: false` /
 missing / errors, classify the whole outcome as **unknown → confirm**. Never
-infer empty from a subset, and never decide off `fusion_bundle_state` rows.
+infer empty from a subset, and never decide off `fusion_autopilot_state` rows.
 
 ### 4 — Dispatch + resume
 
 Fire the real run (drop `--dry-run`):
 
 ```bash
-aidp-fusion-bundle run --mode seed <scope flags> --poll-timeout <N>
+aidp-fusion-autopilot run --mode seed <scope flags> --poll-timeout <N>
 ```
 
 - `--poll-timeout` default **3600** (1h). Recommend **14400** (4h) for a
   first-time full seed against a slow Fusion pod (cold-cache BICC extracts;
   `gl_period_balances` can be the long pole). Valid range 60–14400.
-- For a **resume**: `aidp-fusion-bundle run --mode seed --resume <run_id>`
+- For a **resume**: `aidp-fusion-autopilot run --mode seed --resume <run_id>`
   (omit `--datasets` / `--layers` unless narrowing). When the failed run wrote a
   durable **run manifest**, `--resume` *replays the manifest* (canonical topology,
   per-node fingerprints, mode, and identity) rather than re-deriving scope; a bare
@@ -256,7 +256,7 @@ aidp-fusion-bundle run --mode seed <scope flags> --poll-timeout <N>
   rows). A malformed/unreadable manifest fails closed with `AIDPF-4022` — start a
   fresh seed.
 - **On non-terminal failure / interruption**: capture the printed `run_id` and
-  offer `aidp-fusion-bundle run --mode seed --resume <run_id>`. The original
+  offer `aidp-fusion-autopilot run --mode seed --resume <run_id>`. The original
   run_id is preserved end-to-end (medallion `_run_id` audit invariant).
 
 ### 5 — Present the result

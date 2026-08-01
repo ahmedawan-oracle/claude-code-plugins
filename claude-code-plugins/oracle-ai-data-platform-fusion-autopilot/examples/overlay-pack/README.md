@@ -10,10 +10,10 @@ For the full authoring and override workflow, see
 Copy the overlay into a customer bundle, validate it, and wire it with:
 
 ```bash
-aidp-fusion-bundle content-pack validate examples/overlay-pack
-aidp-fusion-bundle use-pack examples/overlay-pack --profile finance-default --no-align
-aidp-fusion-bundle validate
-aidp-fusion-bundle run --mode seed --datasets supplier_spend_by_currency --layers gold --dry-run
+aidp-fusion-autopilot content-pack validate examples/overlay-pack
+aidp-fusion-autopilot use-pack examples/overlay-pack --profile finance-default --no-align
+aidp-fusion-autopilot validate
+aidp-fusion-autopilot run --mode seed --datasets supplier_spend_by_currency --layers gold --dry-run
 ```
 
 `--no-align` preserves a narrow customer bundle instead of adding every silver

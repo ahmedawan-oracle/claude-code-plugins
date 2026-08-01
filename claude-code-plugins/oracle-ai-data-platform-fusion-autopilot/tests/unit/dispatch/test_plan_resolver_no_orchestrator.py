@@ -22,7 +22,7 @@ from pathlib import Path
 
 
 _BUNDLE_YAML = """\
-apiVersion: aidp-fusion-bundle/v1
+apiVersion: aidp-fusion-autopilot/v1
 project: boundary-probe
 fusion:
   serviceUrl: https://example.com
@@ -56,11 +56,11 @@ _SUBPROCESS = r'''
 import sys
 from pathlib import Path
 
-from oracle_ai_data_platform_fusion_bundle.schema.bundle import load_bundle
-from oracle_ai_data_platform_fusion_bundle.schema.medallion_pack import (
+from oracle_ai_data_platform_fusion_autopilot.schema.bundle import load_bundle
+from oracle_ai_data_platform_fusion_autopilot.schema.medallion_pack import (
     NodeYaml, PackYaml, ResolvedPack,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.plan_resolver import (
+from oracle_ai_data_platform_fusion_autopilot.schema.plan_resolver import (
     resolve_dry_run_plan,
 )
 
@@ -115,7 +115,7 @@ plan, prereqs = resolve_dry_run_plan(
 assert plan and plan[0].dataset_id == "erp_suppliers", [p.dataset_id for p in plan]
 
 for m in sorted(sys.modules):
-    if m.startswith("oracle_ai_data_platform_fusion_bundle.orchestrator"):
+    if m.startswith("oracle_ai_data_platform_fusion_autopilot.orchestrator"):
         print(m)
 '''
 

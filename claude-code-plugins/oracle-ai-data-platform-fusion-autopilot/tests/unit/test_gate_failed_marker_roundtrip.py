@@ -10,10 +10,10 @@ dispatch invocations surface the gate failure to the operator.
 
 from __future__ import annotations
 
-from oracle_ai_data_platform_fusion_bundle.orchestrator.bronze_readiness import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.bronze_readiness import (
     AIDPF_2071_BRONZE_READINESS_GATE_FAILED,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.run_summary import (
+from oracle_ai_data_platform_fusion_autopilot.schema.run_summary import (
     RunStep,
     RunSummary,
 )

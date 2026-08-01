@@ -1,7 +1,7 @@
 """Phase 4.1 / D3 — operator-runnable cluster-side bootstrap dispatcher.
 
 Mirror of ``tests/live/dispatch_v2_seed.py`` for the new
-``aidp-fusion-bundle bootstrap --dispatch-mode=cluster`` flow. Runs a
+``aidp-fusion-autopilot bootstrap --dispatch-mode=cluster`` flow. Runs a
 full bootstrap against a real tenant cluster + captures the produced
 ``profiles/<tenant>.yaml`` + evidence + schema snapshot for the
 v2-phase-4.1 live-evidence trail.
@@ -13,7 +13,7 @@ evidence the Phase 4.1 ship-ready summary cites.
 Two ways to run:
 
 **Mode A — driver (recommended)**: this script as a thin wrapper that
-shells out to ``aidp-fusion-bundle bootstrap --dispatch-mode=cluster``
+shells out to ``aidp-fusion-autopilot bootstrap --dispatch-mode=cluster``
 with the operator's CLI flags. Validates the produced files
 post-invocation. Sidesteps the need to author cluster identifiers
 inside this script.
@@ -86,7 +86,7 @@ def _parse_args() -> argparse.Namespace:
         help=(
             "Server-side notebook upload root; falls back to "
             "AIDP_FUSION_WORKSPACE_DIR. When unset, the CLI derives "
-            "/Workspace/{workspace_root}/fusion-bundle-bootstrap."
+            "/Workspace/{workspace_root}/fusion-autopilot-bootstrap."
         ),
     )
     p.add_argument(
@@ -125,17 +125,17 @@ def _assert_bundle_layout(bundle: Path) -> tuple[str, Path]:
 
 
 def _run_bootstrap(args: argparse.Namespace) -> int:
-    """Invoke ``aidp-fusion-bundle bootstrap`` as a subprocess with the
+    """Invoke ``aidp-fusion-autopilot bootstrap`` as a subprocess with the
     operator-supplied flags. Returns the CLI's exit code."""
-    # Resolve the `aidp-fusion-bundle` console script alongside the
+    # Resolve the `aidp-fusion-autopilot` console script alongside the
     # interpreter that started this dispatcher. The plugin package
     # registers an entry point but no `__main__`, so `python -m
-    # oracle_ai_data_platform_fusion_bundle` fails — see
+    # oracle_ai_data_platform_fusion_autopilot` fails — see
     # pyproject.toml::[project.scripts].
-    cli_bin = Path(sys.executable).parent / "aidp-fusion-bundle"
+    cli_bin = Path(sys.executable).parent / "aidp-fusion-autopilot"
     if not cli_bin.exists():
         raise SystemExit(
-            f"aidp-fusion-bundle console script not found at {cli_bin}. "
+            f"aidp-fusion-autopilot console script not found at {cli_bin}. "
             f"Install the plugin into {Path(sys.executable).parent.parent} "
             f"(e.g. `pip install -e .`)."
         )

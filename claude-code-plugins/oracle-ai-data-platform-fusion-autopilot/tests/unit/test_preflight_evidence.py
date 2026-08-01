@@ -24,14 +24,14 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.orchestrator.preflight_evidence import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.preflight_evidence import (
     PreflightOutcome,
     _bronze_dataset_ids,
     _is_legacy_fingerprint,
     _reset_legacy_warn,
     check_bronze_fingerprint_drift,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.bronze_fingerprint import (
+from oracle_ai_data_platform_fusion_autopilot.schema.bronze_fingerprint import (
     compute_bronze_fingerprint,
     ColumnInfo,
 )
@@ -41,7 +41,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 STARTER_PACK = (
     REPO_ROOT
     / "scripts"
-    / "oracle_ai_data_platform_fusion_bundle"
+    / "oracle_ai_data_platform_fusion_autopilot"
     / "content_packs"
     / "fusion-finance-starter"
 )
@@ -473,11 +473,11 @@ class TestLegacyDetection:
 # ---------------------------------------------------------------------------
 
 
-from oracle_ai_data_platform_fusion_bundle.orchestrator.preflight_evidence import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.preflight_evidence import (
     _compute_dataset_deltas,
     _load_snapshot_if_present,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.bronze_schema_snapshot import (
+from oracle_ai_data_platform_fusion_autopilot.schema.bronze_schema_snapshot import (
     BronzeSchemaSnapshotV1,
     from_observed as snapshot_from_observed,
     write_bronze_schema_snapshot,
@@ -929,7 +929,7 @@ class TestPhase3dDriftBranchPopulation:
 # (feature: bronze-fingerprint-gate-scope)
 # ---------------------------------------------------------------------------
 
-from oracle_ai_data_platform_fusion_bundle.commands.bronze_probe import (
+from oracle_ai_data_platform_fusion_autopilot.commands.bronze_probe import (
     BronzeProbeFailure,
     UnsafeIdentifierError,
 )

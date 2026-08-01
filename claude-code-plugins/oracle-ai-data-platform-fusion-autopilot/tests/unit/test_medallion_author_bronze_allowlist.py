@@ -13,12 +13,12 @@ from __future__ import annotations
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.medallion_author.drafter import (
+from oracle_ai_data_platform_fusion_autopilot.medallion_author.drafter import (
     OverlayDraft,
     OverlayValidationError,
     validate_overlay,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.medallion_pack import PackYaml
+from oracle_ai_data_platform_fusion_autopilot.schema.medallion_pack import PackYaml
 
 
 def _draft(overrides: dict) -> OverlayDraft:

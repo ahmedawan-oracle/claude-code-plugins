@@ -1,4 +1,4 @@
-"""Unit tests for :mod:`oracle_ai_data_platform_fusion_bundle.schema.evidence_snapshot`.
+"""Unit tests for :mod:`oracle_ai_data_platform_fusion_autopilot.schema.evidence_snapshot`.
 
 Covers:
 
@@ -21,7 +21,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from oracle_ai_data_platform_fusion_bundle.schema.evidence_snapshot import (
+from oracle_ai_data_platform_fusion_autopilot.schema.evidence_snapshot import (
     ApprovedBy,
     CandidateConsidered,
     EvidenceContainer,

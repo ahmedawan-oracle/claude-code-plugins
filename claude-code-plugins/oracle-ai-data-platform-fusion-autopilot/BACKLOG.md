@@ -1,4 +1,4 @@
-# Backlog - `oracle-ai-data-platform-fusion-bundle`
+# Backlog - `oracle-ai-data-platform-fusion-autopilot`
 
 This is the active backlog for the current content-pack plugin. Historical
 v1-transition notes are intentionally excluded from the published docs.
@@ -66,7 +66,7 @@ quietly re-enter current docs or source comments.
 setup, overlays, and one-mart overrides.
 
 **Accept**:
-- `examples/minimal-bundle/` stays aligned with `aidp-fusion-bundle init`.
+- `examples/minimal-bundle/` stays aligned with `aidp-fusion-autopilot init`.
 - `examples/overlay-pack/` documents default `use-pack` alignment and
   `--no-align` for narrow bundles.
 - Docs link to examples from `docs/project_setup.md` and

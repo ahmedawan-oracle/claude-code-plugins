@@ -6,11 +6,11 @@ exercises the v2 content-pack CLI verbs to confirm:
 * The starter pack ships inside the wheel (per pyproject.toml's
   `tool.setuptools.package-data`).
 * `pack.schema.json`, `dashboard.schema.json`, `node.schema.json` ship too.
-* `aidp-fusion-bundle content-pack list` finds the starter pack.
-* `aidp-fusion-bundle content-pack validate fusion-finance-starter` passes
+* `aidp-fusion-autopilot content-pack list` finds the starter pack.
+* `aidp-fusion-autopilot content-pack validate fusion-finance-starter` passes
   end-to-end (full validation pipeline).
 
-Gated opt-in via env var ``AIDP_FUSION_BUNDLE_RUN_WHEEL_TEST=1`` because it
+Gated opt-in via env var ``AIDP_FUSION_AUTOPILOT_RUN_WHEEL_TEST=1`` because it
 is slower than unit tests (~30 seconds, builds + creates a venv).
 """
 
@@ -28,8 +28,8 @@ import pytest
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent.parent
 
 pytestmark = pytest.mark.skipif(
-    os.environ.get("AIDP_FUSION_BUNDLE_RUN_WHEEL_TEST") != "1",
-    reason="Set AIDP_FUSION_BUNDLE_RUN_WHEEL_TEST=1 to run (slow: builds wheel + venv).",
+    os.environ.get("AIDP_FUSION_AUTOPILOT_RUN_WHEEL_TEST") != "1",
+    reason="Set AIDP_FUSION_AUTOPILOT_RUN_WHEEL_TEST=1 to run (slow: builds wheel + venv).",
 )
 
 
@@ -56,7 +56,7 @@ def installed_venv(tmp_path_factory: pytest.TempPathFactory) -> Path:
     )
 
     # Find the built wheel.
-    wheels = list(build_dir.glob("oracle_ai_data_platform_fusion_bundle-*.whl"))
+    wheels = list(build_dir.glob("oracle_ai_data_platform_fusion_autopilot-*.whl"))
     assert len(wheels) == 1, f"expected one wheel, found: {wheels}"
 
     # Create venv + install.
@@ -71,7 +71,7 @@ def installed_venv(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 
 def _run_in_venv(venv_dir: Path, *args: str) -> subprocess.CompletedProcess[str]:
-    cli_path = venv_dir / "bin" / "aidp-fusion-bundle"
+    cli_path = venv_dir / "bin" / "aidp-fusion-autopilot"
     return subprocess.run([str(cli_path), *args], capture_output=True, text=True)
 
 
@@ -82,7 +82,7 @@ def test_wheel_ships_starter_pack(installed_venv: Path) -> None:
         [
             str(python),
             "-c",
-            "import oracle_ai_data_platform_fusion_bundle as p; "
+            "import oracle_ai_data_platform_fusion_autopilot as p; "
             "from pathlib import Path; "
             "root = Path(p.__file__).parent / 'content_packs' / 'fusion-finance-starter'; "
             "print(root.exists(), (root / 'pack.yaml').exists())",
@@ -101,7 +101,7 @@ def test_wheel_ships_schema_artifacts(installed_venv: Path) -> None:
         [
             str(python),
             "-c",
-            "import oracle_ai_data_platform_fusion_bundle as p; "
+            "import oracle_ai_data_platform_fusion_autopilot as p; "
             "from pathlib import Path; "
             "d = Path(p.__file__).parent; "
             "print((d / 'pack.schema.json').exists(), "

@@ -3,7 +3,7 @@
 
 Turns a loose natural-language seed request ("seed", "seed supplier_spend",
 "seed just bronze", "resume the seed") into a structured, testable parse
-result that the skill turns into an ``aidp-fusion-bundle run --mode seed``
+result that the skill turns into an ``aidp-fusion-autopilot run --mode seed``
 invocation.
 
 **Why a real helper, not SKILL.md prose.** A misparse can seed too broad a
@@ -38,7 +38,7 @@ Usage:
 
 The skill assembles ``--known-nodes`` from the union of the bundle's bronze
 dataset ids (``bundle.yaml datasets[]``) and the pack's silver+gold node ids
-(``aidp-fusion-bundle content-pack info <pack> --json``).
+(``aidp-fusion-autopilot content-pack info <pack> --json``).
 """
 from __future__ import annotations
 

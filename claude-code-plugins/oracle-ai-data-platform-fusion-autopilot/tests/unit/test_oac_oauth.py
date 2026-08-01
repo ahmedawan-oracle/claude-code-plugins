@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.oac.rest.oauth import (
+from oracle_ai_data_platform_fusion_autopilot.oac.rest.oauth import (
     IdcsTokenFetcher,
     OacOauthFlow,
     TokenBundle,
@@ -128,7 +128,7 @@ class TestDiscoverOacAudience:
     def test_extracts_audience_from_login_redirect(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Verified live 2026-05-01 — OAC's /ui/ redirects to IDCS authorize URL with
         ``idcs_app_name=<24-char>_APPID`` query param; the prefix is the audience host."""
-        from oracle_ai_data_platform_fusion_bundle.oac.rest import oauth as oauth_mod
+        from oracle_ai_data_platform_fusion_autopilot.oac.rest import oauth as oauth_mod
 
         redirect_loc = (
             "https://idcs-abc.identity.oraclecloud.com/oauth2/v1/authorize?"
@@ -150,7 +150,7 @@ class TestDiscoverOacAudience:
         assert captured["url"].endswith("/ui/")
 
     def test_raises_when_no_idcs_app_name(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from oracle_ai_data_platform_fusion_bundle.oac.rest import oauth as oauth_mod
+        from oracle_ai_data_platform_fusion_autopilot.oac.rest import oauth as oauth_mod
         fake_response = MagicMock(status_code=200, headers={})
         monkeypatch.setattr(oauth_mod.requests, "get", lambda *a, **k: fake_response)
         with pytest.raises(RuntimeError, match="audience discovery failed"):

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.commands.coa_resolution import (
+from oracle_ai_data_platform_fusion_autopilot.commands.coa_resolution import (
     AIDPF_2013_COA_ROLE_UNRESOLVED,
     CoaResolutionError,
     CoaResolutionInput,

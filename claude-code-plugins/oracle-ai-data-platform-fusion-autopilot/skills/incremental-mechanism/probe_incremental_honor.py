@@ -88,7 +88,7 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--cluster-name", dest="cluster_name", default=None)
     p.add_argument(
         "--workspace-dir", dest="workspace_dir",
-        default="/Workspace/Shared/fusion-bundle-incremental-probe",
+        default="/Workspace/Shared/fusion-autopilot-incremental-probe",
     )
     p.add_argument("--secret-name", dest="secret_name", default="fusion_bicc_password")
     p.add_argument("--secret-key", dest="secret_key", default="password")

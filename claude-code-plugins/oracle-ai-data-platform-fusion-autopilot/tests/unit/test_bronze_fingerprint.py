@@ -1,4 +1,4 @@
-"""Unit tests for :mod:`oracle_ai_data_platform_fusion_bundle.schema.bronze_fingerprint`.
+"""Unit tests for :mod:`oracle_ai_data_platform_fusion_autopilot.schema.bronze_fingerprint`.
 
 Feature #2 (this feature) PINS the fingerprint; feature #4
 (``v2-phase-3c-runtime-preflight-evidence``) will COMPARE the live
@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.schema.bronze_fingerprint import (
+from oracle_ai_data_platform_fusion_autopilot.schema.bronze_fingerprint import (
     BRONZE_AUDIT_COLUMNS,
     ColumnInfo,
     compute_bronze_fingerprint,

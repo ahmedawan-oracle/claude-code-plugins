@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.extractors.bicc import build_options_dict, extract_pvo
-from oracle_ai_data_platform_fusion_bundle.schema.fusion_catalog import PvoEntry, PvoKind, get
+from oracle_ai_data_platform_fusion_autopilot.extractors.bicc import build_options_dict, extract_pvo
+from oracle_ai_data_platform_fusion_autopilot.schema.fusion_catalog import PvoEntry, PvoKind, get
 
 
 class TestBuildOptionsDict:

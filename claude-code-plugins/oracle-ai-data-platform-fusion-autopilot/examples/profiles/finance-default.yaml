@@ -12,13 +12,13 @@
 # data-checks the binding. The other three roles (`subaccount` / `product` /
 # `intercompany`) stay positional in the SQL.
 #
-# Field aliases match scripts/oracle_ai_data_platform_fusion_bundle/schema/tenant_profile.py.
+# Field aliases match scripts/oracle_ai_data_platform_fusion_autopilot/schema/tenant_profile.py.
 schemaVersion: 1
 tenant: finance-default
 pinnedAt: 2026-06-05T00:00:00+00:00
 
 # Placeholder fingerprint — the §11.6 drift gate compares this against the
-# live bronze schema each run. Re-run `aidp-fusion-bundle bootstrap` on a
+# live bronze schema each run. Re-run `aidp-fusion-autopilot bootstrap` on a
 # real tenant to capture the actual sha256.
 bronzeSchemaFingerprint: "sha256:placeholder-finance-default-2026-06-05"
 

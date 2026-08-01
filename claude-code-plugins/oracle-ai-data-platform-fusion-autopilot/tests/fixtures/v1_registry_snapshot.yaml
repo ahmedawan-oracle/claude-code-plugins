@@ -95,7 +95,7 @@ provenance:
   file_blob: 02ec45a7fae7c1fa5b94a3940144727da69dcc13
   note: Test fixture transcribed from v1 reference branch. See tests/fixtures/README.md.
     Engine never imports this file.
-  source_path_on_v1: ./scripts/oracle_ai_data_platform_fusion_bundle/schema/registry_metadata.py
+  source_path_on_v1: ./scripts/oracle_ai_data_platform_fusion_autopilot/schema/registry_metadata.py
 silver_dim_metadata:
   dim_account:
     dataset_id: dim_account

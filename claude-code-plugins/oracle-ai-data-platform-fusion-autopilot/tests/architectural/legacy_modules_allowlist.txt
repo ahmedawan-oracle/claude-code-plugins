@@ -14,4 +14,4 @@
 #
 # Format: one path per line. Blank lines and `# comment` lines ignored.
 
-scripts/oracle_ai_data_platform_fusion_bundle/dimensions/dim_calendar.py
+scripts/oracle_ai_data_platform_fusion_autopilot/dimensions/dim_calendar.py

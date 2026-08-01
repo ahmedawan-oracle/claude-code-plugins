@@ -12,11 +12,11 @@ from pathlib import Path
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack import (
     load_full_chain,
     load_pack,
 )
-from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack_validators import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack_validators import (
     AIDPF_2015_COA_BINDING_OUT_OF_CONTRACT,
     AIDPF_2019_COA_SEGMENT_OUT_OF_RANGE,
     validate_coa_semantic_roles,
@@ -24,7 +24,7 @@ from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack_validators 
 
 REPO = Path(__file__).resolve().parents[2]
 SHIPPED = (
-    REPO / "scripts" / "oracle_ai_data_platform_fusion_bundle"
+    REPO / "scripts" / "oracle_ai_data_platform_fusion_autopilot"
     / "content_packs" / "fusion-finance-starter"
 )
 EXAMPLE_OVERLAY = REPO / "examples" / "coa-deep-overlay"
@@ -89,7 +89,7 @@ def test_non_segment_candidate_rejected() -> None:
 def test_bootstrap_derives_deep_segment_from_chartofaccounts() -> None:
     """bootstrap --refresh derives resolved.column.coa_* from a deep
     profile.chartOfAccounts (natural account at Segment10)."""
-    from oracle_ai_data_platform_fusion_bundle.commands.coa_resolution import (
+    from oracle_ai_data_platform_fusion_autopilot.commands.coa_resolution import (
         CoaResolutionInput,
         resolve_coa_roles,
     )
@@ -117,7 +117,7 @@ def test_deep_segment_union_existence_blocks_when_unlanded() -> None:
     preflight via the $coa.* union (AIDPF-2042)."""
     from unittest.mock import MagicMock
 
-    from oracle_ai_data_platform_fusion_bundle.orchestrator.node_preflight import (
+    from oracle_ai_data_platform_fusion_autopilot.orchestrator.node_preflight import (
         preflight_node,
     )
 

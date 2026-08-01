@@ -1,11 +1,11 @@
 ---
 name: medallion-author
-description: "Draft a content-pack overlay extending the starter pack's variation-point candidate lists when `aidp-fusion-bundle bootstrap` fails AIDPF-2010 / AIDPF-2011. Reads diagnostic artifacts under `.aidp/diagnostics/<run_id>/`, proposes new candidates from the observed bronze schema, presents a draft overlay for operator approval, and drafts a backend-aware remediation runbook (Option A/B/D/E; Option C deferred to v0.4). Use when the CLI exits 1 with AIDPF-2010 or AIDPF-2011 on a fresh tenant or after a Fusion-release upgrade. NOT for runtime drift detection or for authoring net-new silver/gold nodes; skill-authored SQL templates are forbidden."
+description: "Draft a content-pack overlay extending the starter pack's variation-point candidate lists when `aidp-fusion-autopilot bootstrap` fails AIDPF-2010 / AIDPF-2011. Reads diagnostic artifacts under `.aidp/diagnostics/<run_id>/`, proposes new candidates from the observed bronze schema, presents a draft overlay for operator approval, and drafts a backend-aware remediation runbook (Option A/B/D/E; Option C deferred to v0.4). Use when the CLI exits 1 with AIDPF-2010 or AIDPF-2011 on a fresh tenant or after a Fusion-release upgrade. NOT for runtime drift detection or for authoring net-new silver/gold nodes; skill-authored SQL templates are forbidden."
 ---
 
 # medallion-author — Tier-2 overlay-author skill
 
-When `aidp-fusion-bundle bootstrap` cannot mechanically resolve a
+When `aidp-fusion-autopilot bootstrap` cannot mechanically resolve a
 variation point (no candidate the pack declares is present on the
 tenant's bronze), it writes a diagnostic artifact and exits non-zero.
 This skill is the recovery path: read the artifact, propose new
@@ -84,7 +84,7 @@ carries:
 ### Resolution algorithm (do this for each missing column)
 
 1. **Get the Fusion PVO schema first.** It's already in the artifact's
-   `pvoColumns`. (Only re-probe — `aidp-fusion-bundle catalog probe
+   `pvoColumns`. (Only re-probe — `aidp-fusion-autopilot catalog probe
    --datastore <ds>` — if the artifact is stale or absent.)
 2. **Classify the mismatch, then act:**
    - **Renamed column (the common case)** — the logical column exists
@@ -334,15 +334,15 @@ Remediation:    overlays/<overlay-name>/remediation.md (Option D)
 Next steps:
   1. Review the overlay + remediation.md.
   2. Wire the overlay into the pack chain:
-       aidp-fusion-bundle use-pack overlays/<overlay-name> --profile <tenant>
+       aidp-fusion-autopilot use-pack overlays/<overlay-name> --profile <tenant>
   3. Re-run bootstrap (NO --resolutions flag needed — the
      extended candidate list AutoResolves):
-       aidp-fusion-bundle bootstrap --operator "$USER"
+       aidp-fusion-autopilot bootstrap --operator "$USER"
   4. Apply Option D remediation per remediation.md (targets
      affected pack silver/gold node IDs):
-       aidp-fusion-bundle run --mode seed \
+       aidp-fusion-autopilot run --mode seed \
          --datasets <silver/gold-node-ids>
-  5. Resume scheduled `aidp-fusion-bundle run --mode incremental`.
+  5. Resume scheduled `aidp-fusion-autopilot run --mode incremental`.
 ```
 
 #### 7b. MultiMatch / refresh-promotion
@@ -355,15 +355,15 @@ Remediation:    overlays/<overlay-name>/remediation.md (Option D)
 Next steps:
   1. Review the overlay + resolutions.json + remediation.md.
   2. Wire the overlay into the pack chain:
-       aidp-fusion-bundle use-pack overlays/<overlay-name> --profile <tenant>
+       aidp-fusion-autopilot use-pack overlays/<overlay-name> --profile <tenant>
   3. Commit the resolution:
-       aidp-fusion-bundle bootstrap --refresh \
+       aidp-fusion-autopilot bootstrap --refresh \
          --operator "$USER" \
          --resolutions overlays/<overlay-name>/resolutions.json
   4. Apply Option D remediation per remediation.md:
-       aidp-fusion-bundle run --mode seed \
+       aidp-fusion-autopilot run --mode seed \
          --datasets <silver/gold-node-ids>
-  5. Resume scheduled `aidp-fusion-bundle run --mode incremental`.
+  5. Resume scheduled `aidp-fusion-autopilot run --mode incremental`.
 ```
 
 ### 8. Provenance trail
@@ -400,7 +400,7 @@ large for Option D AND the column substitution is genuinely
 surgical (no derived columns / joins reference the VP).
 
 Option C (watermark rewind) is **deferred to v0.4** — requires an
-`aidp-fusion-bundle rewind` verb that knows both legacy and
+`aidp-fusion-autopilot rewind` verb that knows both legacy and
 content-pack state contracts. Round-2 review evidence:
 `orchestrator/preflight.py:400` raises `IncrementalCursorMissingError`
 on NULL silver/gold cursors; content-pack

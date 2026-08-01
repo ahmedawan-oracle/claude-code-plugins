@@ -33,7 +33,7 @@ dimension or mart had to:
 2. **Edit the plugin's own `orchestrator/registry.py`** to import it.
 3. Fork or vendor the plugin.
 
-This violated the plugin's mission (per CLAUDE.md): the fusion-bundle
+This violated the plugin's mission (per CLAUDE.md): the fusion-autopilot
 "must run on any Fusion ERP/HCM/SCM tenant, not just the saasfademo1
 demo pod. Hardcoded tenant-specific assumptions are bugs."
 

@@ -10,8 +10,8 @@ from __future__ import annotations
 import re
 
 import pytest
-from oracle_ai_data_platform_fusion_bundle.dimensions import dim_calendar
-from oracle_ai_data_platform_fusion_bundle.dimensions.dim_calendar import (
+from oracle_ai_data_platform_fusion_autopilot.dimensions import dim_calendar
+from oracle_ai_data_platform_fusion_autopilot.dimensions.dim_calendar import (
     DEFAULT_END_DATE,
     DEFAULT_FISCAL_START_MONTH,
     DEFAULT_START_DATE,
@@ -134,13 +134,13 @@ class TestPathsThreading:
         assert "fusion_catalog.silver.dim_calendar" in sql
 
     def test_paths_threading_replaces_catalog(self) -> None:
-        from oracle_ai_data_platform_fusion_bundle.config.paths import TablePaths
+        from oracle_ai_data_platform_fusion_autopilot.config.paths import TablePaths
         sql = build_dim_calendar_sql(paths=TablePaths(catalog="my_lake"))
         assert "my_lake.silver.dim_calendar" in sql
         assert "fusion_catalog" not in sql
 
     def test_explicit_silver_table_wins_over_paths(self) -> None:
-        from oracle_ai_data_platform_fusion_bundle.config.paths import TablePaths
+        from oracle_ai_data_platform_fusion_autopilot.config.paths import TablePaths
         sql = build_dim_calendar_sql(
             paths=TablePaths(catalog="my_lake"),
             silver_table="explicit.thing.Y",

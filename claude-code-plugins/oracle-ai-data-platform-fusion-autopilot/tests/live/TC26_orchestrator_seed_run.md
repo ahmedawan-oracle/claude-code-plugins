@@ -1,7 +1,7 @@
 # TC26 — Orchestrator seed run (Phase α end-to-end)
 
 **Test case ID**: TC26
-**Status**: ✅ **EXECUTED 2026-05-17 19:24 UTC** on `fusion_bundle_dev` cluster / `amitV2` AIDP workspace via the REST dispatch surface. BICC-bypass variant (dim_calendar — zero bronze deps) due to credential rotation on saasfademo1; full happy-path version + failure-cascade probes pending fresh Casey.Brown / natalie.salesrep BICC password.
+**Status**: ✅ **EXECUTED 2026-05-17 19:24 UTC** on `fusion_autopilot_dev` cluster / `amitV2` AIDP workspace via the REST dispatch surface. BICC-bypass variant (dim_calendar — zero bronze deps) due to credential rotation on saasfademo1; full happy-path version + failure-cascade probes pending fresh Casey.Brown / natalie.salesrep BICC password.
 **Tracks**: the §8 "Live evidence TC26" acceptance criterion + P1.5α-fix9 closing evidence + P1.5ε REST dispatch validated end-to-end (auth → upload → create job → submit run → poll → fetchOutput)
 
 ## What this verifies
@@ -11,7 +11,7 @@ The cumulative behavior of the P1.5α phases 1–5 work, in one live run:
 - **§4.4 run loop** end-to-end: load_bundle → resolve_plan → credential preflight → Spark bootstrap → ensure_state_table → preflight extras → dispatch loop with two-phase cascade
 - **§3.2 state-table contract**: every plan node lands exactly one row per run; `layer`, `status`, `skip_reason` columns populate per the contract
 - **§3.5 bronze audit columns**: `_extract_ts`, `_source_pvo`, `_run_id`, `_watermark_used` enriched on every bronze row
-- **§3.5a silver/gold audit columns (B3)**: `silver_run_id` / `gold_run_id` populated; joins back to `fusion_bundle_state.run_id` cleanly
+- **§3.5a silver/gold audit columns (B3)**: `silver_run_id` / `gold_run_id` populated; joins back to `fusion_autopilot_state.run_id` cleanly
 - **§4.4c mode validation**: clean exit-2 on `--mode full`, zero Spark side effects
 - **§4.4d Option L**: `bundle.version: "0.2.0"` accepted; missing/old version surfaces as `BundleVersionMismatchError` at exit 2
 - **§4.9 + B5 credential preflight**: `${vault:OCID}` resolution; bad OCID exits 2 with zero Spark calls
@@ -33,7 +33,7 @@ cd <plugin-checkout>
 export AIDP_HOST="https://datalake.us-ashburn-1.oci.oraclecloud.com"
 export AIDP_ID="<AIDP_ID>"                     # ocid1.datalake.oc1.<region>.<tenancy-specific>
 export AIDP_WORKSPACE_KEY="<WORKSPACE_KEY>"    # UUID, e.g. playground workspace
-export AIDP_CLUSTER_KEY="<CLUSTER_KEY>"        # UUID, e.g. fusion_bundle_dev
+export AIDP_CLUSTER_KEY="<CLUSTER_KEY>"        # UUID, e.g. fusion_autopilot_dev
 
 # 3. Cluster state — must be ACTIVE
 oci raw-request --target-uri \
@@ -50,9 +50,9 @@ oci raw-request --target-uri \
 
 ### Path A — Inline from an AIDP notebook (architectural primary)
 
-1. Upload `notebooks/run_orchestrator.ipynb` + your `bundle.yaml` to the AIDP workspace at `/Workspace/Shared/fusion-bundle/`.
-2. Open `run_orchestrator.ipynb` in the AIDP workbench, attach `fusion_bundle_dev` as the cluster.
-3. Run all cells. Cell 2 prints the per-step table; cell 3 inspects `fusion_bundle_state` + verifies SOX-trail audit columns on materialized silver/gold tables.
+1. Upload `notebooks/run_orchestrator.ipynb` + your `bundle.yaml` to the AIDP workspace at `/Workspace/Shared/fusion-autopilot/`.
+2. Open `run_orchestrator.ipynb` in the AIDP workbench, attach `fusion_autopilot_dev` as the cluster.
+3. Run all cells. Cell 2 prints the per-step table; cell 3 inspects `fusion_autopilot_state` + verifies SOX-trail audit columns on materialized silver/gold tables.
 4. Cell 2 also emits the canonical `AIDP_LIVE_TEST_RESULT_BEGIN <json> AIDP_LIVE_TEST_RESULT_END` markers AND attempts `oidlUtils.notebook.exit(json)` (per the probe-results doc §10.6 — the marker pattern is the reliable channel; oidlUtils may not be available).
 
 ### Path B — Via REST dispatch from a laptop (BACKLOG P1.5ε; empirically validated, not wired in α)
@@ -63,7 +63,7 @@ oci raw-request --target-uri \
 
 ### Per-step table (cell 2 stdout)
 
-For `examples/full_finance.yaml` against `fusion_bundle_dev`:
+For `examples/full_finance.yaml` against `fusion_autopilot_dev`:
 
 ```
 run_id=<uuid4>
@@ -98,7 +98,7 @@ WITH ranked AS (
   SELECT dataset_id, layer, mode, status, row_count, skip_reason,
          duration_seconds, last_run_at,
          ROW_NUMBER() OVER (PARTITION BY dataset_id ORDER BY last_run_at DESC) AS rn
-  FROM fusion_catalog.bronze.fusion_bundle_state
+  FROM fusion_catalog.bronze.fusion_autopilot_state
   WHERE run_id = '<our run_id>'
 )
 SELECT * FROM ranked WHERE rn = 1 ORDER BY layer, dataset_id
@@ -142,7 +142,7 @@ When the live run completes:
 **Setup**:
 - `run_id`: `<RUN_ID>`
 - `captured_at`: 2026-05-17T19:24:55Z
-- `cluster`: `fusion_bundle_dev` (key `<CLUSTER_KEY>`), ACTIVE
+- `cluster`: `fusion_autopilot_dev` (key `<CLUSTER_KEY>`), ACTIVE
 - `workspace`: `playground` (key `<WORKSPACE_KEY>`), `amitV2` AIDP instance
 - `jobKey`: `<JOB_KEY>`
 - `jobRunKey`: `<JOB_RUN_KEY>`
@@ -160,7 +160,7 @@ project=tc26-bypass-bicc, mode=seed
 success=1 failed=0 skipped=0 deferred=0 dur=9.44s
   silver  dim_calendar        success     rows=4018  dur=9.44s
 
---- Cell 3: fusion_bundle_state row for this run_id ---
+--- Cell 3: fusion_autopilot_state row for this run_id ---
 {
   "dataset_id": "dim_calendar",
   "layer": "silver",
@@ -242,7 +242,7 @@ This is the kind of bug that only live evidence surfaces. The plan was right —
 **Setup**:
 - `run_id`: `80974e23-89ac-4ec0-839f-5306213625f8`
 - `captured_at`: 2026-05-21T00:11:55Z
-- `cluster`: `fusion_bundle_dev` (key `<CLUSTER_KEY>`), ACTIVE
+- `cluster`: `fusion_autopilot_dev` (key `<CLUSTER_KEY>`), ACTIVE
 - `workspace`: `playground` (key `<WORKSPACE_KEY>`), `<AIDP_INSTANCE>` AIDP instance
 - `jobKey`: `<JOB_KEY>`
 - `jobRunKey`: `<JOB_RUN_KEY>`
@@ -269,7 +269,7 @@ success=5 failed=0 skipped=0 deferred=0 dur=155.1s
   silver  dim_supplier               success     rows=209     dur=9.94s
   gold    supplier_spend             success     rows=309     dur=10.08s
 
---- Cell 3: fusion_bundle_state latest-per-dataset for this run_id ---
+--- Cell 3: fusion_autopilot_state latest-per-dataset for this run_id ---
 +--------------+------+----+-------+---------+-----------+-----------------+
 |dataset_id    |layer |mode|status |row_count|skip_reason|duration_seconds |
 +--------------+------+----+-------+---------+-----------+-----------------+
@@ -301,7 +301,7 @@ AIDP_LIVE_TEST_RESULT_BEGIN {"tc":"TC26-probe","run_id":"80974e23-89ac-4ec0-839f
 | `dim_calendar.build()` deterministic | row_count=4018 matches 2026-05-17 bypass run exactly |
 | `supplier_spend.build()` cross-bronze join (ap_invoices × erp_suppliers) | gold row_count=309 (subset of ap_invoices.vendor_ids that match erp_suppliers) |
 | Credential resolution via AIDP credential store at runtime | Notebook calls `aidputils.secrets.get(name="fusion_bicc_password", key="password")` as the runtime-injected global; `${FUSION_BICC_PASSWORD}` rendered eagerly by `schema/refs.py::render_vars` before `load_bundle()` |
-| **SOX-trail audit columns end-to-end** | Both `silver_run_id` and `gold_run_id` join cleanly to `fusion_bundle_state.run_id` |
+| **SOX-trail audit columns end-to-end** | Both `silver_run_id` and `gold_run_id` join cleanly to `fusion_autopilot_state.run_id` |
 
 ### Real bugs surfaced + fixed during this session
 
@@ -377,7 +377,7 @@ steps: 10 ok, 1 failed, 6 skipped, 4 deferred (1842.3s reported / 1932.6s wall)
 
 | Contract | Validated by |
 |---|---|
-| **Orchestrator handles a 21-node DAG end-to-end** | All 21 plan nodes landed exactly one row in `fusion_bundle_state` |
+| **Orchestrator handles a 21-node DAG end-to-end** | All 21 plan nodes landed exactly one row in `fusion_autopilot_state` |
 | **BICC extract scales to 10M+ rows** (`gl_period_balances`) | 11,211,211 rows in 1040s — confirms TC23's 10.18M-row number reproducibly through the orchestrator |
 | BICC extract scales to mid-millions (`ap_payments`) | 3,476,916 rows in 292s |
 | `KNOWN_DEFERRED_*` resolves cleanly to `status='deferred'` instead of crashing | 4 deferred rows: `dim_org`, `dim_item` (silver); `ar_aging`, `po_backlog` (gold) |
@@ -393,7 +393,7 @@ Py4JJavaError("An error occurred while calling o577.load.\n", JavaObject id=o578
 ```
 Different failure class from the orchestrator-fix bugs caught earlier in the session — this is BICC-server-side or PVO-schema-related, not orchestrator logic. Further investigation tracked under a follow-up; the orchestrator's strict-abort contract correctly halted the run without partial writes downstream of the failure.
 
-**AIDP runtime `display_data` strips `json.dumps()` escapes.** The `AIDP_LIVE_TEST_RESULT_BEGIN ... END` stdout-marker payload contained an `error_message` field whose value was the `Py4JJavaError(...)` repr, which itself contains literal `"` chars. `json.dumps()` properly escapes those as `\"` — but when the AIDP notebook runtime stored the print() output as `output_type=display_data` with `data["text/plain"]`, the JSON escapes were stripped, producing un-parseable JSON in the marker. The narrow probe didn't hit this because no failure → no embedded `"` in any error_message. **Workaround**: parse the formatted per-step print lines (used here) or query `fusion_bundle_state` directly. **Future fix candidate**: base64-encode the marker payload so display_data formatting can't corrupt it. Tracked as a follow-up against the orchestrator notebook helpers.
+**AIDP runtime `display_data` strips `json.dumps()` escapes.** The `AIDP_LIVE_TEST_RESULT_BEGIN ... END` stdout-marker payload contained an `error_message` field whose value was the `Py4JJavaError(...)` repr, which itself contains literal `"` chars. `json.dumps()` properly escapes those as `\"` — but when the AIDP notebook runtime stored the print() output as `output_type=display_data` with `data["text/plain"]`, the JSON escapes were stripped, producing un-parseable JSON in the marker. The narrow probe didn't hit this because no failure → no embedded `"` in any error_message. **Workaround**: parse the formatted per-step print lines (used here) or query `fusion_autopilot_state` directly. **Future fix candidate**: base64-encode the marker payload so display_data formatting can't corrupt it. Tracked as a follow-up against the orchestrator notebook helpers.
 
 ### What's NOT validated by this run
 
@@ -448,14 +448,14 @@ steps: 10 ok, 0 failed, 0 skipped, 5 deferred (1565.9s reported / 1703.8s wall)
 
 ### SOX-trail audit columns (cell 4 secondary verification)
 
-- `silver_run_id` matches `fusion_bundle_state.run_id` on **4018/4018** rows of `silver.dim_calendar` ✅
-- `gold_run_id` matches `fusion_bundle_state.run_id` on **131/131** rows of `gold.ap_aging` ✅
+- `silver_run_id` matches `fusion_autopilot_state.run_id` on **4018/4018** rows of `silver.dim_calendar` ✅
+- `gold_run_id` matches `fusion_autopilot_state.run_id` on **131/131** rows of `gold.ap_aging` ✅
 
 ### Contracts validated by this run (cumulative)
 
 | Contract | Validated by |
 |---|---|
-| **15-node DAG end-to-end on new pod/creds** | All 15 plan nodes landed exactly one row in `fusion_bundle_state` |
+| **15-node DAG end-to-end on new pod/creds** | All 15 plan nodes landed exactly one row in `fusion_autopilot_state` |
 | **All 3 `KNOWN_DEFERRED_*` registries fire correctly** | 2 bronze deferred + 1 silver deferred + 2 gold deferred; total 5 deferred state rows |
 | **Zero failures, zero cascade-skips** | First fully-clean end-to-end run (cascade contract validated in prior section by `po_receipts` failure) |
 | **`gl_period_balances` repeatable at scale** | 11,211,211 rows — exact byte-for-byte match to the 2026-05-21 run's bronze count |
@@ -482,6 +482,6 @@ This run flips four items from `[~]` to `[x]`:
 
 ### Discoveries during this run
 
-1. **`from aidputils import secrets` is not the right path on `fusion_bundle_dev`.** The orchestrator's `_resolve_password()` tries that import for `${vault:OCID}` refs — fails with `ModuleNotFoundError: No module named 'aidputils'`. The actual entry point is the runtime-injected `aidputils.secrets.get(name=..., key=...)` global (no Python-side `from … import` resolves it). Implication for tenant onboarding: prefer `${env:VAR}` refs with the dispatcher loading the env from the credential store. The Vault-OCID path is unreliable until either (a) `aidputils` becomes a real importable module on this cluster, or (b) the orchestrator switches to the global pattern. **Follow-up candidate** — file a BACKLOG item to consolidate credential resolution on the runtime-global pattern.
+1. **`from aidputils import secrets` is not the right path on `fusion_autopilot_dev`.** The orchestrator's `_resolve_password()` tries that import for `${vault:OCID}` refs — fails with `ModuleNotFoundError: No module named 'aidputils'`. The actual entry point is the runtime-injected `aidputils.secrets.get(name=..., key=...)` global (no Python-side `from … import` resolves it). Implication for tenant onboarding: prefer `${env:VAR}` refs with the dispatcher loading the env from the credential store. The Vault-OCID path is unreliable until either (a) `aidputils` becomes a real importable module on this cluster, or (b) the orchestrator switches to the global pattern. **Follow-up candidate** — file a BACKLOG item to consolidate credential resolution on the runtime-global pattern.
 
 2. **`xxhash64` surrogate keys hold across builds.** `dim_supplier.supplier_key` and `dim_account.account_key` derive from natural keys via `xxhash64(...)` — deterministic across runs on identical bronze. Implicit re-validation of P1.19 (closed 2026-05-11).

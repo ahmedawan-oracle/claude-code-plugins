@@ -23,7 +23,7 @@ from pathlib import Path
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.schema.diagnostic_artifact import (
+from oracle_ai_data_platform_fusion_autopilot.schema.diagnostic_artifact import (
     AIDPF_1020_OPERATOR_IDENTITY_UNRESOLVED,
     AIDPF_2010_COLUMN_ALIAS_UNRESOLVED,
     CandidateProbeOutcome,
@@ -35,7 +35,7 @@ from oracle_ai_data_platform_fusion_bundle.schema.diagnostic_artifact import (
     write_identity_diagnostic,
     write_variation_diagnostic,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.evidence_snapshot import (
+from oracle_ai_data_platform_fusion_autopilot.schema.evidence_snapshot import (
     ApprovedBy,
     CandidateConsidered,
     EvidenceContainer,
@@ -45,12 +45,12 @@ from oracle_ai_data_platform_fusion_bundle.schema.evidence_snapshot import (
     SnapshotProvenance,
     write_evidence_snapshot,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.path_segment import (
+from oracle_ai_data_platform_fusion_autopilot.schema.path_segment import (
     UnsafePathSegmentError,
     assert_within_root,
     validate_path_segment,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.tenant_profile import (
+from oracle_ai_data_platform_fusion_autopilot.schema.tenant_profile import (
     resolve_profile_path,
 )
 

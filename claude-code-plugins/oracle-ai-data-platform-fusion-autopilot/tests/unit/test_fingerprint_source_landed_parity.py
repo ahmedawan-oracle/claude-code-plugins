@@ -11,7 +11,7 @@ live tenant.
 
 from __future__ import annotations
 
-from oracle_ai_data_platform_fusion_bundle.schema.bronze_fingerprint import (
+from oracle_ai_data_platform_fusion_autopilot.schema.bronze_fingerprint import (
     BRONZE_AUDIT_COLUMNS,
     ColumnInfo,
     compute_bronze_fingerprint,

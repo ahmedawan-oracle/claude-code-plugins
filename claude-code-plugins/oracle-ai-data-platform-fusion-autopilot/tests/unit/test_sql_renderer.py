@@ -22,9 +22,9 @@ import pathlib
 
 import pytest
 
-import oracle_ai_data_platform_fusion_bundle as _pkg
-from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack import load_pack
-from oracle_ai_data_platform_fusion_bundle.orchestrator.sql_renderer import (
+import oracle_ai_data_platform_fusion_autopilot as _pkg
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack import load_pack
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.sql_renderer import (
     AIDPF_5001_IDENTIFIER_ALLOWLIST,
     AIDPF_5002_UNKNOWN_TOKEN,
     AIDPF_5003_UNRESOLVED_VARIATION,
@@ -41,7 +41,7 @@ from oracle_ai_data_platform_fusion_bundle.orchestrator.sql_renderer import (
     compute_rendered_sql_hash,
     render_node_sql,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.tenant_profile import (
+from oracle_ai_data_platform_fusion_autopilot.schema.tenant_profile import (
     load_tenant_profile_from_string,
 )
 

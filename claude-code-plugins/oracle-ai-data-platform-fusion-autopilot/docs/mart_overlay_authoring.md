@@ -3,7 +3,7 @@
 Use this guide when the shipped gold layer does not cover a business request,
 or when a customer needs to customize the SQL for a shipped mart.
 
-`aidp-fusion-bundle init` creates only:
+`aidp-fusion-autopilot init` creates only:
 
 ```text
 bundle.yaml
@@ -25,7 +25,7 @@ changes belong in an overlay pack under the customer bundle directory.
 | Resolve tenant column variation | Use `/medallion-author`, not `/mart-author`. |
 
 The overlay is not active until the bundle points at it. Use
-`aidp-fusion-bundle use-pack`; do not hand-edit `contentPack.path` for the
+`aidp-fusion-autopilot use-pack`; do not hand-edit `contentPack.path` for the
 normal workflow. Editing the bundle scope lists (`datasets`, `dimensions.build`,
 and `gold.marts`) is normal when you want a narrow customer bundle.
 
@@ -35,7 +35,7 @@ starter pack run, but it can broaden a narrow customer bundle. Use `--no-align`
 when applying an overlay to a narrow bundle or when overriding one shipped mart:
 
 ```bash
-aidp-fusion-bundle use-pack overlays/<name> --profile <tenant> --no-align
+aidp-fusion-autopilot use-pack overlays/<name> --profile <tenant> --no-align
 ```
 
 With `--no-align`, `use-pack` still updates `contentPack`, but it preserves the
@@ -66,9 +66,9 @@ gold:
 Then validate and run:
 
 ```bash
-aidp-fusion-bundle validate
-aidp-fusion-bundle bootstrap --check-iam
-aidp-fusion-bundle run --mode seed
+aidp-fusion-autopilot validate
+aidp-fusion-autopilot bootstrap --check-iam
+aidp-fusion-autopilot run --mode seed
 ```
 
 No custom mart YAML is needed for this path.
@@ -167,11 +167,11 @@ GROUP BY COALESCE(inv.{{ column.invoice_currency_code }}, 'UNKNOWN')
 Validate, wire, and seed:
 
 ```bash
-aidp-fusion-bundle content-pack validate overlays/supplier-currency-summary
-aidp-fusion-bundle use-pack overlays/supplier-currency-summary --profile finance-default --no-align
-aidp-fusion-bundle validate
-aidp-fusion-bundle bootstrap --check-iam
-aidp-fusion-bundle run --mode seed --datasets supplier_spend_by_currency --layers gold
+aidp-fusion-autopilot content-pack validate overlays/supplier-currency-summary
+aidp-fusion-autopilot use-pack overlays/supplier-currency-summary --profile finance-default --no-align
+aidp-fusion-autopilot validate
+aidp-fusion-autopilot bootstrap --check-iam
+aidp-fusion-autopilot run --mode seed --datasets supplier_spend_by_currency --layers gold
 ```
 
 Because `--no-align` preserves the existing bundle scope, make sure
@@ -231,10 +231,10 @@ OAC datasets and workbooks that depend on `gold.gl_balance`.
 Validate and wire:
 
 ```bash
-aidp-fusion-bundle content-pack validate overlays/gl-balance-custom
-aidp-fusion-bundle use-pack overlays/gl-balance-custom --profile finance-default --no-align
-aidp-fusion-bundle validate
-aidp-fusion-bundle run --mode seed --datasets gl_balance --layers gold
+aidp-fusion-autopilot content-pack validate overlays/gl-balance-custom
+aidp-fusion-autopilot use-pack overlays/gl-balance-custom --profile finance-default --no-align
+aidp-fusion-autopilot validate
+aidp-fusion-autopilot run --mode seed --datasets gl_balance --layers gold
 ```
 
 Use `--no-align` here so an override for `gl_balance` does not expand a narrow

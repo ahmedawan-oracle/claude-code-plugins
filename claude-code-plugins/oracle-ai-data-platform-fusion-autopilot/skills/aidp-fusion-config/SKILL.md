@@ -1,18 +1,18 @@
 ---
 name: aidp-fusion-config
-description: Generate aidp.config.yaml from human-friendly AIDP names instead of hand-copied OCIDs. Use when the user is setting up the fusion-bundle and doesn't want to dig workspaceKey / clusterKey / aiDataPlatformId out of console URLs — they give a workspace name + cluster name (+ region) and this resolves the keys via the AIDP REST API and writes the env block. Triggers — "set up aidp.config.yaml", "configure the fusion bundle connection", "I don't have the OCIDs", "fill in workspace/cluster keys", "what do I put for workspaceKey/clusterKey", "configure AIDP coords by name".
+description: Generate aidp.config.yaml from human-friendly AIDP names instead of hand-copied OCIDs. Use when the user is setting up the fusion-autopilot and doesn't want to dig workspaceKey / clusterKey / aiDataPlatformId out of console URLs — they give a workspace name + cluster name (+ region) and this resolves the keys via the AIDP REST API and writes the env block. Triggers — "set up aidp.config.yaml", "configure the fusion autopilot connection", "I don't have the OCIDs", "fill in workspace/cluster keys", "what do I put for workspaceKey/clusterKey", "configure AIDP coords by name".
 allowed-tools: Read, Bash, Glob, Grep
 ---
 
 # `aidp-fusion-config` — fill `aidp.config.yaml` from names, not OCIDs
 
-The worst part of fusion-bundle setup is `aidp.config.yaml`: it wants three opaque identifiers —
+The worst part of fusion-autopilot setup is `aidp.config.yaml`: it wants three opaque identifiers —
 `aiDataPlatformId` (a long OCID), `workspaceKey`, and `clusterKey` (UUIDs). Customers should not hunt those
 out of console URLs and REST responses by hand. This skill collects **human-friendly names** and resolves the
 keys live. This is a **control-plane** skill — no MCP, no notebook session required.
 
 ## When to use
-- "Set up aidp.config.yaml", "configure the fusion bundle connection", "what do I put for
+- "Set up aidp.config.yaml", "configure the fusion autopilot connection", "what do I put for
   workspaceKey/clusterKey", "I don't have the OCIDs", "fill in the AIDP coords by name".
 - The user ran `init`, sees `aidp.config.yaml` full of `*-PLACEHOLDER` values, and asks what goes there.
 - A precondition check (e.g. the `aidp-fusion-seed` ladder) reports the config is missing or has placeholders.
@@ -22,7 +22,7 @@ keys live. This is a **control-plane** skill — no MCP, no notebook session req
   discover (use `init` + hand-edit). This skill only fills the **coordinates** in `aidp.config.yaml`.
 - Resolving tenant data variation (column aliases, semantic variants) — that's `bootstrap` / `medallion-author`.
 
-## Engine — the self-contained `aidp-fusion-bundle init-config` command
+## Engine — the self-contained `aidp-fusion-autopilot init-config` command
 The skill shells out to one CLI command; it never re-implements OCI signing or REST calls. The command reuses
 the plugin's own `AidpRestClient` discovery primitives (`find_workspace_by_name` / `find_cluster_by_name`,
 OCI-signed) to turn names into keys, validates against the `AidpConfig` schema, then writes the env block.
@@ -37,7 +37,7 @@ OCI-signed) to turn names into keys, validates against the `AidpConfig` schema, 
 
 ```bash
 # 1. Dry-run first — resolve names → keys and show the YAML before writing anything
-aidp-fusion-bundle init-config \
+aidp-fusion-autopilot init-config \
   --aidp-id ocid1.datalake.oc1.iad.<...> \
   --workspace "My Workspace" \
   --cluster   "My Cluster" \
@@ -45,12 +45,12 @@ aidp-fusion-bundle init-config \
   --dry-run
 
 # 2. Write it for real (drop --dry-run). Target a non-dev env with the top-level --env flag:
-aidp-fusion-bundle --env prod init-config \
+aidp-fusion-autopilot --env prod init-config \
   --aidp-id ocid1.datalake.oc1.iad.<...> \
   --workspace "My Workspace" --cluster "My Cluster"
 
 # 3. Overwrite an env that already exists:
-aidp-fusion-bundle init-config --aidp-id <...> --workspace "..." --cluster "..." --force
+aidp-fusion-autopilot init-config --aidp-id <...> --workspace "..." --cluster "..." --force
 ```
 
 All calls sign with the local OCI profile (`--oci-profile`, default `DEFAULT`). For a session-token profile,
@@ -75,8 +75,8 @@ Two of the three coordinates are name-resolved; the **root anchor** is not:
   warning and tell the user to start it before `run` (see `aidp-cluster-ops` / `bootstrap`).
 - **Multi-env.** Use `--env <name>` to add `prod` alongside `dev`; sibling environments are preserved.
   `--force` is only needed to overwrite an env that already exists.
-- **Hand off.** After writing, point the user at the printed next steps: `aidp-fusion-bundle validate` →
-  `aidp-fusion-bundle bootstrap`. Remind them the **catalog** goes in `bundle.yaml` (`aidp.catalog`).
+- **Hand off.** After writing, point the user at the printed next steps: `aidp-fusion-autopilot validate` →
+  `aidp-fusion-autopilot bootstrap`. Remind them the **catalog** goes in `bundle.yaml` (`aidp.catalog`).
 
 ## Notes
 - **Comments aren't preserved.** Writing re-emits the YAML, so hand-written comments in an existing

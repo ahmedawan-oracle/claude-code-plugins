@@ -18,18 +18,18 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.orchestrator import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator import (
     _dispatch_content_pack_run,
 )
-from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack import (
     load_full_chain,
     make_filesystem_base_resolver,
 )
-from oracle_ai_data_platform_fusion_bundle.orchestrator.fusion_pvo_drift import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.fusion_pvo_drift import (
     AIDPF_2072_FUSION_PVO_DRIFT_GATE_FAILED,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.run_summary import RunStep
-from oracle_ai_data_platform_fusion_bundle.schema.tenant_profile import (
+from oracle_ai_data_platform_fusion_autopilot.schema.run_summary import RunStep
+from oracle_ai_data_platform_fusion_autopilot.schema.tenant_profile import (
     load_tenant_profile,
 )
 
@@ -61,7 +61,7 @@ class TestDispatcherRunsPvoDriftGate:
         and the recursive ``run()`` call for the bronze branch is NEVER
         invoked.
         """
-        import oracle_ai_data_platform_fusion_bundle.orchestrator as _o
+        import oracle_ai_data_platform_fusion_autopilot.orchestrator as _o
 
         # Spy + force the gate to "fail".
         gate_calls: list[dict] = []
@@ -135,11 +135,11 @@ class TestDispatcherRunsPvoDriftGate:
         ``scope.bronze_filter`` ``None``. The PVO drift gate has no
         live PVO to probe against and MUST NOT run.
         """
-        import oracle_ai_data_platform_fusion_bundle.orchestrator as _o
-        from oracle_ai_data_platform_fusion_bundle.orchestrator import (
+        import oracle_ai_data_platform_fusion_autopilot.orchestrator as _o
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator import (
             sql_runner, state as v1_state, state_phase2, bronze_readiness,
         )
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.sql_runner import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.sql_runner import (
             NodeExecutionResult,
         )
 
@@ -163,8 +163,8 @@ class TestDispatcherRunsPvoDriftGate:
             lambda *a, **kw: NodeExecutionResult(status="success", row_count=0),
         )
         # Bypass the fingerprint gate; it needs a real backend.
-        from oracle_ai_data_platform_fusion_bundle.orchestrator import preflight_evidence
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.preflight_evidence import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator import preflight_evidence
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.preflight_evidence import (
             PreflightOutcome,
         )
         monkeypatch.setattr(

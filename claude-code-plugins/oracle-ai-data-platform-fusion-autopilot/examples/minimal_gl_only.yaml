@@ -1,4 +1,4 @@
-apiVersion: aidp-fusion-bundle/v1
+apiVersion: aidp-fusion-autopilot/v1
 version: "0.2.0"           # Option L — explicit schema version (§4.4d).
                            # Default if omitted is "0.2.0"; required when v0.3 ships.
 project: cecl-finance-lake

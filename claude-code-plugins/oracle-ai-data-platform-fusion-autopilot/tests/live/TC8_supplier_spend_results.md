@@ -57,4 +57,4 @@ This proves the full medallion architecture pdf1 documents:
 - Silver typing + dimension build ✅
 - Gold business mart with real numbers ✅
 
-Notebook: `Shared/oracle_ai_data_platform_fusion_bundle/TC1_supplier_extract.ipynb`
+Notebook: `Shared/oracle_ai_data_platform_fusion_autopilot/TC1_supplier_extract.ipynb`

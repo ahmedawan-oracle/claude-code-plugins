@@ -12,10 +12,10 @@ from pathlib import Path
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.medallion_author.affected_nodes import (
+from oracle_ai_data_platform_fusion_autopilot.medallion_author.affected_nodes import (
     compute_affected_nodes,
 )
-from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack import (
     load_pack,
 )
 
@@ -24,7 +24,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 PACK_ROOT = (
     REPO_ROOT
     / "scripts"
-    / "oracle_ai_data_platform_fusion_bundle"
+    / "oracle_ai_data_platform_fusion_autopilot"
     / "content_packs"
     / "fusion-finance-starter"
 )

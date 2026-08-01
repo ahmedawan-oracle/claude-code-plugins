@@ -8,14 +8,14 @@
 
 | # | Assertion | Evidence |
 |---|---|---|
-| 1 | `aidp-fusion-bundle run --inline --resume <run_id>` end-to-end works on a live tenant | Phase 3 ran successfully, all 5 plan nodes terminal-success |
+| 1 | `aidp-fusion-autopilot run --inline --resume <run_id>` end-to-end works on a live tenant | Phase 3 ran successfully, all 5 plan nodes terminal-success |
 | 2 | **Original `run_id` preserved** — same UUID across original + resume; medallion `<layer>_run_id` invariant intact | Phase 2 and Phase 3 emit identical `run_id` in their RunSummary |
 | 3 | Succeeded nodes carry forward as `resumed_skipped` with `skip_reason='resume-skip'`, `duration_seconds=0.0` | 3 nodes carried forward (erp_suppliers + ap_invoices + dim_calendar) |
 | 4 | Failed + cascade-skipped nodes re-attempt + succeed on resume | dim_supplier (silver) + supplier_spend (gold) re-dispatched, both succeeded |
 | 5 | Resume runtime ≪ clean runtime | **Phase 3 67.7s vs Phase 1 335.8s = 5× speedup** |
 | 6 | Plan hash identical across all rows under the resumed run_id (drift gate didn't fire — same bundle) | All 10 rows share the same `plan_hash` |
 | 7 | State table is append-only on resume — multi-row per `(run_id, dataset_id)` | Cross-tab below shows 2 rows per dataset under the same run_id |
-| 8 | `fusion_bundle_state_latest` projection gives one row per dataset with terminal state | Window-projected table below shows 5 rows, terminal status per dataset |
+| 8 | `fusion_autopilot_state_latest` projection gives one row per dataset with terminal state | Window-projected table below shows 5 rows, terminal status per dataset |
 
 ## Coordinates (redacted)
 
@@ -158,7 +158,7 @@ dim_calendar  silver resumed_skipped NULL  ← bug: lost the original 4018-row c
 row_count walk-back-past-NULL on Phase 3 rerun.
 ```
 
-This is exactly the append-only multi-row semantics LIMITS.md §L-Resume documents — consumers must read from `fusion_bundle_state_latest` or apply the latest-per-`(run_id, dataset_id)` window to get one row per dataset.
+This is exactly the append-only multi-row semantics LIMITS.md §L-Resume documents — consumers must read from `fusion_autopilot_state_latest` or apply the latest-per-`(run_id, dataset_id)` window to get one row per dataset.
 
 ## Dispatcher
 

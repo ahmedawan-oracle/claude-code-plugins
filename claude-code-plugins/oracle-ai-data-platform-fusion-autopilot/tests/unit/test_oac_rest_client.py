@@ -7,13 +7,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.oac.rest.client import (
+from oracle_ai_data_platform_fusion_autopilot.oac.rest.client import (
     OacRestClient,
     OacRestError,
     WorkRequestStatus,
     encode_catalog_id,
 )
-from oracle_ai_data_platform_fusion_bundle.oac.rest.connection import build_payload
+from oracle_ai_data_platform_fusion_autopilot.oac.rest.connection import build_payload
 
 
 def _fetcher(token: str = "tok") -> MagicMock:
@@ -261,7 +261,7 @@ class TestRegisterSnapshot:
         client = OacRestClient("https://oac.example.com", _fetcher(), session=s)
 
         out = client.register_snapshot(
-            name="fusion-bundle",
+            name="fusion-autopilot",
             bucket="customer-bucket",
             bar_uri="bundles/fusion-v1.bar",
             password="hunter2",
@@ -275,7 +275,7 @@ class TestRegisterSnapshot:
 
         body = call.kwargs["json"]
         assert body["type"] == "REGISTER"
-        assert body["name"] == "fusion-bundle"
+        assert body["name"] == "fusion-autopilot"
         assert body["storage"]["type"] == "OCI_NATIVE"
         assert body["storage"]["bucket"] == "customer-bucket"
         assert body["storage"]["auth"]["type"] == "OCI_RESOURCE_PRINCIPAL"
@@ -308,7 +308,7 @@ class TestRegisterSnapshot:
 
         list_resp = MagicMock(status_code=200, text='[]')
         list_resp.json.return_value = [
-            {"id": "snap-1", "name": "fusion-bundle"},
+            {"id": "snap-1", "name": "fusion-autopilot"},
             {"id": "snap-2", "name": "other"},
         ]
 
@@ -316,12 +316,12 @@ class TestRegisterSnapshot:
         client = OacRestClient("https://oac.example.com", _fetcher(), session=s)
 
         out = client.register_snapshot(
-            name="fusion-bundle",
+            name="fusion-autopilot",
             bucket="b",
             bar_uri="b.bar",
             poll_interval=0,
         )
-        assert out == {"id": "snap-1", "name": "fusion-bundle"}
+        assert out == {"id": "snap-1", "name": "fusion-autopilot"}
 
     def test_wait_true_uses_workrequest_resources_id_when_present(self) -> None:
         """If the work-request payload exposes the snapshot id directly, fetch by id."""
@@ -337,18 +337,18 @@ class TestRegisterSnapshot:
         }
 
         get_resp = MagicMock(status_code=200, text='{}')
-        get_resp.json.return_value = {"id": "snap-77", "name": "fusion-bundle"}
+        get_resp.json.return_value = {"id": "snap-77", "name": "fusion-autopilot"}
 
         s.request.side_effect = [post_resp, wr_resp, get_resp]
         client = OacRestClient("https://oac.example.com", _fetcher(), session=s)
 
         out = client.register_snapshot(
-            name="fusion-bundle",
+            name="fusion-autopilot",
             bucket="b",
             bar_uri="b.bar",
             poll_interval=0,
         )
-        assert out == {"id": "snap-77", "name": "fusion-bundle"}
+        assert out == {"id": "snap-77", "name": "fusion-autopilot"}
 
     def test_wait_true_raises_if_workrequest_failed(self) -> None:
         s = MagicMock()
@@ -363,7 +363,7 @@ class TestRegisterSnapshot:
 
         with pytest.raises(OacRestError, match="terminated as FAILED"):
             client.register_snapshot(
-                name="fusion-bundle", bucket="b", bar_uri="b.bar", poll_interval=0,
+                name="fusion-autopilot", bucket="b", bar_uri="b.bar", poll_interval=0,
             )
 
 

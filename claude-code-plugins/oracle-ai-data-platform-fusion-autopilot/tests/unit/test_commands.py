@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from click.testing import CliRunner
-from oracle_ai_data_platform_fusion_bundle import cli
+from oracle_ai_data_platform_fusion_autopilot import cli
 
 # ---------------------------------------------------------------------------
 # init
@@ -116,7 +116,7 @@ class TestValidate:
         # that declaring contentPack with a bad path must surface
         # the AIDPF-1038 error instead of falling back.
         (tmp_path / "bundle.yaml").write_text(
-            "apiVersion: aidp-fusion-bundle/v1\n"
+            "apiVersion: aidp-fusion-autopilot/v1\n"
             "project: validate-bad-pack\n"
             "fusion:\n"
             "  serviceUrl: https://example.com\n"
@@ -132,7 +132,7 @@ class TestValidate:
             "  - id: erp_suppliers\n"
         )
         (tmp_path / "aidp.config.yaml").write_text(
-            "apiVersion: aidp-fusion-bundle/v1\n"
+            "apiVersion: aidp-fusion-autopilot/v1\n"
             "project: validate-bad-pack\n"
             "environments:\n"
             "  dev:\n"
@@ -189,13 +189,13 @@ class TestCatalog:
         assert "missing creds" in result.output
 
     def test_probe_reconciles_when_all_match(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from oracle_ai_data_platform_fusion_bundle.schema.fusion_catalog import CATALOG
+        from oracle_ai_data_platform_fusion_autopilot.schema.fusion_catalog import CATALOG
         # Build a fake live response that contains every confirmed datastore name
         live_names = [{"name": e.datastore} for e in CATALOG.values()]
         fake_response = MagicMock(status_code=200)
         fake_response.json.return_value = {"items": live_names}
         with patch(
-            "oracle_ai_data_platform_fusion_bundle.commands.catalog.requests.get",
+            "oracle_ai_data_platform_fusion_autopilot.commands.catalog.requests.get",
             return_value=fake_response,
         ):
             result = CliRunner().invoke(cli.main, [
@@ -235,7 +235,7 @@ class TestBootstrap:
     def test_bicc_probe_skips_aidp_secret_reference(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from oracle_ai_data_platform_fusion_bundle.commands.bootstrap import (
+        from oracle_ai_data_platform_fusion_autopilot.commands.bootstrap import (
             _ProbeResult,
             _probe_bicc,
         )
@@ -303,7 +303,7 @@ class TestRun:
         monkeypatch.chdir(tmp_path)
         CliRunner().invoke(cli.main, ["init", "--template", "minimal"])
         with patch(
-            "oracle_ai_data_platform_fusion_bundle.commands.run."
+            "oracle_ai_data_platform_fusion_autopilot.commands.run."
             "_run_via_aidp_dispatch",
             return_value=0,
         ) as mock_dispatch:
@@ -330,12 +330,12 @@ class TestRun:
         table (would imply work was done)."""
         from unittest.mock import patch
 
-        from oracle_ai_data_platform_fusion_bundle.schema.run_summary import RunSummary
+        from oracle_ai_data_platform_fusion_autopilot.schema.run_summary import RunSummary
 
         monkeypatch.chdir(tmp_path)
         CliRunner().invoke(cli.main, ["init", "--template", "minimal"])
         with patch(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.dispatch_via_rest",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.dispatch_via_rest",
             return_value=RunSummary.empty("test", "seed"),
         ) as mock_dispatch:
             result = CliRunner().invoke(cli.main, [
@@ -354,13 +354,13 @@ class TestRun:
         ``dispatch_via_rest(...)`` with the correct kwarg shape."""
         from unittest.mock import MagicMock, patch
 
-        from oracle_ai_data_platform_fusion_bundle.schema.run_summary import RunSummary
+        from oracle_ai_data_platform_fusion_autopilot.schema.run_summary import RunSummary
 
         monkeypatch.chdir(tmp_path)
         CliRunner().invoke(cli.main, ["init", "--template", "minimal"])
         fake_summary = RunSummary.empty("test", "seed")
         with patch(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.dispatch_via_rest",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.dispatch_via_rest",
             return_value=fake_summary,
         ) as mock_dispatch:
             result = CliRunner().invoke(cli.main, [
@@ -385,7 +385,7 @@ class TestRun:
         """
         from unittest.mock import patch
 
-        from oracle_ai_data_platform_fusion_bundle.dispatch.errors import (
+        from oracle_ai_data_platform_fusion_autopilot.dispatch.errors import (
             DispatchMarkerDegradedError,
         )
 
@@ -399,7 +399,7 @@ class TestRun:
             "with --resume abc-123 to continue."
         )
         with patch(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.dispatch_via_rest",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.dispatch_via_rest",
             side_effect=DispatchMarkerDegradedError(
                 msg, recovered_run_id="abc-123",
             ),
@@ -425,12 +425,12 @@ class TestRun:
         dispatch_via_rest. Bumped from P1.5ε's 1800 per TC29 evidence."""
         from unittest.mock import patch
 
-        from oracle_ai_data_platform_fusion_bundle.schema.run_summary import RunSummary
+        from oracle_ai_data_platform_fusion_autopilot.schema.run_summary import RunSummary
 
         monkeypatch.chdir(tmp_path)
         CliRunner().invoke(cli.main, ["init", "--template", "minimal"])
         with patch(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.dispatch_via_rest",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.dispatch_via_rest",
             return_value=RunSummary.empty("test", "seed"),
         ) as mock_dispatch:
             CliRunner().invoke(cli.main, ["run", "--mode", "seed"])
@@ -442,12 +442,12 @@ class TestRun:
         """--poll-timeout 7200 reaches dispatch_via_rest(poll_timeout_s=7200)."""
         from unittest.mock import patch
 
-        from oracle_ai_data_platform_fusion_bundle.schema.run_summary import RunSummary
+        from oracle_ai_data_platform_fusion_autopilot.schema.run_summary import RunSummary
 
         monkeypatch.chdir(tmp_path)
         CliRunner().invoke(cli.main, ["init", "--template", "minimal"])
         with patch(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.dispatch_via_rest",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.dispatch_via_rest",
             return_value=RunSummary.empty("test", "seed"),
         ) as mock_dispatch:
             CliRunner().invoke(
@@ -505,14 +505,14 @@ class TestRun:
         red one-liner and exits 2 (no traceback)."""
         from unittest.mock import patch
 
-        from oracle_ai_data_platform_fusion_bundle.dispatch.errors import (
+        from oracle_ai_data_platform_fusion_autopilot.dispatch.errors import (
             DispatchPreflightError,
         )
 
         monkeypatch.chdir(tmp_path)
         CliRunner().invoke(cli.main, ["init", "--template", "minimal"])
         with patch(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.dispatch_via_rest",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.dispatch_via_rest",
             side_effect=DispatchPreflightError("synthetic preflight fail"),
         ):
             result = CliRunner().invoke(
@@ -535,14 +535,14 @@ class TestRun:
         """
         from unittest.mock import patch
 
-        from oracle_ai_data_platform_fusion_bundle.dispatch.errors import (
+        from oracle_ai_data_platform_fusion_autopilot.dispatch.errors import (
             DispatchWheelBuildError,
         )
 
         monkeypatch.chdir(tmp_path)
         CliRunner().invoke(cli.main, ["init", "--template", "minimal"])
         with patch(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.dispatch_via_rest",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.dispatch_via_rest",
             side_effect=DispatchWheelBuildError("`python -m build` failed: rc=1"),
         ):
             result = CliRunner().invoke(cli.main, ["run", "--mode", "seed"])
@@ -561,7 +561,7 @@ class TestRun:
         dispatch-layer errors (config, preflight, network)."""
         from unittest.mock import patch
 
-        from oracle_ai_data_platform_fusion_bundle.schema.run_summary import (
+        from oracle_ai_data_platform_fusion_autopilot.schema.run_summary import (
             RunStep,
             RunSummary,
         )
@@ -591,7 +591,7 @@ class TestRun:
             steps=(failed_step,),
         )
         with patch(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.dispatch_via_rest",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.dispatch_via_rest",
             return_value=summary,
         ):
             result = CliRunner().invoke(cli.main, ["run", "--mode", "seed"])
@@ -611,11 +611,11 @@ class TestRun:
         monkeypatch.chdir(tmp_path)
         CliRunner().invoke(cli.main, ["init", "--template", "minimal"])
 
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.runtime import RunSummary
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.runtime import RunSummary
         fake_summary = RunSummary.empty("minimal", "seed")
 
         with patch(
-            "oracle_ai_data_platform_fusion_bundle.orchestrator.run",
+            "oracle_ai_data_platform_fusion_autopilot.orchestrator.run",
             return_value=fake_summary,
         ) as mock_run:
             result = CliRunner().invoke(
@@ -640,11 +640,11 @@ class TestRun:
         monkeypatch.chdir(tmp_path)
         CliRunner().invoke(cli.main, ["init", "--template", "minimal"])
 
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.runtime import RunSummary
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.runtime import RunSummary
         fake_summary = RunSummary.empty("minimal", "seed")
 
         with patch(
-            "oracle_ai_data_platform_fusion_bundle.orchestrator.run",
+            "oracle_ai_data_platform_fusion_autopilot.orchestrator.run",
             return_value=fake_summary,
         ) as mock_run:
             CliRunner().invoke(cli.main, [
@@ -672,11 +672,11 @@ class TestRun:
         monkeypatch.chdir(tmp_path)
         CliRunner().invoke(cli.main, ["init", "--template", "minimal"])
 
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.runtime import RunSummary
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.runtime import RunSummary
         fake_summary = RunSummary.empty("minimal", "seed")
 
         with patch(
-            "oracle_ai_data_platform_fusion_bundle.orchestrator.run",
+            "oracle_ai_data_platform_fusion_autopilot.orchestrator.run",
             return_value=fake_summary,
         ) as mock_run:
             result = CliRunner().invoke(
@@ -706,11 +706,11 @@ class TestRun:
         monkeypatch.chdir(tmp_path)
         CliRunner().invoke(cli.main, ["init", "--template", "minimal"])
 
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.runtime import RunSummary
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.runtime import RunSummary
         fake_summary = RunSummary.empty("minimal", "seed")
 
         with patch(
-            "oracle_ai_data_platform_fusion_bundle.orchestrator.run",
+            "oracle_ai_data_platform_fusion_autopilot.orchestrator.run",
             return_value=fake_summary,
         ) as mock_run:
             CliRunner().invoke(cli.main, [
@@ -740,11 +740,11 @@ class TestRun:
         monkeypatch.chdir(tmp_path)
         CliRunner().invoke(cli.main, ["init", "--template", "minimal"])
 
-        from oracle_ai_data_platform_fusion_bundle.orchestrator import errors
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator import errors
         ExceptionCls = getattr(errors, exc_cls)
 
         with patch(
-            "oracle_ai_data_platform_fusion_bundle.orchestrator.run",
+            "oracle_ai_data_platform_fusion_autopilot.orchestrator.run",
             side_effect=ExceptionCls(msg_fragment),
         ):
             result = CliRunner().invoke(
@@ -765,7 +765,7 @@ class TestRun:
         CliRunner().invoke(cli.main, ["init", "--template", "minimal"])
 
         with patch(
-            "oracle_ai_data_platform_fusion_bundle.orchestrator.run",
+            "oracle_ai_data_platform_fusion_autopilot.orchestrator.run",
             side_effect=NotImplementedError("Incremental mode is P1.5β"),
         ):
             result = CliRunner().invoke(
@@ -790,7 +790,7 @@ class TestRun:
         monkeypatch.chdir(tmp_path)
         CliRunner().invoke(cli.main, ["init", "--template", "minimal"])
         with patch(
-            "oracle_ai_data_platform_fusion_bundle.orchestrator.run",
+            "oracle_ai_data_platform_fusion_autopilot.orchestrator.run",
         ) as mock_run:
             result = CliRunner().invoke(cli.main, ["run", "--mode", "full", "--inline"])
         assert result.exit_code == 2
@@ -819,7 +819,7 @@ class TestRun:
         CliRunner().invoke(cli.main, ["init", "--template", "minimal"])
 
         with patch(
-            "oracle_ai_data_platform_fusion_bundle.orchestrator.run",
+            "oracle_ai_data_platform_fusion_autopilot.orchestrator.run",
             side_effect=RuntimeError("simulated orchestrator bug"),
         ):
             result = CliRunner().invoke(
@@ -943,7 +943,7 @@ class TestDashboardMcpSetup:
         monkeypatch.setenv("OAC_ADMIN_PASSWORD", "admin-password")
 
         with patch(
-            "oracle_ai_data_platform_fusion_bundle.oac.mcp_token.setup_basic_auth",
+            "oracle_ai_data_platform_fusion_autopilot.oac.mcp_token.setup_basic_auth",
             return_value=self._summary(tmp_path, user="least-priv-user"),
         ) as setup:
             result = CliRunner().invoke(
@@ -980,7 +980,7 @@ class TestDashboardMcpSetup:
         )
 
         with patch(
-            "oracle_ai_data_platform_fusion_bundle.oac.mcp_token.setup_basic_auth",
+            "oracle_ai_data_platform_fusion_autopilot.oac.mcp_token.setup_basic_auth",
             return_value=self._summary(tmp_path, user="dotenv-user"),
         ) as setup:
             result = CliRunner().invoke(
@@ -1011,7 +1011,7 @@ class TestDashboardMcpSetup:
         monkeypatch.setenv("OAC_ADMIN_PASSWORD", "legacy-password")
 
         with patch(
-            "oracle_ai_data_platform_fusion_bundle.oac.mcp_token.setup_basic_auth",
+            "oracle_ai_data_platform_fusion_autopilot.oac.mcp_token.setup_basic_auth",
             return_value=self._summary(tmp_path, user="legacy-user"),
         ) as setup:
             result = CliRunner().invoke(
@@ -1079,7 +1079,7 @@ class TestStatus:
     def test_reads_configured_bronze_schema(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """P1.5b — ``status()`` must read ``fusion_bundle_state`` from the
+        """P1.5b — ``status()`` must read ``fusion_autopilot_state`` from the
         tenant's ``aidp.bronzeSchema`` (not the hardcoded ``'bronze'``).
 
         The scaffolded template (``examples/minimal_gl_only.yaml``) uses
@@ -1133,9 +1133,9 @@ class TestStatus:
 
         result = CliRunner().invoke(cli.main, ["status"])
         assert result.exit_code == 0
-        assert "my_lake.raw.fusion_bundle_state" in result.output
+        assert "my_lake.raw.fusion_autopilot_state" in result.output
         # Critically, the pre-P1.5b hardcoded shape must NOT appear.
-        assert "my_lake.bronze.fusion_bundle_state" not in result.output
+        assert "my_lake.bronze.fusion_autopilot_state" not in result.output
 
     def test_query_uses_latest_per_dataset_and_includes_skip_reason(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1176,7 +1176,7 @@ class TestRenderRecommendations:
     def _build_summary(self, recommendations: tuple[str, ...]):
         """Build a minimal RunSummary fixture with the given recommendations."""
         from datetime import datetime, UTC
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.runtime import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.runtime import (
             RunStep, RunSummary,
         )
         # Minimal one-step summary so _render_summary's main table branch runs.
@@ -1207,7 +1207,7 @@ class TestRenderRecommendations:
         the header AND each recommendation line."""
         import io
         from rich.console import Console
-        from oracle_ai_data_platform_fusion_bundle.commands.run import _render_summary
+        from oracle_ai_data_platform_fusion_autopilot.commands.run import _render_summary
 
         summary = self._build_summary((
             "consider adding schemaOverrides.po_receipts: Financial to bundle.yaml",
@@ -1229,7 +1229,7 @@ class TestRenderRecommendations:
         header — avoid noise on the happy path."""
         import io
         from rich.console import Console
-        from oracle_ai_data_platform_fusion_bundle.commands.run import _render_summary
+        from oracle_ai_data_platform_fusion_autopilot.commands.run import _render_summary
 
         summary = self._build_summary(())  # empty tuple
         buf = io.StringIO()

@@ -1,4 +1,4 @@
-"""Unit tests for :mod:`oracle_ai_data_platform_fusion_bundle.schema.diagnostic_artifact`.
+"""Unit tests for :mod:`oracle_ai_data_platform_fusion_autopilot.schema.diagnostic_artifact`.
 
 Covers:
 
@@ -23,7 +23,7 @@ from pathlib import Path
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.schema.diagnostic_artifact import (
+from oracle_ai_data_platform_fusion_autopilot.schema.diagnostic_artifact import (
     AIDPF_1020_OPERATOR_IDENTITY_UNRESOLVED,
     AIDPF_2010_COLUMN_ALIAS_UNRESOLVED,
     AIDPF_2011_SEMANTIC_VARIANT_UNRESOLVED,
@@ -240,7 +240,7 @@ class TestIdentityWriter:
 
 
 def _bronze_4071_artifact():
-    from oracle_ai_data_platform_fusion_bundle.schema.diagnostic_artifact import (
+    from oracle_ai_data_platform_fusion_autopilot.schema.diagnostic_artifact import (
         BronzeSourceColumnMissingV1,
     )
     return BronzeSourceColumnMissingV1.model_validate({
@@ -262,7 +262,7 @@ def _bronze_4071_artifact():
 
 class TestBronzeSourceColumnMissingDiagnostic:
     def test_model_roundtrip(self) -> None:
-        from oracle_ai_data_platform_fusion_bundle.schema.diagnostic_artifact import (
+        from oracle_ai_data_platform_fusion_autopilot.schema.diagnostic_artifact import (
             BronzeSourceColumnMissingV1,
         )
         artifact = _bronze_4071_artifact()
@@ -273,7 +273,7 @@ class TestBronzeSourceColumnMissingDiagnostic:
         assert again.pvo_columns[0].name == "ApPaymentHistDistsInvoicePaymentId"
 
     def test_writes_under_diagnostics_subtree_with_node_discriminator(self, tmp_path: Path) -> None:
-        from oracle_ai_data_platform_fusion_bundle.schema.diagnostic_artifact import (
+        from oracle_ai_data_platform_fusion_autopilot.schema.diagnostic_artifact import (
             write_bronze_source_column_missing_diagnostic,
         )
         result_path = write_bronze_source_column_missing_diagnostic(

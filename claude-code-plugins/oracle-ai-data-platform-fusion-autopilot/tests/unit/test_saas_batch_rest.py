@@ -11,7 +11,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.extractors.saas_batch_rest import (
+from oracle_ai_data_platform_fusion_autopilot.extractors.saas_batch_rest import (
     fetch_output_files,
     get_token_relay,
     poll_job_until_complete,
@@ -153,7 +153,7 @@ def _job_response(status: str, request_id: str | None = "REQ-1"):
 class TestPollJobUntilComplete:
     def test_returns_completed_details(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # No real sleeping in the test
-        import oracle_ai_data_platform_fusion_bundle.extractors.saas_batch_rest as mod
+        import oracle_ai_data_platform_fusion_autopilot.extractors.saas_batch_rest as mod
         monkeypatch.setattr(mod.time, "sleep", lambda *_a, **_kw: None)
 
         s = MagicMock()
@@ -169,7 +169,7 @@ class TestPollJobUntilComplete:
         assert s.get.call_count == 3
 
     def test_raises_on_failed(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        import oracle_ai_data_platform_fusion_bundle.extractors.saas_batch_rest as mod
+        import oracle_ai_data_platform_fusion_autopilot.extractors.saas_batch_rest as mod
         monkeypatch.setattr(mod.time, "sleep", lambda *_a, **_kw: None)
 
         s = MagicMock()
@@ -178,7 +178,7 @@ class TestPollJobUntilComplete:
             poll_job_until_complete(s, "https://h/loc", poll_interval_seconds=0)
 
     def test_raises_on_timeout(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        import oracle_ai_data_platform_fusion_bundle.extractors.saas_batch_rest as mod
+        import oracle_ai_data_platform_fusion_autopilot.extractors.saas_batch_rest as mod
         # Force time to march forward past deadline
         ticks = iter([1000.0, 1000.5, 99999.0])
         monkeypatch.setattr(mod.time, "time", lambda: next(ticks))

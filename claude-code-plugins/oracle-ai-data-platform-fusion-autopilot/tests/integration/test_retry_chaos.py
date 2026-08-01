@@ -24,7 +24,7 @@ import random
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.orchestrator.retry import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.retry import (
     DEFAULT_MAX_RETRIES,
     PERMANENT_PATTERNS,
     TRANSIENT_PATTERNS,

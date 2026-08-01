@@ -44,7 +44,7 @@ Output JSON (stdout):
     }
 
 If the live listing is empty (no tables), the inventory reports zero tables —
-the advisor then tells the operator to run `aidp-fusion-bundle run --mode seed`
+the advisor then tells the operator to run `aidp-fusion-autopilot run --mode seed`
 first (nothing is materialized yet), rather than inventing tables from YAML.
 """
 from __future__ import annotations

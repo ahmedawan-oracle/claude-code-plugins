@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, call
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.orchestrator.state_phase2 import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.state_phase2 import (
     AIDPF_4060_STATE_COMMIT_FAILURE,
     CONTENT_PACK_STATE_COLUMNS,
     StateCommitError,
@@ -71,10 +71,10 @@ class TestEnsureStateColumnsV2:
         statement includes the other 14."""
         # Stub _state_table_path / _state_latest_view_path / _build_add_columns_ddl
         # / _existing_state_columns to control inputs precisely.
-        from oracle_ai_data_platform_fusion_bundle.orchestrator import state as v1_state
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator import state as v1_state
 
-        monkeypatch.setattr(v1_state, "_state_table_path", lambda paths: "cat.bronze.fusion_bundle_state")
-        monkeypatch.setattr(v1_state, "_state_latest_view_path", lambda paths: "cat.bronze.fusion_bundle_state_latest")
+        monkeypatch.setattr(v1_state, "_state_table_path", lambda paths: "cat.bronze.fusion_autopilot_state")
+        monkeypatch.setattr(v1_state, "_state_latest_view_path", lambda paths: "cat.bronze.fusion_autopilot_state_latest")
 
         # Existing: pack_id, pack_version + the v1 base columns (which
         # aren't in CONTENT_PACK_STATE_COLUMNS so they're orthogonal).
@@ -108,7 +108,7 @@ class TestEnsureStateColumnsV2:
     def test_migration_is_noop_when_all_content_pack_columns_present(self, monkeypatch) -> None:
         """If every content-pack column already exists, no ALTER is emitted —
         only the view DDL is run."""
-        from oracle_ai_data_platform_fusion_bundle.orchestrator import state as v1_state
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator import state as v1_state
 
         monkeypatch.setattr(v1_state, "_state_table_path", lambda paths: "t")
         monkeypatch.setattr(v1_state, "_state_latest_view_path", lambda paths: "v")
@@ -134,7 +134,7 @@ class TestEnsureStateColumnsV2:
     def test_migration_idempotency_second_call_is_noop(self, monkeypatch) -> None:
         """Calling ensure_state_columns_v2 twice in a row: the second
         call sees all columns present and only redeploys the view."""
-        from oracle_ai_data_platform_fusion_bundle.orchestrator import state as v1_state
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator import state as v1_state
 
         monkeypatch.setattr(v1_state, "_state_table_path", lambda paths: "t")
         monkeypatch.setattr(v1_state, "_state_latest_view_path", lambda paths: "v")
@@ -195,8 +195,8 @@ class TestContentPackLatestViewDDL:
 
 class TestWriteStateRowsHard:
     def _setup(self, monkeypatch):
-        from oracle_ai_data_platform_fusion_bundle.orchestrator import state as v1_state
-        monkeypatch.setattr(v1_state, "_state_table_path", lambda paths: "cat.bronze.fusion_bundle_state")
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator import state as v1_state
+        monkeypatch.setattr(v1_state, "_state_table_path", lambda paths: "cat.bronze.fusion_autopilot_state")
 
     def test_empty_rows_is_noop(self, monkeypatch) -> None:
         self._setup(monkeypatch)

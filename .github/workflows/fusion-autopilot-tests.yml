@@ -1,0 +1,70 @@
+name: fusion-autopilot tests
+
+# Single source of truth for "green" on the oracle-ai-data-platform-fusion-autopilot
+# plugin. The Linux lane installs pyspark + build so the full suite runs
+# (nothing skipped); the macOS / Windows lanes run without pyspark to guard
+# cross-platform portability — those env-gated tests skip cleanly there.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "claude-code-plugins/oracle-ai-data-platform-fusion-autopilot/**"
+      - ".github/workflows/fusion-autopilot-tests.yml"
+  pull_request:
+    paths:
+      - "claude-code-plugins/oracle-ai-data-platform-fusion-autopilot/**"
+      - ".github/workflows/fusion-autopilot-tests.yml"
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: claude-code-plugins/oracle-ai-data-platform-fusion-autopilot
+
+jobs:
+  test:
+    name: ${{ matrix.os }} / py${{ matrix.python-version }} / spark=${{ matrix.spark }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Source-of-truth lane: full suite, nothing skipped.
+          - os: ubuntu-latest
+            python-version: "3.12"
+            spark: "yes"
+          # Portability lanes: no pyspark; the spark/build-gated tests skip.
+          - os: macos-latest
+            python-version: "3.12"
+            spark: "no"
+          - os: windows-latest
+            python-version: "3.12"
+            spark: "no"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Set up Java (required by pyspark)
+        if: matrix.spark == 'yes'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install plugin + test extras
+        run: python -m pip install --upgrade pip && python -m pip install -e ".[test]"
+
+      - name: Install pyspark (source-of-truth lane only)
+        if: matrix.spark == 'yes'
+        run: python -m pip install "pyspark>=3.5,<4" delta-spark
+
+      - name: Run unit tests
+        run: python -m pytest tests/unit -q
+
+      - name: Docs check
+        run: python scripts/docs_check.py

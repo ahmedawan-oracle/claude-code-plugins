@@ -18,17 +18,17 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-from oracle_ai_data_platform_fusion_bundle.commands import cluster_bootstrap_probe as cbp
-from oracle_ai_data_platform_fusion_bundle.commands.bootstrap import (
+from oracle_ai_data_platform_fusion_autopilot.commands import cluster_bootstrap_probe as cbp
+from oracle_ai_data_platform_fusion_autopilot.commands.bootstrap import (
     ResolvedClusterDispatchConfig,
 )
-from oracle_ai_data_platform_fusion_bundle.dispatch.errors import (
+from oracle_ai_data_platform_fusion_autopilot.dispatch.errors import (
     DispatchJobSubmitError,
     DispatchMarkerDecodeError,
     DispatchMarkerEnvelopeMissing,
     DispatchUploadError,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.cluster_probe_marker import (
+from oracle_ai_data_platform_fusion_autopilot.schema.cluster_probe_marker import (
     ClusterProbeEnvelope,
     ClusterProbeMarker,
 )
@@ -46,7 +46,7 @@ def _dispatch_config() -> ResolvedClusterDispatchConfig:
         cluster_name="cluster_dev",
         region="us-ashburn-1",
         oci_profile="DEFAULT",
-        workspace_dir="/Workspace/Shared/fusion-bundle-bootstrap",
+        workspace_dir="/Workspace/Shared/fusion-autopilot-bootstrap",
     )
 
 
@@ -154,7 +154,7 @@ class TestPluginCheckoutResolution:
         checkout = cbp._find_plugin_checkout(bundle_path)
 
         assert (checkout / "pyproject.toml").exists()
-        assert (checkout / "scripts" / "oracle_ai_data_platform_fusion_bundle").exists()
+        assert (checkout / "scripts" / "oracle_ai_data_platform_fusion_autopilot").exists()
 
     def test_env_override_must_point_to_plugin_checkout(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -194,7 +194,7 @@ class TestHappyPath:
         kw = helper_mock.call_args.kwargs
         assert kw["cluster_key"] == "cluster-uuid"
         assert kw["cluster_name"] == "cluster_dev"
-        assert kw["workspace_path"].startswith("/Workspace/Shared/fusion-bundle-bootstrap/probe-")
+        assert kw["workspace_path"].startswith("/Workspace/Shared/fusion-autopilot-bootstrap/probe-")
 
     def test_job_name_is_aidp_safe(self, monkeypatch, tmp_path) -> None:
         helper_mock = _patch_chain(monkeypatch, tmp_path, helper_return=_happy_marker_payload())
@@ -203,7 +203,7 @@ class TestHappyPath:
         # AIDP rule: letters / underscores / slashes only — no hyphens, no dots.
         assert "-" not in job_name
         assert "." not in job_name
-        assert job_name.startswith("aidp_fusion_bundle_bootstrap_")
+        assert job_name.startswith("aidp_fusion_autopilot_bootstrap_")
 
 
 # ---------------------------------------------------------------------------

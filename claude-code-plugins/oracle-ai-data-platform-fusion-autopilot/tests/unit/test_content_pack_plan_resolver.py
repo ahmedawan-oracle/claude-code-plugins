@@ -6,8 +6,8 @@ import pathlib
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack import load_pack
-from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack_plan_resolver import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack import load_pack
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack_plan_resolver import (
     AIDPF_1034_UNKNOWN_DATASET_FILTER,
     UnknownDatasetFilterError,
     resolve_content_pack_plan,
@@ -143,7 +143,7 @@ def test_layers_filter_gold_strict_scope_excludes_silver(pack):
     # Strict-scope opts out of D-1: only the gold root (plus would
     # raise on missing deps). dim_a is a real dep of mart_x; expect
     # strict-scope to raise.
-    from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack_plan_resolver import (
+    from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack_plan_resolver import (
         StrictScopeMissingDependencyError,
     )
     with pytest.raises(StrictScopeMissingDependencyError):

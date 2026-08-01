@@ -13,11 +13,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 import yaml
 
-from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack import load_pack
-from oracle_ai_data_platform_fusion_bundle.orchestrator.sql_renderer import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack import load_pack
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.sql_renderer import (
     RunContext,
 )
-from oracle_ai_data_platform_fusion_bundle.orchestrator.sql_runner import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.sql_runner import (
     AIDPF_4040_PLAN_HASH_DRIFT,
     AIDPF_4070_MATERIALIZED_SCHEMA_DRIFT,
     AIDPF_4071_BRONZE_SOURCE_COLUMN_MISSING,
@@ -26,7 +26,7 @@ from oracle_ai_data_platform_fusion_bundle.orchestrator.sql_runner import (
     _bronze_source_schema_gate,
     execute_node,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.tenant_profile import (
+from oracle_ai_data_platform_fusion_autopilot.schema.tenant_profile import (
     load_tenant_profile_from_string,
 )
 
@@ -260,7 +260,7 @@ class TestRenderThenGateOrdering:
         spark.sql.side_effect = sql_side_effect
 
         # Patch render_node_sql in sql_runner's namespace to detect calls.
-        from oracle_ai_data_platform_fusion_bundle.orchestrator import sql_runner
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator import sql_runner
 
         render_mock = MagicMock(side_effect=AssertionError("render must not be called"))
         monkeypatch.setattr(sql_runner, "render_node_sql", render_mock)
@@ -283,8 +283,8 @@ class TestRenderThenGateOrdering:
         spark = _fake_spark_seed_happy_path()
 
         # Patch render_node_sql to raise.
-        from oracle_ai_data_platform_fusion_bundle.orchestrator import sql_runner
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.sql_renderer import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator import sql_runner
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.sql_renderer import (
             SqlRendererError,
         )
 
@@ -437,7 +437,7 @@ class TestRepinPlanHashBreakGlass:
 
     def test_repin_writes_audit_row(self, tmp_path: pathlib.Path) -> None:
         """The bypass writes a ``mode='plan_hash_repin'`` audit row to
-        fusion_bundle_state (the SOX trail)."""
+        fusion_autopilot_state (the SOX trail)."""
         pack = _build_pack(tmp_path)
         spark = _fake_spark_seed_happy_path()
         execute_node(
@@ -489,7 +489,7 @@ class TestRepinPlanHashBreakGlass:
 
 class TestMaterialisedSchemaAssertion:
     def test_matching_schema_returns_hash(self) -> None:
-        from oracle_ai_data_platform_fusion_bundle.schema.medallion_pack import NodeYaml
+        from oracle_ai_data_platform_fusion_autopilot.schema.medallion_pack import NodeYaml
 
         node = NodeYaml.model_validate(yaml.safe_load(NODE_YAML))
         spark = MagicMock()
@@ -501,10 +501,10 @@ class TestMaterialisedSchemaAssertion:
         assert len(h) == 64  # sha256 hex length
 
     def test_extra_materialised_column_raises_4070(self) -> None:
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.sql_runner import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.sql_runner import (
             MaterializedSchemaDriftError,
         )
-        from oracle_ai_data_platform_fusion_bundle.schema.medallion_pack import NodeYaml
+        from oracle_ai_data_platform_fusion_autopilot.schema.medallion_pack import NodeYaml
 
         node = NodeYaml.model_validate(yaml.safe_load(NODE_YAML))
         spark = MagicMock()
@@ -523,10 +523,10 @@ class TestMaterialisedSchemaAssertion:
         TABLE_OR_VIEW_NOT_FOUND) must surface as MaterializedSchemaDriftError
         — a graceful per-node failure — not a raw AnalysisException that
         would abort the whole run."""
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.sql_runner import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.sql_runner import (
             MaterializedSchemaDriftError,
         )
-        from oracle_ai_data_platform_fusion_bundle.schema.medallion_pack import NodeYaml
+        from oracle_ai_data_platform_fusion_autopilot.schema.medallion_pack import NodeYaml
 
         node = NodeYaml.model_validate(yaml.safe_load(NODE_YAML))
         spark = MagicMock()
@@ -539,10 +539,10 @@ class TestMaterialisedSchemaAssertion:
         assert "no table" in str(exc_info.value)
 
     def test_type_mismatch_raises_4070(self) -> None:
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.sql_runner import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.sql_runner import (
             MaterializedSchemaDriftError,
         )
-        from oracle_ai_data_platform_fusion_bundle.schema.medallion_pack import NodeYaml
+        from oracle_ai_data_platform_fusion_autopilot.schema.medallion_pack import NodeYaml
 
         node = NodeYaml.model_validate(yaml.safe_load(NODE_YAML))
         spark = MagicMock()
@@ -557,7 +557,7 @@ class TestMaterialisedSchemaAssertion:
     def test_subset_allows_extra_materialised_columns(self) -> None:
         """Bronze writes the full raw PVO; extra columns beyond the
         declared minimum contract must NOT raise under subset=True."""
-        from oracle_ai_data_platform_fusion_bundle.schema.medallion_pack import NodeYaml
+        from oracle_ai_data_platform_fusion_autopilot.schema.medallion_pack import NodeYaml
 
         node = NodeYaml.model_validate(yaml.safe_load(NODE_YAML))  # declares thing_id:string
         spark = MagicMock()
@@ -577,7 +577,7 @@ class TestMaterialisedSchemaAssertion:
         """Fusion bronze write lowercases columns; the pack declares
         Fusion-native PascalCase. Subset match must be case-insensitive
         (Spark/Delta semantics), consistent with preflight."""
-        from oracle_ai_data_platform_fusion_bundle.schema.medallion_pack import NodeYaml
+        from oracle_ai_data_platform_fusion_autopilot.schema.medallion_pack import NodeYaml
 
         # NODE_YAML declares thing_id:string — materialise it as THING_ID.
         node = NodeYaml.model_validate(yaml.safe_load(NODE_YAML))
@@ -594,10 +594,10 @@ class TestMaterialisedSchemaAssertion:
         assert isinstance(h, str) and len(h) == 64
 
     def test_subset_missing_declared_column_raises_4070(self) -> None:
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.sql_runner import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.sql_runner import (
             MaterializedSchemaDriftError,
         )
-        from oracle_ai_data_platform_fusion_bundle.schema.medallion_pack import NodeYaml
+        from oracle_ai_data_platform_fusion_autopilot.schema.medallion_pack import NodeYaml
 
         node = NodeYaml.model_validate(yaml.safe_load(NODE_YAML))
         spark = MagicMock()
@@ -611,10 +611,10 @@ class TestMaterialisedSchemaAssertion:
         assert AIDPF_4070_MATERIALIZED_SCHEMA_DRIFT in str(exc_info.value)
 
     def test_subset_declared_column_type_mismatch_raises_4070(self) -> None:
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.sql_runner import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.sql_runner import (
             MaterializedSchemaDriftError,
         )
-        from oracle_ai_data_platform_fusion_bundle.schema.medallion_pack import NodeYaml
+        from oracle_ai_data_platform_fusion_autopilot.schema.medallion_pack import NodeYaml
 
         node = NodeYaml.model_validate(yaml.safe_load(NODE_YAML))
         spark = MagicMock()
@@ -637,7 +637,7 @@ class TestMaterialisedSchemaAssertion:
 
 class TestStateCommitFailure:
     def test_state_commit_failure_returns_state_commit_failed(self, tmp_path: pathlib.Path) -> None:
-        from oracle_ai_data_platform_fusion_bundle.orchestrator import state_phase2
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator import state_phase2
 
         pack = _build_pack(tmp_path)
         spark = _fake_spark_seed_happy_path()
@@ -733,7 +733,7 @@ def _fake_struct(names, types=None):
 
 
 def _bronze_node():
-    from oracle_ai_data_platform_fusion_bundle.schema.medallion_pack import NodeYaml
+    from oracle_ai_data_platform_fusion_autopilot.schema.medallion_pack import NodeYaml
     return NodeYaml.model_validate(yaml.safe_load(_BRONZE_NODE_YAML))
 
 
@@ -756,8 +756,8 @@ class TestBronzeSourceSchemaGate:
     """AIDPF-4071: presence-only, case-insensitive PVO probe before extract."""
 
     def _patch(self, monkeypatch, pvo_field_names):
-        import oracle_ai_data_platform_fusion_bundle.orchestrator.builtins.bronze_extract_adapter as bea
-        import oracle_ai_data_platform_fusion_bundle.orchestrator.runtime as rt
+        import oracle_ai_data_platform_fusion_autopilot.orchestrator.builtins.bronze_extract_adapter as bea
+        import oracle_ai_data_platform_fusion_autopilot.orchestrator.runtime as rt
         from types import SimpleNamespace
         monkeypatch.setattr(rt, "_resolve_password",
                             lambda _v: SimpleNamespace(get_secret_value=lambda: "pw"))
@@ -792,7 +792,7 @@ class TestBronzeSourceSchemaGate:
         assert diag["missingColumns"] == ["SEGMENT1"]
         assert {c["name"] for c in diag["pvoColumns"]} == {"vendorid"}
         # the structured payload must validate as the diagnostic model
-        from oracle_ai_data_platform_fusion_bundle.schema.diagnostic_artifact import (
+        from oracle_ai_data_platform_fusion_autopilot.schema.diagnostic_artifact import (
             BronzeSourceColumnMissingV1,
         )
         BronzeSourceColumnMissingV1.model_validate(diag)
@@ -812,7 +812,7 @@ class TestBronzeSourceSchemaGate:
         # node's own requiredColumns are probed (not just outputSchema).
         node_dict = yaml.safe_load(_BRONZE_NODE_YAML)
         node_dict["requiredColumns"]["test_bronze"].append("TENANT_ONLY_COL")
-        from oracle_ai_data_platform_fusion_bundle.schema.medallion_pack import NodeYaml
+        from oracle_ai_data_platform_fusion_autopilot.schema.medallion_pack import NodeYaml
         node = NodeYaml.model_validate(node_dict)
         # PVO has the outputSchema cols but NOT TENANT_ONLY_COL.
         self._patch(monkeypatch, ["VENDORID", "SEGMENT1"])
@@ -826,8 +826,8 @@ class TestBronzeSourceSchemaGate:
         assert diag["missingColumns"] == ["TENANT_ONLY_COL"]
 
     def test_probe_failure_degrades_to_none(self, monkeypatch):
-        import oracle_ai_data_platform_fusion_bundle.orchestrator.builtins.bronze_extract_adapter as bea
-        import oracle_ai_data_platform_fusion_bundle.orchestrator.runtime as rt
+        import oracle_ai_data_platform_fusion_autopilot.orchestrator.builtins.bronze_extract_adapter as bea
+        import oracle_ai_data_platform_fusion_autopilot.orchestrator.runtime as rt
         from types import SimpleNamespace
         monkeypatch.setattr(rt, "_resolve_password",
                             lambda _v: SimpleNamespace(get_secret_value=lambda: "pw"))
@@ -844,7 +844,7 @@ class TestBronzeSourceSchemaGate:
         # must fire BEFORE extraction.
         self._patch(monkeypatch, ["VENDORID", "SEGMENT1"])
         # override VENDORID's probed type to a mismatch
-        import oracle_ai_data_platform_fusion_bundle.orchestrator.builtins.bronze_extract_adapter as bea
+        import oracle_ai_data_platform_fusion_autopilot.orchestrator.builtins.bronze_extract_adapter as bea
         monkeypatch.setattr(bea, "probe_bronze_schemas", lambda *a, **k: {
             "test_bronze": _fake_struct(
                 ["VENDORID", "SEGMENT1"], types={"VENDORID": "decimal(18,0)"}
@@ -878,8 +878,8 @@ class TestBatchBronzeSourceSchemaGate:
     nodes, returns a failure list (fail-fast, before any extract)."""
 
     def _patch(self, monkeypatch, schemas_by_node):
-        import oracle_ai_data_platform_fusion_bundle.orchestrator.builtins.bronze_extract_adapter as bea
-        import oracle_ai_data_platform_fusion_bundle.orchestrator.runtime as rt
+        import oracle_ai_data_platform_fusion_autopilot.orchestrator.builtins.bronze_extract_adapter as bea
+        import oracle_ai_data_platform_fusion_autopilot.orchestrator.runtime as rt
         from types import SimpleNamespace
         monkeypatch.setattr(rt, "_resolve_password",
                             lambda _v: SimpleNamespace(get_secret_value=lambda: "pw"))
@@ -890,7 +890,7 @@ class TestBatchBronzeSourceSchemaGate:
         return SimpleNamespace(bronze={"test_bronze": _bronze_node()})
 
     def _call(self, **kw):
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.sql_runner import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.sql_runner import (
             check_bronze_source_schemas,
         )
         from unittest.mock import MagicMock
@@ -928,8 +928,8 @@ class TestBatchBronzeSourceSchemaGate:
         assert out[0]["diagnostic"]["typeMismatches"][0]["column"] == "VENDORID"
 
     def test_probe_failure_degrades_to_empty(self, monkeypatch):
-        import oracle_ai_data_platform_fusion_bundle.orchestrator.builtins.bronze_extract_adapter as bea
-        import oracle_ai_data_platform_fusion_bundle.orchestrator.runtime as rt
+        import oracle_ai_data_platform_fusion_autopilot.orchestrator.builtins.bronze_extract_adapter as bea
+        import oracle_ai_data_platform_fusion_autopilot.orchestrator.runtime as rt
         from types import SimpleNamespace
         monkeypatch.setattr(rt, "_resolve_password",
                             lambda _v: SimpleNamespace(get_secret_value=lambda: "pw"))
@@ -943,15 +943,15 @@ class TestBatchGateDownstreamNeeds:
     column the bronze source's PVO can't supply — caught BEFORE extraction."""
 
     def _patch(self, monkeypatch, schemas_by_node):
-        import oracle_ai_data_platform_fusion_bundle.orchestrator.builtins.bronze_extract_adapter as bea
-        import oracle_ai_data_platform_fusion_bundle.orchestrator.runtime as rt
+        import oracle_ai_data_platform_fusion_autopilot.orchestrator.builtins.bronze_extract_adapter as bea
+        import oracle_ai_data_platform_fusion_autopilot.orchestrator.runtime as rt
         from types import SimpleNamespace
         monkeypatch.setattr(rt, "_resolve_password",
                             lambda _v: SimpleNamespace(get_secret_value=lambda: "pw"))
         monkeypatch.setattr(bea, "probe_bronze_schemas", lambda *a, **k: schemas_by_node)
 
     def _call(self, **kw):
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.sql_runner import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.sql_runner import (
             check_bronze_source_schemas,
         )
         from unittest.mock import MagicMock

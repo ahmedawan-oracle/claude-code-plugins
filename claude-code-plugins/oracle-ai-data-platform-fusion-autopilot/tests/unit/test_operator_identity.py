@@ -1,4 +1,4 @@
-"""Unit tests for :mod:`oracle_ai_data_platform_fusion_bundle.commands.operator_identity`.
+"""Unit tests for :mod:`oracle_ai_data_platform_fusion_autopilot.commands.operator_identity`.
 
 Pins the §9.5.9 precedence:
 
@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.commands.operator_identity import (
+from oracle_ai_data_platform_fusion_autopilot.commands.operator_identity import (
     OperatorIdentityUnresolved,
     resolve_operator,
 )

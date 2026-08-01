@@ -14,16 +14,16 @@ This is the preferred mechanism for a small retype. (The sibling
 
 ```bash
 # 1. Validate the overlay against the base pack.
-aidp-fusion-bundle content-pack validate overlays/fix-supplier-id-types-block
+aidp-fusion-autopilot content-pack validate overlays/fix-supplier-id-types-block
 
 # 2. Wire it into the bundle. --no-align: a narrow bronze fix should not expand
 #    the bundle's mart selection.
-aidp-fusion-bundle use-pack overlays/fix-supplier-id-types-block --profile <profile> --no-align
-aidp-fusion-bundle validate
+aidp-fusion-autopilot use-pack overlays/fix-supplier-id-types-block --profile <profile> --no-align
+aidp-fusion-autopilot validate
 
 # 3. Re-seed ONLY the bronze node (metadata-only preflight surfaces a real PVO
 #    type mismatch in seconds, before any long pull).
-aidp-fusion-bundle run --mode seed --datasets erp_suppliers --layers bronze
+aidp-fusion-autopilot run --mode seed --datasets erp_suppliers --layers bronze
 
 # 4. Verify VENDORID is non-null and the supplier join overlaps BEFORE rebuilding
 #    dim_supplier / supplier_spend.

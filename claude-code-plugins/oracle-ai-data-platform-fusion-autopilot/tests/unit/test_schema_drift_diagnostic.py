@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.schema.diagnostic_artifact import (
+from oracle_ai_data_platform_fusion_autopilot.schema.diagnostic_artifact import (
     AIDPF_2012_SCHEMA_DRIFT_DETECTED,
     AffectedVariationPoint,
     ColumnTypeChange,
@@ -31,7 +31,7 @@ from oracle_ai_data_platform_fusion_bundle.schema.diagnostic_artifact import (
     SchemaDriftFailure,
     write_schema_drift_diagnostic,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.path_segment import (
+from oracle_ai_data_platform_fusion_autopilot.schema.path_segment import (
     UnsafePathSegmentError,
 )
 

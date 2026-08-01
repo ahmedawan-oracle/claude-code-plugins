@@ -14,7 +14,7 @@ from __future__ import annotations
 from dataclasses import FrozenInstanceError
 
 import pytest
-from oracle_ai_data_platform_fusion_bundle.config.paths import (
+from oracle_ai_data_platform_fusion_autopilot.config.paths import (
     DEFAULT_PATHS,
     TablePaths,
 )
@@ -196,10 +196,10 @@ class TestModuleExports:
     """17, 18. The module's public surface + singleton identity."""
 
     def test_default_paths_is_module_constant(self) -> None:
-        from oracle_ai_data_platform_fusion_bundle.config import paths as paths_mod
+        from oracle_ai_data_platform_fusion_autopilot.config import paths as paths_mod
         assert paths_mod.DEFAULT_PATHS is DEFAULT_PATHS
 
     def test_exports_listed_in_all(self) -> None:
-        from oracle_ai_data_platform_fusion_bundle.config import paths as paths_mod
+        from oracle_ai_data_platform_fusion_autopilot.config import paths as paths_mod
         assert "TablePaths"   in paths_mod.__all__
         assert "DEFAULT_PATHS" in paths_mod.__all__

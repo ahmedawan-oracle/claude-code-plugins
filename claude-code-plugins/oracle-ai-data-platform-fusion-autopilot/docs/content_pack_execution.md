@@ -2,7 +2,7 @@
 
 Phase 9 (ADR-0022) deleted the v1 `dim_*.py` / `gold_*.py` / bronze-
 wrapper modules and the `legacy-python` execution backend. **The
-content-pack runner is the single execution path** — `aidp-fusion-bundle
+content-pack runner is the single execution path** — `aidp-fusion-autopilot
 run` always dispatches through `sql_runner.execute_node` against a
 `ResolvedPack`. There is no `--execution-backend` flag; passing one
 fails at Click parse with "No such option".
@@ -39,7 +39,7 @@ the CLI; profiles missing or unloadable raise `AIDPF-1030` /
      (NOT cwd; survives `cd`).
 
    In every case the resolved directory MUST contain a `pack.yaml`
-   or `AIDPF-1038` raises. `aidp-fusion-bundle validate` surfaces
+   or `AIDPF-1038` raises. `aidp-fusion-autopilot validate` surfaces
    the same codes before `run` is attempted (Phase 9 round-9
    review fix — `validate` no longer silently falls back to the
    legacy catalog when `contentPack` resolution fails).
@@ -69,16 +69,16 @@ the CLI; profiles missing or unloadable raise `AIDPF-1030` /
 
 ```bash
 # Seed mode (inline — runs in the laptop's Spark session).
-aidp-fusion-bundle run --inline --mode seed \
+aidp-fusion-autopilot run --inline --mode seed \
   --bundle path/to/bundle.yaml
 
 # Incremental run with CLI scope filter.
-aidp-fusion-bundle run --inline --mode incremental \
+aidp-fusion-autopilot run --inline --mode incremental \
   --datasets supplier_spend
 
 # Resume a failed run by run_id (Phase 5 P1.5ε-fix5 + Step 9b —
 # AIDPF-1032 resolved).
-aidp-fusion-bundle run --inline --mode incremental \
+aidp-fusion-autopilot run --inline --mode incremental \
   --resume 2026-06-09T14:22:00Z-7a3f
 ```
 
@@ -198,7 +198,7 @@ consumer's `requiredColumns`.
 profile, so to check them at validate time run profile-aware:
 
 ```bash
-aidp-fusion-bundle content-pack validate <pack> --profile <profile-name-or-path>
+aidp-fusion-autopilot content-pack validate <pack> --profile <profile-name-or-path>
 ```
 
 Without `--profile`, validation is profile-less: literal + watermark demands are
@@ -253,7 +253,7 @@ writes the full raw PVO):
 
 ## Bootstrap + drift recovery
 
-`aidp-fusion-bundle bootstrap` runs the variation-point resolution
+`aidp-fusion-autopilot bootstrap` runs the variation-point resolution
 phase when `bundle.content_pack` is non-None: probes the tenant's
 bronze schema, walks each `columnAliases` / `semanticVariants`
 declared in `pack.yaml`, pins resolved values to
@@ -302,7 +302,7 @@ commits record `mechanism: skill_proposed` per §9.5.9.
 
 ### Runtime drift gate (Phase 3c)
 
-`aidp-fusion-bundle run --mode incremental` runs a **bronze-schema
+`aidp-fusion-autopilot run --mode incremental` runs a **bronze-schema
 fingerprint preflight gate** inside `_run_content_pack_backend`
 AFTER Spark acquisition + `run_id` mint but BEFORE any state-table
 write or node execution.
@@ -321,17 +321,17 @@ Outcomes (`PreflightOutcome.kind`):
   pinned (pre-3a profile). WARN + proceed. Remediation:
   `bootstrap --refresh`.
 * `skip_force_flag` — `--force-fingerprint-skip` break-glass
-  (hidden; audit row written to `fusion_bundle_state`).
+  (hidden; audit row written to `fusion_autopilot_state`).
 
 Closed-loop recovery:
 
 1. Operator sees exit 14 + a stderr hand-off pointing at the
    diagnostic file.
-2. Operator runs `aidp-fusion-bundle bootstrap --refresh`.
+2. Operator runs `aidp-fusion-autopilot bootstrap --refresh`.
 3. If `bootstrap --refresh` itself fails with `AIDPF-2010` /
    `AIDPF-2011`, invoke the `medallion-author` skill to draft an
    overlay.
-4. Re-run `aidp-fusion-bundle run`. Match → proceeds.
+4. Re-run `aidp-fusion-autopilot run`. Match → proceeds.
 
 REST-dispatch path: the cluster-side notebook catches the
 exception, emits a discriminated marker (`_kind == "schema_drift"`)
@@ -391,7 +391,7 @@ bootstrap cell materialises the snapshot at the resolved
 ## Reference fixtures
 
 * **Starter pack** —
-  `scripts/oracle_ai_data_platform_fusion_bundle/content_packs/fusion-finance-starter/`
+  `scripts/oracle_ai_data_platform_fusion_autopilot/content_packs/fusion-finance-starter/`
   with 11 bronze YAMLs (`erp_suppliers`, `ap_invoices`, …),
   5 SQL silver/gold marts, and `dim_calendar` as the lone builtin.
 * **Example bundle + profile** —

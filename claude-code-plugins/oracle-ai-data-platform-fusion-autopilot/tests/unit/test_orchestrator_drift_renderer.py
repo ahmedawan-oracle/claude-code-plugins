@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import json
 
-from oracle_ai_data_platform_fusion_bundle.orchestrator.resume import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.resume import (
     render_drift_error,
 )
 

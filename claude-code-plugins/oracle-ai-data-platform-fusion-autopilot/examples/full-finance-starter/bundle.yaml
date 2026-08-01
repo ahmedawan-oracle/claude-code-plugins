@@ -1,12 +1,12 @@
-apiVersion: aidp-fusion-bundle/v1
+apiVersion: aidp-fusion-autopilot/v1
 version: "0.2.0"
 project: my-fusion-lake
 
-# Default customer scaffold written by `aidp-fusion-bundle init` (no --template).
+# Default customer scaffold written by `aidp-fusion-autopilot init` (no --template).
 # Enables the full shipped finance starter scope: all bronze extracts, the
 # conformed silver dimensions, and every gold mart. Pare this file down to the
 # datasets/dimensions/marts you actually need, or start narrow with
-# `aidp-fusion-bundle init --template minimal-bundle`.
+# `aidp-fusion-autopilot init --template minimal-bundle`.
 
 # v2 content-pack wiring (Phase 3) — declares which pack + active tenant
 # profile the orchestrator resolves under `--execution-backend content-pack`.

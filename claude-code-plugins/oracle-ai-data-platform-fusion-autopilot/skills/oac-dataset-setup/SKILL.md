@@ -94,7 +94,7 @@ If OAC MCP is not connected, tell the user to run the supported setup path:
 
 ```bash
 env -u OAC_URL -u OAC_MCP_USER -u OAC_MCP_PASSWORD -u OAC_ADMIN_USER -u OAC_ADMIN_PASSWORD \
-aidp-fusion-bundle dashboard mcp-setup \
+aidp-fusion-autopilot dashboard mcp-setup \
   --connector-js <path-to-oac-mcp-connect.js>
 ```
 
@@ -128,7 +128,7 @@ If the OAC AIDP connection already exists, confirm the name and continue.
 If it does not exist, generate or ask the user to generate the connection JSON:
 
 ```bash
-aidp-fusion-bundle dashboard install --target oac \
+aidp-fusion-autopilot dashboard install --target oac \
   --oac-url <oac-url> \
   --connection-name <connection-name> \
   --print-only \

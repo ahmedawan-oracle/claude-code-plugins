@@ -8,7 +8,7 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from oracle_ai_data_platform_fusion_bundle.schema.bundle import AidpConfig, Bundle, Defaults, EnvSpec
+from oracle_ai_data_platform_fusion_autopilot.schema.bundle import AidpConfig, Bundle, Defaults, EnvSpec
 
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -23,7 +23,7 @@ class TestBundleSchema:
         raw = (EXAMPLES / "minimal_gl_only.yaml").read_text(encoding="utf-8")
         data = yaml.safe_load(raw)
         bundle = Bundle.model_validate(data)
-        assert bundle.api_version == "aidp-fusion-bundle/v1"
+        assert bundle.api_version == "aidp-fusion-autopilot/v1"
         assert bundle.project == "cecl-finance-lake"
         assert bundle.aidp.catalog == "fusion_catalog"
         assert bundle.aidp.storage_format == "delta"
@@ -42,7 +42,7 @@ class TestBundleSchema:
 
     def test_duplicate_dataset_id_rejected(self) -> None:
         data = {
-            "apiVersion": "aidp-fusion-bundle/v1",
+            "apiVersion": "aidp-fusion-autopilot/v1",
             "project": "test",
             "fusion": {
                 "serviceUrl": "https://x",
@@ -60,7 +60,7 @@ class TestBundleSchema:
 
     def test_extra_fields_rejected(self) -> None:
         data = {
-            "apiVersion": "aidp-fusion-bundle/v1",
+            "apiVersion": "aidp-fusion-autopilot/v1",
             "project": "test",
             "fusion": {
                 "serviceUrl": "https://x",
@@ -76,7 +76,7 @@ class TestBundleSchema:
 
     def test_default_storage_format_is_delta(self) -> None:
         data = {
-            "apiVersion": "aidp-fusion-bundle/v1",
+            "apiVersion": "aidp-fusion-autopilot/v1",
             "project": "test",
             "fusion": {
                 "serviceUrl": "https://x",
@@ -98,7 +98,7 @@ class TestBundleSchema:
         regress without anyone noticing.
         """
         data = {
-            "apiVersion": "aidp-fusion-bundle/v1",
+            "apiVersion": "aidp-fusion-autopilot/v1",
             "project": "test-fix15-roundtrip",
             "fusion": {
                 "serviceUrl": "https://x",
@@ -139,7 +139,7 @@ class TestBundleSchema:
         the override path without anyone noticing.
         """
         data = {
-            "apiVersion": "aidp-fusion-bundle/v1",
+            "apiVersion": "aidp-fusion-autopilot/v1",
             "project": "test-fix19-roundtrip",
             "fusion": {
                 "serviceUrl": "https://x",
@@ -187,7 +187,7 @@ class TestAidpConfigSchema:
         raw = (EXAMPLES / "aidp.config.example.yaml").read_text(encoding="utf-8")
         data = yaml.safe_load(raw)
         config = AidpConfig.model_validate(data)
-        assert config.api_version == "aidp-fusion-bundle/v1"
+        assert config.api_version == "aidp-fusion-autopilot/v1"
         assert "dev" in config.environments
         assert "prod" in config.environments
         # P1.5ε: both envs use profile mode now — vault mode is rejected
@@ -195,12 +195,12 @@ class TestAidpConfigSchema:
         assert config.environments["dev"].auth.mode == "profile"
         assert config.environments["prod"].auth.mode == "profile"
         # P1.5ε: both envs declare dispatch coords (aiDataPlatformId,
-        # clusterKey, clusterName) so `aidp-fusion-bundle run` (no --inline)
+        # clusterKey, clusterName) so `aidp-fusion-autopilot run` (no --inline)
         # works once the operator fills in the placeholders.
         assert config.environments["dev"].ai_data_platform_id is not None
         assert config.environments["dev"].cluster_key is not None
-        assert config.environments["dev"].cluster_name == "fusion_bundle_dev"
-        assert config.environments["prod"].cluster_name == "fusion_bundle_prod"
+        assert config.environments["dev"].cluster_name == "fusion_autopilot_dev"
+        assert config.environments["prod"].cluster_name == "fusion_autopilot_prod"
 
     def test_envspec_dispatch_fields_optional(self) -> None:
         # P1.5ε — operators who only run --inline don't have to populate
@@ -220,14 +220,14 @@ class TestAidpConfigSchema:
                 "workspaceKey": "wk-123",
                 "aiDataPlatformId": "ocid1.datalake.oc1.iad.example",
                 "clusterKey": "cluster-uuid",
-                "clusterName": "fusion_bundle_dev",
+                "clusterName": "fusion_autopilot_dev",
                 "biccSecretName": "custom_secret",
                 "biccSecretKey": "secret_key",
             }
         )
         assert env.ai_data_platform_id == "ocid1.datalake.oc1.iad.example"
         assert env.cluster_key == "cluster-uuid"
-        assert env.cluster_name == "fusion_bundle_dev"
+        assert env.cluster_name == "fusion_autopilot_dev"
         assert env.bicc_secret_name == "custom_secret"
         assert env.bicc_secret_key == "secret_key"
 
@@ -254,9 +254,9 @@ class TestDefaultsWorkspaceDir:
 
     def test_workspace_dir_round_trips_via_alias(self) -> None:
         defaults = Defaults.model_validate(
-            {"workspaceDir": "/Workspace/Shared/fusion-bundle-bootstrap"}
+            {"workspaceDir": "/Workspace/Shared/fusion-autopilot-bootstrap"}
         )
-        assert defaults.workspace_dir == "/Workspace/Shared/fusion-bundle-bootstrap"
+        assert defaults.workspace_dir == "/Workspace/Shared/fusion-autopilot-bootstrap"
 
     def test_workspace_dir_round_trips_via_python_name(self) -> None:
         defaults = Defaults.model_validate(

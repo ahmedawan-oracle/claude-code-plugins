@@ -21,8 +21,8 @@ from unittest.mock import patch
 
 from click.testing import CliRunner
 
-from oracle_ai_data_platform_fusion_bundle import cli
-from oracle_ai_data_platform_fusion_bundle.orchestrator.errors import (
+from oracle_ai_data_platform_fusion_autopilot import cli
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.errors import (
     ResumeBundleMismatchError,
     ResumeRunNotFoundError,
     ResumeRunNotResumableError,
@@ -80,7 +80,7 @@ def test_resume_without_inline_dispatches_via_rest(
     _init_minimal_bundle(monkeypatch)
     # Mock the dispatch path so we don't actually try to hit AIDP.
     with patch(
-        "oracle_ai_data_platform_fusion_bundle.commands.run."
+        "oracle_ai_data_platform_fusion_autopilot.commands.run."
         "_run_via_aidp_dispatch",
         return_value=0,
     ) as mock_dispatch:
@@ -105,7 +105,7 @@ def test_resume_run_not_found_exits_2_no_traceback(
     monkeypatch.chdir(tmp_path)
     _init_minimal_bundle(monkeypatch)
     with patch(
-        "oracle_ai_data_platform_fusion_bundle.orchestrator.run",
+        "oracle_ai_data_platform_fusion_autopilot.orchestrator.run",
         side_effect=ResumeRunNotFoundError("--resume: no rows for run_id='ghost'"),
     ):
         result = CliRunner().invoke(cli.main, [
@@ -123,14 +123,14 @@ def test_manifest_error_exits_2_no_traceback(
     """A manifest/resume-guard failure (AIDPF-4022 / AIDPF-104x) must surface as
     the clean exit-2 path, not a traceback — ``ManifestError`` subclasses
     ``OrchestratorConfigError`` so the CLI boundary catches it."""
-    from oracle_ai_data_platform_fusion_bundle.orchestrator.run_manifest import (
+    from oracle_ai_data_platform_fusion_autopilot.orchestrator.run_manifest import (
         ManifestInvalidError,
     )
 
     monkeypatch.chdir(tmp_path)
     _init_minimal_bundle(monkeypatch)
     with patch(
-        "oracle_ai_data_platform_fusion_bundle.orchestrator.run",
+        "oracle_ai_data_platform_fusion_autopilot.orchestrator.run",
         side_effect=ManifestInvalidError(
             "AIDPF-4022: the __run_manifest__ row has a missing/empty payload."
         ),
@@ -151,7 +151,7 @@ def test_resume_run_not_resumable_exits_2_no_traceback(
     monkeypatch.chdir(tmp_path)
     _init_minimal_bundle(monkeypatch)
     with patch(
-        "oracle_ai_data_platform_fusion_bundle.orchestrator.run",
+        "oracle_ai_data_platform_fusion_autopilot.orchestrator.run",
         side_effect=ResumeRunNotResumableError(
             "--resume: run_id='legacy' is not resumable — plan_hash NULL."
         ),
@@ -178,7 +178,7 @@ def test_resume_bundle_mismatch_exits_2_no_traceback(
         "  aidp.silverSchema: 'silver_v1' → 'silver_v2'"
     )
     with patch(
-        "oracle_ai_data_platform_fusion_bundle.orchestrator.run",
+        "oracle_ai_data_platform_fusion_autopilot.orchestrator.run",
         side_effect=ResumeBundleMismatchError(msg),
     ):
         result = CliRunner().invoke(cli.main, [
@@ -200,9 +200,9 @@ def test_resume_banner_printed_before_orchestrator_call(
     monkeypatch.chdir(tmp_path)
     _init_minimal_bundle(monkeypatch)
     # Mock orchestrator to no-op (return an empty RunSummary).
-    from oracle_ai_data_platform_fusion_bundle.orchestrator.runtime import RunSummary
+    from oracle_ai_data_platform_fusion_autopilot.orchestrator.runtime import RunSummary
     with patch(
-        "oracle_ai_data_platform_fusion_bundle.orchestrator.run",
+        "oracle_ai_data_platform_fusion_autopilot.orchestrator.run",
         return_value=RunSummary.empty("test-bundle", "seed"),
     ):
         result = CliRunner().invoke(cli.main, [

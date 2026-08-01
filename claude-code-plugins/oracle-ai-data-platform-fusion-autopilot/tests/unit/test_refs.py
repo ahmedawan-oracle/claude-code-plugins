@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.schema.refs import (
+from oracle_ai_data_platform_fusion_autopilot.schema.refs import (
     VaultRef,
     find_vault_refs,
     render_tree,

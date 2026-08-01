@@ -22,8 +22,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.dispatch import dispatch_via_rest
-from oracle_ai_data_platform_fusion_bundle.dispatch.errors import (
+from oracle_ai_data_platform_fusion_autopilot.dispatch import dispatch_via_rest
+from oracle_ai_data_platform_fusion_autopilot.dispatch.errors import (
     DispatchAuthError,
     DispatchFetchOutputError,
     DispatchJobSubmitError,
@@ -33,16 +33,16 @@ from oracle_ai_data_platform_fusion_bundle.dispatch.errors import (
     DispatchRunFailedError,
     DispatchUploadError,
 )
-from oracle_ai_data_platform_fusion_bundle.dispatch.rest_client import (
+from oracle_ai_data_platform_fusion_autopilot.dispatch.rest_client import (
     AidpRestError,
     ClusterSummary,
     RunResult,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.bundle import (
+from oracle_ai_data_platform_fusion_autopilot.schema.bundle import (
     AidpConfig,
     EnvSpec,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.run_summary import (
+from oracle_ai_data_platform_fusion_autopilot.schema.run_summary import (
     MARKER_SCHEMA_VERSION,
     RunStep,
     RunSummary,
@@ -50,7 +50,7 @@ from oracle_ai_data_platform_fusion_bundle.schema.run_summary import (
 
 
 _GOOD_BUNDLE = """\
-apiVersion: aidp-fusion-bundle/v1
+apiVersion: aidp-fusion-autopilot/v1
 project: test-dispatch
 fusion:
   serviceUrl: https://fusion.example.com
@@ -80,7 +80,7 @@ def _make_dispatch_test_pack(tmp_path: Path, extra_silver_gold: bool = False):
     ResolvedPack so schema.plan_resolver can walk it without crossing
     the §4.3 import boundary.
     """
-    from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack import (
+    from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack import (
         load_pack,
     )
 
@@ -161,7 +161,7 @@ def _env() -> EnvSpec:
 def _config() -> AidpConfig:
     return AidpConfig.model_validate(
         {
-            "apiVersion": "aidp-fusion-bundle/v1",
+            "apiVersion": "aidp-fusion-autopilot/v1",
             "project": "test-dispatch",
             "environments": {"dev": _env().model_dump(by_alias=True)},
         }
@@ -249,20 +249,20 @@ def _stub_preflight_and_oci(monkeypatch: pytest.MonkeyPatch):
         }
 
     monkeypatch.setattr(
-        "oracle_ai_data_platform_fusion_bundle.dispatch.preflight.oci.config.from_file",
+        "oracle_ai_data_platform_fusion_autopilot.dispatch.preflight.oci.config.from_file",
         _ok_config,
     )
     monkeypatch.setattr(
-        "oracle_ai_data_platform_fusion_bundle.dispatch.preflight.subprocess.run",
+        "oracle_ai_data_platform_fusion_autopilot.dispatch.preflight.subprocess.run",
         lambda *a, **kw: subprocess.CompletedProcess(args=[], returncode=0, stdout="ok", stderr=""),
     )
     # Stub the canonical client's signer construction too.
     monkeypatch.setattr(
-        "oracle_ai_data_platform_fusion_bundle.dispatch.rest_client.oci.config.from_file",
+        "oracle_ai_data_platform_fusion_autopilot.dispatch.rest_client.oci.config.from_file",
         _ok_config,
     )
     monkeypatch.setattr(
-        "oracle_ai_data_platform_fusion_bundle.dispatch.rest_client._build_signer",
+        "oracle_ai_data_platform_fusion_autopilot.dispatch.rest_client._build_signer",
         lambda cfg: MagicMock(name="signer"),
     )
 
@@ -275,7 +275,7 @@ def _stub_client(monkeypatch, **overrides):
     ``AidpRestClient.parse_marker(...)`` call goes through the actual
     notebook walker, not a MagicMock that returns a mock value.
     """
-    from oracle_ai_data_platform_fusion_bundle.dispatch.rest_client import (
+    from oracle_ai_data_platform_fusion_autopilot.dispatch.rest_client import (
         AidpRestClient as RealAidpRestClient,
     )
 
@@ -299,7 +299,7 @@ def _stub_client(monkeypatch, **overrides):
     factory.resolve_task_run_key = RealAidpRestClient.resolve_task_run_key
     factory.extract_cell_errors = RealAidpRestClient.extract_cell_errors
     monkeypatch.setattr(
-        "oracle_ai_data_platform_fusion_bundle.dispatch.AidpRestClient",
+        "oracle_ai_data_platform_fusion_autopilot.dispatch.AidpRestClient",
         factory,
     )
     return client_mock
@@ -316,7 +316,7 @@ class TestPhaseAGuards:
     ) -> None:
         client_factory = MagicMock(side_effect=AssertionError("client must not be built"))
         monkeypatch.setattr(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.AidpRestClient",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.AidpRestClient",
             client_factory,
         )
         env = EnvSpec.model_validate(
@@ -339,7 +339,7 @@ class TestPhaseAGuards:
     ) -> None:
         client_factory = MagicMock(side_effect=AssertionError("client must not be built"))
         monkeypatch.setattr(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.AidpRestClient",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.AidpRestClient",
             client_factory,
         )
         with pytest.raises(DispatchPreflightError):
@@ -369,7 +369,7 @@ class TestDryRun:
             side_effect=AssertionError("build_wheel must not be called in dry-run")
         )
         monkeypatch.setattr(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.build_wheel",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.build_wheel",
             wheel_mock,
         )
         pack = _make_dispatch_test_pack(tmp_path)
@@ -399,7 +399,7 @@ class TestDryRun:
         ``commands/run.py:_render_summary`` shows "Empty plan" instead
         of the would-dispatch DAG.
         """
-        from oracle_ai_data_platform_fusion_bundle.schema.run_summary import (
+        from oracle_ai_data_platform_fusion_autopilot.schema.run_summary import (
             PlanNode,
         )
 
@@ -433,12 +433,12 @@ class TestDryRun:
         them as PrereqNode entries which silently diverged from runtime.
         Prereqs is empty under the new contract.
         """
-        from oracle_ai_data_platform_fusion_bundle.schema.run_summary import (
+        from oracle_ai_data_platform_fusion_autopilot.schema.run_summary import (
             PlanNode,
         )
 
         layer_filter_bundle = """
-apiVersion: aidp-fusion-bundle/v1
+apiVersion: aidp-fusion-autopilot/v1
 project: test-dispatch
 fusion:
   serviceUrl: https://fusion.example.com
@@ -541,12 +541,12 @@ class TestHappyPath:
     ) -> None:
         client = _stub_client(monkeypatch)
         monkeypatch.setattr(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.build_wheel",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.build_wheel",
             lambda **_: Path("/tmp/fake.whl"),
         )
         # build_notebook reads wheel bytes — stub it too.
         monkeypatch.setattr(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.build_notebook",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.build_notebook",
             lambda **_: {"cells": [], "nbformat": 4, "nbformat_minor": 5},
         )
 
@@ -583,7 +583,7 @@ class TestResumeRunIdThreading:
         literal. Verified via a MagicMock that captures the kwarg."""
         _stub_client(monkeypatch)
         monkeypatch.setattr(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.build_wheel",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.build_wheel",
             lambda **_: Path("/tmp/fake.whl"),
         )
         captured: dict[str, object] = {}
@@ -593,7 +593,7 @@ class TestResumeRunIdThreading:
             return {"cells": [], "nbformat": 4, "nbformat_minor": 5}
 
         monkeypatch.setattr(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.build_notebook",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.build_notebook",
             fake_build_notebook,
         )
 
@@ -614,7 +614,7 @@ class TestResumeRunIdThreading:
     ) -> None:
         _stub_client(monkeypatch)
         monkeypatch.setattr(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.build_wheel",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.build_wheel",
             lambda **_: Path("/tmp/fake.whl"),
         )
         captured: dict[str, object] = {}
@@ -624,7 +624,7 @@ class TestResumeRunIdThreading:
             return {"cells": [], "nbformat": 4, "nbformat_minor": 5}
 
         monkeypatch.setattr(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.build_notebook",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.build_notebook",
             fake_build_notebook,
         )
         monkeypatch.setenv("FUSION_BICC_BASE_URL", "https://fa.example.com")
@@ -668,7 +668,7 @@ class TestResumeRunIdThreading:
             )
         )
         monkeypatch.setattr(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.build_notebook",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.build_notebook",
             build_nb_mock,
         )
         pack = _make_dispatch_test_pack(tmp_path)
@@ -699,11 +699,11 @@ class TestResumeRunIdThreading:
 class TestMarkerDegradedHandling:
     def _setup_happy_path_dispatch(self, monkeypatch):
         monkeypatch.setattr(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.build_wheel",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.build_wheel",
             lambda **_: Path("/tmp/fake.whl"),
         )
         monkeypatch.setattr(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.build_notebook",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.build_notebook",
             lambda **_: {"cells": [], "nbformat": 4, "nbformat_minor": 5},
         )
 
@@ -822,18 +822,18 @@ def _executed_notebook_with_cell3_error(
 class TestRunFailedCellErrorEnrichment:
     def _setup(self, monkeypatch):
         monkeypatch.setattr(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.build_wheel",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.build_wheel",
             lambda **_: Path("/tmp/fake.whl"),
         )
         monkeypatch.setattr(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.build_notebook",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.build_notebook",
             lambda **_: {"cells": [], "nbformat": 4, "nbformat_minor": 5},
         )
 
     def test_run_failed_enriched_with_resume_run_not_found_error(
         self, bundle_path: Path, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """state.py:954-955 — `--resume: no rows in fusion_bundle_state
+        """state.py:954-955 — `--resume: no rows in fusion_autopilot_state
         for run_id='bad-id'.` This is the primary bad-`--resume` UX
         path that fix5 unblocks."""
         client = _stub_client(monkeypatch)
@@ -844,7 +844,7 @@ class TestRunFailedCellErrorEnrichment:
         )
         client.fetch_output.return_value = _executed_notebook_with_cell3_error(
             "ResumeRunNotFoundError",
-            "--resume: no rows in fusion_bundle_state for run_id='bad-id'. ",
+            "--resume: no rows in fusion_autopilot_state for run_id='bad-id'. ",
         )
         with pytest.raises(DispatchRunFailedError) as exc_info:
             dispatch_via_rest(
@@ -859,7 +859,7 @@ class TestRunFailedCellErrorEnrichment:
             )
         msg = str(exc_info.value)
         assert "ResumeRunNotFoundError" in msg
-        assert "--resume: no rows in fusion_bundle_state" in msg
+        assert "--resume: no rows in fusion_autopilot_state" in msg
         assert "'bad-id'" in msg
 
     def test_run_failed_enriched_with_resume_not_resumable_error(
@@ -1003,7 +1003,7 @@ class TestRunFailedCellErrorEnrichment:
         )
         client.fetch_output.return_value = json.dumps({"cells": []})
         monkeypatch.setattr(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.AidpRestClient.extract_cell_errors",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.AidpRestClient.extract_cell_errors",
             lambda *_a, **_kw: (_ for _ in ()).throw(
                 RuntimeError("diagnostic blew up")
             ),
@@ -1033,11 +1033,11 @@ class TestRunFailedCellErrorEnrichment:
 class TestErrorWrapping:
     def _setup_happy_path_dispatch(self, monkeypatch):
         monkeypatch.setattr(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.build_wheel",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.build_wheel",
             lambda **_: Path("/tmp/fake.whl"),
         )
         monkeypatch.setattr(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.build_notebook",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.build_notebook",
             lambda **_: {"cells": [], "nbformat": 4, "nbformat_minor": 5},
         )
 
@@ -1088,7 +1088,7 @@ class TestErrorWrapping:
         )
         self._setup_happy_path_dispatch(monkeypatch)
         with pytest.raises(DispatchPollTimeoutError := __import__(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.errors",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.errors",
             fromlist=["DispatchPollTimeoutError"],
         ).DispatchPollTimeoutError, match="deadline exceeded"):
             dispatch_via_rest(
@@ -1262,7 +1262,7 @@ class TestErrorWrapping:
         client = _stub_client(monkeypatch)
         client.upload_notebook.side_effect = AidpRestError("synthetic")
         self._setup_happy_path_dispatch(monkeypatch)
-        from oracle_ai_data_platform_fusion_bundle.dispatch.errors import DispatchError
+        from oracle_ai_data_platform_fusion_autopilot.dispatch.errors import DispatchError
 
         with pytest.raises(DispatchError):
             dispatch_via_rest(
@@ -1329,7 +1329,7 @@ class TestDiagnoseOnTimeout:
         includes 'Partial progress at timeout:' plus per-cell summary
         lines so the operator sees where the cluster job is stuck without
         dropping into `oci raw-request`."""
-        from oracle_ai_data_platform_fusion_bundle.dispatch.errors import (
+        from oracle_ai_data_platform_fusion_autopilot.dispatch.errors import (
             DispatchPollTimeoutError,
         )
 
@@ -1371,8 +1371,8 @@ class TestDiagnoseOnTimeout:
         Without per-call timeouts, a blocking HTTP call during enrichment
         could consume `self.request_timeout_s` (60s default) regardless
         of how much budget is "left" on the monotonic clock."""
-        from oracle_ai_data_platform_fusion_bundle.dispatch import _DIAG_BUDGET_S
-        from oracle_ai_data_platform_fusion_bundle.dispatch.errors import (
+        from oracle_ai_data_platform_fusion_autopilot.dispatch import _DIAG_BUDGET_S
+        from oracle_ai_data_platform_fusion_autopilot.dispatch.errors import (
             DispatchPollTimeoutError,
         )
 
@@ -1428,7 +1428,7 @@ class TestDiagnoseOnTimeout:
         """Enrichment's get_run call raising (e.g. requests ReadTimeout
         because the bounded `timeout=` fired) must NOT mask the original
         DispatchPollTimeoutError. The diagnostic is best-effort."""
-        from oracle_ai_data_platform_fusion_bundle.dispatch.errors import (
+        from oracle_ai_data_platform_fusion_autopilot.dispatch.errors import (
             DispatchPollTimeoutError,
         )
 
@@ -1465,7 +1465,7 @@ class TestDiagnoseOnTimeout:
     ) -> None:
         """Same shape but the failure is in the second diagnostic call
         (fetch_output). Original timeout still surfaces clean."""
-        from oracle_ai_data_platform_fusion_bundle.dispatch.errors import (
+        from oracle_ai_data_platform_fusion_autopilot.dispatch.errors import (
             DispatchPollTimeoutError,
         )
 
@@ -1502,7 +1502,7 @@ class TestDiagnoseOnTimeout:
         """fetch_output returns empty (notebook had no flushed outputs
         yet). Don't emit a stray 'Partial progress' header with nothing
         under it — just surface the clean DispatchPollTimeoutError."""
-        from oracle_ai_data_platform_fusion_bundle.dispatch.errors import (
+        from oracle_ai_data_platform_fusion_autopilot.dispatch.errors import (
             DispatchPollTimeoutError,
         )
 

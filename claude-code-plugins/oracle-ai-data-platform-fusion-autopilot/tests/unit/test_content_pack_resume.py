@@ -28,15 +28,15 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle import orchestrator
-from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack import (
+from oracle_ai_data_platform_fusion_autopilot import orchestrator
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack import (
     load_full_chain,
     make_filesystem_base_resolver,
 )
-from oracle_ai_data_platform_fusion_bundle.orchestrator.errors import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.errors import (
     ResumeRunNotFoundError,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.tenant_profile import (
+from oracle_ai_data_platform_fusion_autopilot.schema.tenant_profile import (
     load_tenant_profile,
 )
 
@@ -117,7 +117,7 @@ profile:
 """
 
 _BUNDLE_YAML = """\
-apiVersion: aidp-fusion-bundle/v1
+apiVersion: aidp-fusion-autopilot/v1
 project: cp-resume-test
 fusion:
   serviceUrl: https://example.com
@@ -212,7 +212,7 @@ class _FakeSpark:
         self.sql_calls.append(query)
         if (
             "ranked AS" in query
-            and "fusion_bundle_state" in query
+            and "fusion_autopilot_state" in query
             and "WHERE run_id" in query
         ):
             if "row_count IS NOT NULL" in query:
@@ -226,7 +226,7 @@ class _FakeSpark:
 
 def _identity_for_bundle() -> dict[str, str]:
     """Mirrors plan_hash._identity_dict for the fixture bundle."""
-    from oracle_ai_data_platform_fusion_bundle import __version__ as _pv
+    from oracle_ai_data_platform_fusion_autopilot import __version__ as _pv
     return {
         "fusion.serviceUrl": "https://example.com",
         "fusion.externalStorage": "oci://bucket@ns/path",
@@ -321,15 +321,15 @@ def _stub_downstream(monkeypatch, fake_spark: _FakeSpark) -> list[dict]:
     ``cp_execute_node`` call (so the test can assert dispatch happened
     only for reattempt nodes).
     """
-    import oracle_ai_data_platform_fusion_bundle.orchestrator as _o
-    from oracle_ai_data_platform_fusion_bundle.orchestrator import (
+    import oracle_ai_data_platform_fusion_autopilot.orchestrator as _o
+    from oracle_ai_data_platform_fusion_autopilot.orchestrator import (
         bronze_readiness, sql_runner, state as v1_state, state_phase2,
         preflight_evidence,
     )
-    from oracle_ai_data_platform_fusion_bundle.orchestrator.preflight_evidence import (
+    from oracle_ai_data_platform_fusion_autopilot.orchestrator.preflight_evidence import (
         PreflightOutcome,
     )
-    from oracle_ai_data_platform_fusion_bundle.orchestrator.sql_runner import (
+    from oracle_ai_data_platform_fusion_autopilot.orchestrator.sql_runner import (
         NodeExecutionResult,
     )
 
@@ -368,7 +368,7 @@ def _stub_downstream(monkeypatch, fake_spark: _FakeSpark) -> list[dict]:
 
     def _maybe_stub_run(*args, **kwargs):
         if kwargs.get("execution_backend") == "legacy-python":
-            from oracle_ai_data_platform_fusion_bundle.schema.run_summary import (
+            from oracle_ai_data_platform_fusion_autopilot.schema.run_summary import (
                 RunSummary,
             )
             from datetime import datetime as _dt, timezone as _tz
@@ -685,7 +685,7 @@ def _row(dataset_id, layer, status, mode, **extra):
 
 
 def test_reader_excludes_reserved_ids_and_reads_manifest() -> None:
-    from oracle_ai_data_platform_fusion_bundle.orchestrator import state as _state
+    from oracle_ai_data_platform_fusion_autopilot.orchestrator import state as _state
 
     rows = [
         _row("gl_coa", "bronze", "success", "seed"),
@@ -698,7 +698,7 @@ def test_reader_excludes_reserved_ids_and_reads_manifest() -> None:
     ]
     spark = _ManifestAwareSpark(rows, manifest_raw='{"schemaVersion":1}')
     paths = MagicMock()
-    paths.bronze.return_value = "cat.bronze.fusion_bundle_state"
+    paths.bronze.return_value = "cat.bronze.fusion_autopilot_state"
     ctx = _state.read_content_pack_resumable_state(spark, paths, "run-1")
 
     # Reserved id excluded from succeeded + scope.
@@ -713,7 +713,7 @@ def test_reader_excludes_reserved_ids_and_reads_manifest() -> None:
 
 
 def test_reader_surfaces_mixed_execution_modes() -> None:
-    from oracle_ai_data_platform_fusion_bundle.orchestrator import state as _state
+    from oracle_ai_data_platform_fusion_autopilot.orchestrator import state as _state
 
     rows = [
         _row("gl_coa", "bronze", "success", "seed"),
@@ -721,7 +721,7 @@ def test_reader_surfaces_mixed_execution_modes() -> None:
     ]
     spark = _ManifestAwareSpark(rows, manifest_raw=None)
     paths = MagicMock()
-    paths.bronze.return_value = "cat.bronze.fusion_bundle_state"
+    paths.bronze.return_value = "cat.bronze.fusion_autopilot_state"
     ctx = _state.read_content_pack_resumable_state(spark, paths, "run-2")
     assert set(ctx.historical_exec_modes) == {"seed", "incremental"}
     assert ctx.run_manifest_raw is None
@@ -731,14 +731,14 @@ def test_reader_surfaces_mixed_execution_modes() -> None:
 # Finding 1 (round 2): manifest ingestion FAILS CLOSED, never fails open
 # ---------------------------------------------------------------------------
 
-from oracle_ai_data_platform_fusion_bundle.orchestrator.run_manifest import (  # noqa: E402
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.run_manifest import (  # noqa: E402
     ManifestInvalidError,
 )
 
 
 def _paths_mock():
     paths = MagicMock()
-    paths.bronze.return_value = "cat.bronze.fusion_bundle_state"
+    paths.bronze.return_value = "cat.bronze.fusion_autopilot_state"
     return paths
 
 
@@ -747,7 +747,7 @@ def _one_exec_row():
 
 
 def test_manifest_null_payload_row_raises_4022() -> None:
-    from oracle_ai_data_platform_fusion_bundle.orchestrator import state as _state
+    from oracle_ai_data_platform_fusion_autopilot.orchestrator import state as _state
 
     spark = _ManifestAwareSpark(_one_exec_row(), manifest_rows=[None])
     with pytest.raises(ManifestInvalidError):
@@ -758,7 +758,7 @@ def test_manifest_null_payload_row_raises_4022() -> None:
 def test_manifest_empty_payload_row_raises_4022(payload) -> None:
     """An empty/blank string payload is corruption, NOT 'no manifest' — it must
     fail closed (AIDPF-4022), not fall back to the legacy path."""
-    from oracle_ai_data_platform_fusion_bundle.orchestrator import state as _state
+    from oracle_ai_data_platform_fusion_autopilot.orchestrator import state as _state
 
     spark = _ManifestAwareSpark(_one_exec_row(), manifest_rows=[payload])
     with pytest.raises(ManifestInvalidError):
@@ -766,7 +766,7 @@ def test_manifest_empty_payload_row_raises_4022(payload) -> None:
 
 
 def test_manifest_conflicting_duplicate_rows_raise_4022() -> None:
-    from oracle_ai_data_platform_fusion_bundle.orchestrator import state as _state
+    from oracle_ai_data_platform_fusion_autopilot.orchestrator import state as _state
 
     spark = _ManifestAwareSpark(
         _one_exec_row(),
@@ -777,7 +777,7 @@ def test_manifest_conflicting_duplicate_rows_raise_4022() -> None:
 
 
 def test_manifest_read_failure_raises_4022_not_legacy() -> None:
-    from oracle_ai_data_platform_fusion_bundle.orchestrator import state as _state
+    from oracle_ai_data_platform_fusion_autopilot.orchestrator import state as _state
 
     spark = _ManifestAwareSpark(_one_exec_row(), manifest_raises=True)
     with pytest.raises(ManifestInvalidError):
@@ -787,7 +787,7 @@ def test_manifest_read_failure_raises_4022_not_legacy() -> None:
 def test_manifest_absent_column_is_legacy_not_error() -> None:
     """A pre-feature table WITHOUT the run_manifest column → legitimate legacy
     path (raw=None), NOT an error."""
-    from oracle_ai_data_platform_fusion_bundle.orchestrator import state as _state
+    from oracle_ai_data_platform_fusion_autopilot.orchestrator import state as _state
 
     spark = _ManifestAwareSpark(_one_exec_row(), has_manifest_col=False)
     ctx = _state.read_content_pack_resumable_state(spark, _paths_mock(), "r")
@@ -796,7 +796,7 @@ def test_manifest_absent_column_is_legacy_not_error() -> None:
 
 def test_manifest_no_rows_is_legacy() -> None:
     """Column present but zero __run_manifest__ rows → legacy (raw=None)."""
-    from oracle_ai_data_platform_fusion_bundle.orchestrator import state as _state
+    from oracle_ai_data_platform_fusion_autopilot.orchestrator import state as _state
 
     spark = _ManifestAwareSpark(_one_exec_row(), manifest_rows=[])
     ctx = _state.read_content_pack_resumable_state(spark, _paths_mock(), "r")
@@ -805,7 +805,7 @@ def test_manifest_no_rows_is_legacy() -> None:
 
 def test_manifest_single_duplicate_identical_payload_ok() -> None:
     """Two rows with the SAME payload are benign (idempotent) — not a conflict."""
-    from oracle_ai_data_platform_fusion_bundle.orchestrator import state as _state
+    from oracle_ai_data_platform_fusion_autopilot.orchestrator import state as _state
 
     raw = '{"schemaVersion":1}'
     spark = _ManifestAwareSpark(_one_exec_row(), manifest_rows=[raw, raw])

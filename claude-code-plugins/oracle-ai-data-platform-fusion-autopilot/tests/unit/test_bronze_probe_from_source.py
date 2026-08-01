@@ -13,14 +13,14 @@ needed.
 
 from __future__ import annotations
 
-from oracle_ai_data_platform_fusion_bundle.commands.bronze_probe import (
+from oracle_ai_data_platform_fusion_autopilot.commands.bronze_probe import (
     _struct_type_to_columns,
     describe_bronze_from_source,
 )
-from oracle_ai_data_platform_fusion_bundle.orchestrator.builtins import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.builtins import (
     bronze_extract_adapter,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.bronze_fingerprint import (
+from oracle_ai_data_platform_fusion_autopilot.schema.bronze_fingerprint import (
     ColumnInfo,
 )
 

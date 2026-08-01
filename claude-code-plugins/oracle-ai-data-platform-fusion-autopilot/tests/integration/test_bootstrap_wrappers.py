@@ -22,7 +22,7 @@ if os.name == "nt":  # POSIX wrapper only
     pytest.skip("POSIX wrapper tests", allow_module_level=True)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-WRAPPER = REPO_ROOT / "bin" / "aidp-fusion-bundle"
+WRAPPER = REPO_ROOT / "bin" / "aidp-fusion-autopilot"
 
 
 def _make_stub(directory: Path, name: str, probe_rc: int, marker: str) -> None:
@@ -86,7 +86,7 @@ def test_wrapper_skips_old_python_and_picks_a_newer_one(tmp_path):
 
 def test_fresh_path_resolution_via_bin_dir(tmp_path):
     # bin/ on PATH, NO pip script dir, NO real python on PATH (stub only).
-    # `aidp-fusion-bundle` must resolve and run with no manual PATH edit.
+    # `aidp-fusion-autopilot` must resolve and run with no manual PATH edit.
     stubdir = tmp_path / "stubs"
     _make_stub(stubdir, "python3", probe_rc=0, marker="RAN")
     path_dirs = [REPO_ROOT / "bin", stubdir, "/usr/bin", "/bin"]
@@ -94,14 +94,14 @@ def test_fresh_path_resolution_via_bin_dir(tmp_path):
 
     # `command` is a shell builtin; invoke through sh to resolve on PATH.
     which = subprocess.run(
-        "command -v aidp-fusion-bundle",
+        "command -v aidp-fusion-autopilot",
         env=env, capture_output=True, text=True, shell=True,
     )
-    assert which.returncode == 0, "aidp-fusion-bundle did not resolve on PATH"
+    assert which.returncode == 0, "aidp-fusion-autopilot did not resolve on PATH"
     assert str(REPO_ROOT / "bin") in which.stdout
 
     ran = subprocess.run(
-        "aidp-fusion-bundle --version",
+        "aidp-fusion-autopilot --version",
         env={**env, "AIDP_FUSION_NO_AUTOINSTALL": "1"},
         capture_output=True, text=True, shell=True,
     )

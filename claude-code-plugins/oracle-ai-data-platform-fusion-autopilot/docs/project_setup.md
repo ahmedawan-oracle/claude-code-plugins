@@ -5,7 +5,7 @@ bundle. After setup is complete, continue with the operator workflow in
 [../workflow.md](../workflow.md).
 
 Scaffolded templates live under [../examples/](../examples/). For a first
-customer project, `aidp-fusion-bundle init` writes the current
+customer project, `aidp-fusion-autopilot init` writes the current
 [../examples/full-finance-starter/](../examples/full-finance-starter/) starter,
 which enables the full tested finance starter scope by default.
 
@@ -16,13 +16,13 @@ There are two working directories involved:
 | Directory | Purpose |
 |---|---|
 | Plugin checkout | This repository. It provides the CLI, skills, content packs, and workbook tooling. |
-| Customer bundle directory | A separate project created with `aidp-fusion-bundle init`; it holds `bundle.yaml`, `aidp.config.yaml`, tenant profiles, evidence, and overlays. |
+| Customer bundle directory | A separate project created with `aidp-fusion-autopilot init`; it holds `bundle.yaml`, `aidp.config.yaml`, tenant profiles, evidence, and overlays. |
 
 Keep them as siblings:
 
 ```text
 Workspace/
-  oracle-ai-data-platform-fusion-bundle/   # plugin repo: CLI, skills, content packs
+  oracle-ai-data-platform-fusion-autopilot/   # plugin repo: CLI, skills, content packs
   demo-fusion-cfo/                         # customer/demo project: config + generated evidence
 ```
 
@@ -32,7 +32,7 @@ inside the shipped starter pack. New customer medallion work belongs in overlays
 under the customer bundle directory.
 
 A clean customer bundle directory is empty, or at least has no existing
-`bundle.yaml` or `aidp.config.yaml`; `aidp-fusion-bundle init` writes those
+`bundle.yaml` or `aidp.config.yaml`; `aidp-fusion-autopilot init` writes those
 files.
 
 ## Local Prerequisites
@@ -55,8 +55,8 @@ delivery.
 Run these slash commands in Claude Code:
 
 ```text
-/plugin marketplace add repo/oracle-ai-data-platform-fusion-bundle
-/plugin install oracle-ai-data-platform-fusion-bundle@aidp-fusion-bundle
+/plugin marketplace add repo/oracle-ai-data-platform-fusion-autopilot
+/plugin install oracle-ai-data-platform-fusion-autopilot@aidp-fusion-autopilot
 ```
 
 Then create or open the customer project as a sibling of the plugin repo:
@@ -74,8 +74,8 @@ autopilot to drive the work:
 /aidp-fusion-autopilot Build a CFO dashboard for supplier spend, AP aging, and GL balance using this Fusion tenant.
 ```
 
-Autopilot will install/use the bundled CLI if `aidp-fusion-bundle` is not on
-`PATH`, scaffold missing customer files with `aidp-fusion-bundle init`, route
+Autopilot will install/use the bundled CLI if `aidp-fusion-autopilot` is not on
+`PATH`, scaffold missing customer files with `aidp-fusion-autopilot init`, route
 config through `/aidp-fusion-config`, stage OAC MCP when needed, run
 validation/bootstrap/seed, advise the OAC dataset, and hand off workbook
 authoring. It pauses only for real external actions: secrets and tenant values,
@@ -108,9 +108,9 @@ make test
 Smoke-check the CLI:
 
 ```bash
-aidp-fusion-bundle --help
-aidp-fusion-bundle content-pack list
-aidp-fusion-bundle content-pack info fusion-finance-starter
+aidp-fusion-autopilot --help
+aidp-fusion-autopilot content-pack list
+aidp-fusion-autopilot content-pack info fusion-finance-starter
 ```
 
 ## External Prerequisites
@@ -139,17 +139,17 @@ For more REST job dispatch details, including AIDP credential-store setup, see
 ## Create A Customer Bundle
 
 If you are using Route 1, create/open this directory and let
-`/aidp-fusion-autopilot` run `aidp-fusion-bundle init` when it detects missing
+`/aidp-fusion-autopilot` run `aidp-fusion-autopilot init` when it detects missing
 customer files. If you are using Route 2 manually, run the scaffold yourself.
 
 Create the customer project outside the plugin checkout. For example:
 
 ```bash
-# From Workspace/oracle-ai-data-platform-fusion-bundle after installing the CLI:
+# From Workspace/oracle-ai-data-platform-fusion-autopilot after installing the CLI:
 cd ..
 mkdir demo-fusion-cfo
 cd demo-fusion-cfo
-aidp-fusion-bundle init
+aidp-fusion-autopilot init
 ```
 
 After init, the customer folder has:
@@ -178,7 +178,7 @@ gold:
 Resolve AIDP workspace and cluster coordinates:
 
 ```bash
-aidp-fusion-bundle init-config \
+aidp-fusion-autopilot init-config \
   --aidp-id <aidp-ocid> \
   --workspace "<workspace-name>" \
   --cluster "<cluster-name>"
@@ -192,7 +192,7 @@ the setup from human-friendly AIDP values and writes the resolved
 Then validate:
 
 ```bash
-aidp-fusion-bundle validate
+aidp-fusion-autopilot validate
 ```
 
 Fill the generated files before bootstrap:
@@ -202,7 +202,7 @@ Fill the generated files before bootstrap:
   `OAC_MCP_USER`, and `OAC_MCP_PASSWORD`.
 - `bundle.yaml`: project name, team, schemas, catalog, and any scoped starter
   marts that differ from the default.
-- `aidp.config.yaml`: prefer `aidp-fusion-bundle init-config`; do not
+- `aidp.config.yaml`: prefer `aidp-fusion-autopilot init-config`; do not
   hand-copy opaque workspace or cluster keys unless you must.
 
 ## Configure Operator OAC MCP
@@ -212,7 +212,7 @@ Set up OAC MCP before the OAC phases of autopilot:
 ```bash
 env -u OAC_URL -u OAC_MCP_USER -u OAC_MCP_PASSWORD \
   -u OAC_ADMIN_USER -u OAC_ADMIN_PASSWORD \
-  aidp-fusion-bundle dashboard mcp-setup \
+  aidp-fusion-autopilot dashboard mcp-setup \
   --connector-js <path-to-oac-mcp-connect.js>
 ```
 
@@ -249,7 +249,7 @@ Full setup and troubleshooting details are in
 Run bootstrap after the bundle config and OAC MCP setup are ready:
 
 ```bash
-aidp-fusion-bundle bootstrap --check-iam
+aidp-fusion-autopilot bootstrap --check-iam
 ```
 
 Bootstrap probes prerequisites and pins tenant variation into:
@@ -267,13 +267,13 @@ full static reference.
 Preview first:
 
 ```bash
-aidp-fusion-bundle run --mode seed --dry-run
+aidp-fusion-autopilot run --mode seed --dry-run
 ```
 
 Then run seed only after confirming the target is safe to populate:
 
 ```bash
-aidp-fusion-bundle run --mode seed
+aidp-fusion-autopilot run --mode seed
 ```
 
 The seed skill is intentionally fail-closed because the current CLI cannot
@@ -312,7 +312,7 @@ manual OAC data-surface step.
 First, generate the AIDP connection JSON:
 
 ```bash
-aidp-fusion-bundle dashboard install --target oac \
+aidp-fusion-autopilot dashboard install --target oac \
   --oac-url <oac-url> \
   --print-only \
   ...connection args...
@@ -357,14 +357,14 @@ binding and save mechanics.
 After a successful seed:
 
 ```bash
-aidp-fusion-bundle run --mode incremental
+aidp-fusion-autopilot run --mode incremental
 ```
 
 If a run is interrupted:
 
 ```bash
-aidp-fusion-bundle status
-aidp-fusion-bundle run --mode seed --resume <run_id>
+aidp-fusion-autopilot status
+aidp-fusion-autopilot run --mode seed --resume <run_id>
 ```
 
 Common drift and failure codes are documented in
@@ -373,8 +373,8 @@ Common drift and failure codes are documented in
 ## Setup Checklist
 
 - Plugin CLI installed with `pip install -e .`.
-- `aidp-fusion-bundle content-pack list` works.
-- Customer bundle created with `aidp-fusion-bundle init`.
+- `aidp-fusion-autopilot content-pack list` works.
+- Customer bundle created with `aidp-fusion-autopilot init`.
 - `bundle.yaml` has a `contentPack` block.
 - `aidp.config.yaml` resolves the AIDP workspace and cluster.
 - Fusion BICC user and External Storage profile exist.

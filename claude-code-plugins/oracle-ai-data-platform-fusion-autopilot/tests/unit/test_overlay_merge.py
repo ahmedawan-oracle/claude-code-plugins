@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack import (
     AIDPF_2001,
     AIDPF_2004_EXTENDS_VERSION_MISMATCH,
     ExtendsVersionMismatchError,
@@ -21,7 +21,7 @@ from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack import (
     merge_overlay,
     resolve_overlay_chain,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.medallion_pack import PackOverlayRef
+from oracle_ai_data_platform_fusion_autopilot.schema.medallion_pack import PackOverlayRef
 
 
 # ---------------------------------------------------------------------------
@@ -368,7 +368,7 @@ def test_merged_inherited_sql_node_resolves_against_base_root(tmp_path: Path) ->
     """
     import yaml
 
-    from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack_validators import (
+    from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack_validators import (
         AIDPF_2003_SQL_FILE_MISSING,
         validate_sql_paths,
     )

@@ -14,14 +14,14 @@ from pathlib import Path
 
 import yaml
 
-from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack import load_pack
-from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack_validators import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack import load_pack
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack_validators import (
     validate_pack_full,
 )
 
 # Resolve the starter pack relative to the package, so the test works in
 # both editable and installed modes.
-import oracle_ai_data_platform_fusion_bundle as _pkg
+import oracle_ai_data_platform_fusion_autopilot as _pkg
 
 STARTER_PACK_ROOT = (
     Path(_pkg.__file__).parent / "content_packs" / "fusion-finance-starter"

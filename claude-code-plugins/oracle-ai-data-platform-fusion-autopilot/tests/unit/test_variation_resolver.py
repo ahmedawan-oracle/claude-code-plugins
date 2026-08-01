@@ -1,5 +1,5 @@
 """Unit tests for the pure-Python candidate walker
-(:mod:`oracle_ai_data_platform_fusion_bundle.commands.variation_resolver`).
+(:mod:`oracle_ai_data_platform_fusion_autopilot.commands.variation_resolver`).
 
 Every outcome × every kind:
 
@@ -18,14 +18,14 @@ from __future__ import annotations
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.commands.variation_resolver import (
+from oracle_ai_data_platform_fusion_autopilot.commands.variation_resolver import (
     AutoResolved,
     MultiMatch,
     NoMatch,
     walk_column_alias,
     walk_semantic_variant,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.medallion_pack import (
+from oracle_ai_data_platform_fusion_autopilot.schema.medallion_pack import (
     ColumnAlias,
     SemanticVariant,
     SemanticVariantCandidate,

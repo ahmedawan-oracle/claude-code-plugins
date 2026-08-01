@@ -19,7 +19,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from oracle_ai_data_platform_fusion_bundle.medallion_author.drafter import (
+from oracle_ai_data_platform_fusion_autopilot.medallion_author.drafter import (
     OverlayValidationError,
     ProposedCandidate,
     draft_overlay,
@@ -28,14 +28,14 @@ from oracle_ai_data_platform_fusion_bundle.medallion_author.drafter import (
     write_resolutions,
     write_skill_evidence,
 )
-from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack import (
     load_pack,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.incremental_impact import (
+from oracle_ai_data_platform_fusion_autopilot.schema.incremental_impact import (
     IncrementalImpact,
     RemediationRecord,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.path_segment import (
+from oracle_ai_data_platform_fusion_autopilot.schema.path_segment import (
     UnsafePathSegmentError,
 )
 
@@ -44,7 +44,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 STARTER_PACK = (
     REPO_ROOT
     / "scripts"
-    / "oracle_ai_data_platform_fusion_bundle"
+    / "oracle_ai_data_platform_fusion_autopilot"
     / "content_packs"
     / "fusion-finance-starter"
 )

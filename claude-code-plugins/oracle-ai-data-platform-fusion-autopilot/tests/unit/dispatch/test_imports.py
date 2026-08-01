@@ -27,16 +27,16 @@ import sys
 
 
 FORBIDDEN_PREFIXES = (
-    "oracle_ai_data_platform_fusion_bundle.orchestrator",
-    "oracle_ai_data_platform_fusion_bundle.extractors",
-    "oracle_ai_data_platform_fusion_bundle.dimensions",
-    "oracle_ai_data_platform_fusion_bundle.transforms",
+    "oracle_ai_data_platform_fusion_autopilot.orchestrator",
+    "oracle_ai_data_platform_fusion_autopilot.extractors",
+    "oracle_ai_data_platform_fusion_autopilot.dimensions",
+    "oracle_ai_data_platform_fusion_autopilot.transforms",
 )
 
 
 def _modules_loaded_by(import_spec: str) -> set[str]:
     """Run a fresh Python subprocess that imports ``import_spec`` and emits
-    the set of ``oracle_ai_data_platform_fusion_bundle.*`` modules in
+    the set of ``oracle_ai_data_platform_fusion_autopilot.*`` modules in
     ``sys.modules`` afterwards. Using a subprocess guarantees we don't
     pollute the test runner's import graph (which already has the whole
     orchestrator loaded)."""
@@ -44,7 +44,7 @@ def _modules_loaded_by(import_spec: str) -> set[str]:
         f"import sys\n"
         f"{import_spec}\n"
         "for m in sorted(sys.modules):\n"
-        "    if m.startswith('oracle_ai_data_platform_fusion_bundle'):\n"
+        "    if m.startswith('oracle_ai_data_platform_fusion_autopilot'):\n"
         "        print(m)\n"
     )
     proc = subprocess.run(
@@ -59,7 +59,7 @@ def _modules_loaded_by(import_spec: str) -> set[str]:
 def test_import_dispatch_package_does_not_pull_engine() -> None:
     """``import dispatch`` is the entry point most consumers go through."""
     loaded = _modules_loaded_by(
-        "from oracle_ai_data_platform_fusion_bundle import dispatch"
+        "from oracle_ai_data_platform_fusion_autopilot import dispatch"
     )
     leaks = {m for m in loaded if any(m.startswith(p) for p in FORBIDDEN_PREFIXES)}
     assert not leaks, (
@@ -71,7 +71,7 @@ def test_import_dispatch_package_does_not_pull_engine() -> None:
 
 def test_import_dispatch_rest_client_does_not_pull_engine() -> None:
     loaded = _modules_loaded_by(
-        "from oracle_ai_data_platform_fusion_bundle.dispatch.rest_client "
+        "from oracle_ai_data_platform_fusion_autopilot.dispatch.rest_client "
         "import AidpRestClient"
     )
     leaks = {m for m in loaded if any(m.startswith(p) for p in FORBIDDEN_PREFIXES)}
@@ -80,7 +80,7 @@ def test_import_dispatch_rest_client_does_not_pull_engine() -> None:
 
 def test_import_dispatch_notebook_builder_does_not_pull_engine() -> None:
     loaded = _modules_loaded_by(
-        "from oracle_ai_data_platform_fusion_bundle.dispatch.notebook_builder "
+        "from oracle_ai_data_platform_fusion_autopilot.dispatch.notebook_builder "
         "import build_notebook"
     )
     leaks = {m for m in loaded if any(m.startswith(p) for p in FORBIDDEN_PREFIXES)}
@@ -89,7 +89,7 @@ def test_import_dispatch_notebook_builder_does_not_pull_engine() -> None:
 
 def test_import_dispatch_preflight_does_not_pull_engine() -> None:
     loaded = _modules_loaded_by(
-        "from oracle_ai_data_platform_fusion_bundle.dispatch.preflight "
+        "from oracle_ai_data_platform_fusion_autopilot.dispatch.preflight "
         "import run_local_preflight, run_remote_preflight"
     )
     leaks = {m for m in loaded if any(m.startswith(p) for p in FORBIDDEN_PREFIXES)}
@@ -98,7 +98,7 @@ def test_import_dispatch_preflight_does_not_pull_engine() -> None:
 
 def test_import_dispatch_wheel_builder_does_not_pull_engine() -> None:
     loaded = _modules_loaded_by(
-        "from oracle_ai_data_platform_fusion_bundle.dispatch.wheel_builder "
+        "from oracle_ai_data_platform_fusion_autopilot.dispatch.wheel_builder "
         "import build_wheel"
     )
     leaks = {m for m in loaded if any(m.startswith(p) for p in FORBIDDEN_PREFIXES)}
@@ -111,7 +111,7 @@ def test_import_dispatch_notebook_dispatch_does_not_pull_engine() -> None:
     in ``commands/cluster_bootstrap_probe.py``; this helper stays
     orchestrator-free per the boundary."""
     loaded = _modules_loaded_by(
-        "from oracle_ai_data_platform_fusion_bundle.dispatch.notebook_dispatch "
+        "from oracle_ai_data_platform_fusion_autopilot.dispatch.notebook_dispatch "
         "import dispatch_notebook_and_fetch_marker"
     )
     leaks = {m for m in loaded if any(m.startswith(p) for p in FORBIDDEN_PREFIXES)}
@@ -132,16 +132,16 @@ def test_schema_imports_are_permitted() -> None:
     ``test_deleted_modules_remain_unfindable`` below.)
     """
     loaded = _modules_loaded_by(
-        "from oracle_ai_data_platform_fusion_bundle import dispatch\n"
-        "from oracle_ai_data_platform_fusion_bundle.schema import "
+        "from oracle_ai_data_platform_fusion_autopilot import dispatch\n"
+        "from oracle_ai_data_platform_fusion_autopilot.schema import "
         "bundle, errors, refs, run_summary, plan_resolver"
     )
     expected = {
-        "oracle_ai_data_platform_fusion_bundle.schema.bundle",
-        "oracle_ai_data_platform_fusion_bundle.schema.errors",
-        "oracle_ai_data_platform_fusion_bundle.schema.refs",
-        "oracle_ai_data_platform_fusion_bundle.schema.run_summary",
-        "oracle_ai_data_platform_fusion_bundle.schema.plan_resolver",
+        "oracle_ai_data_platform_fusion_autopilot.schema.bundle",
+        "oracle_ai_data_platform_fusion_autopilot.schema.errors",
+        "oracle_ai_data_platform_fusion_autopilot.schema.refs",
+        "oracle_ai_data_platform_fusion_autopilot.schema.run_summary",
+        "oracle_ai_data_platform_fusion_autopilot.schema.plan_resolver",
     }
     assert expected.issubset(loaded), (
         f"expected schema modules not loaded: missing={expected - loaded}"
@@ -154,8 +154,8 @@ def test_deleted_modules_remain_unfindable() -> None:
     cargo-culted resurrection."""
     import importlib.util
     for name in (
-        "oracle_ai_data_platform_fusion_bundle.orchestrator.registry",
-        "oracle_ai_data_platform_fusion_bundle.schema.registry_metadata",
+        "oracle_ai_data_platform_fusion_autopilot.orchestrator.registry",
+        "oracle_ai_data_platform_fusion_autopilot.schema.registry_metadata",
     ):
         assert importlib.util.find_spec(name) is None, (
             f"{name} was deleted in the Phase-9 follow-up but is "
@@ -177,9 +177,9 @@ def test_render_summary_with_plan_nodes_does_not_import_orchestrator_registry() 
     even if ``_render_summary`` accidentally imported engine code.
     """
     spec = (
-        "from oracle_ai_data_platform_fusion_bundle.schema.run_summary import "
+        "from oracle_ai_data_platform_fusion_autopilot.schema.run_summary import "
         "RunSummary, PlanNode\n"
-        "from oracle_ai_data_platform_fusion_bundle.commands.run import "
+        "from oracle_ai_data_platform_fusion_autopilot.commands.run import "
         "_render_summary\n"
         "from rich.console import Console\n"
         "import io\n"

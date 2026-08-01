@@ -1,6 +1,6 @@
 """CLI dry-run renderer — shows the content-pack plan with dispatch info.
 
-User-facing surface: ``aidp-fusion-bundle run --dry-run`` prints a list
+User-facing surface: ``aidp-fusion-autopilot run --dry-run`` prints a list
 of nodes that would dispatch + their implementation type so operators
 can confirm the plan before flipping ``--dry-run`` off.
 
@@ -14,11 +14,11 @@ from __future__ import annotations
 import pathlib
 from unittest.mock import MagicMock, patch
 
-from oracle_ai_data_platform_fusion_bundle.orchestrator import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator import (
     _build_content_pack_dry_run_plan,
     _run_content_pack_backend,
 )
-from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack import load_pack
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack import load_pack
 
 
 PACK_YAML = """
@@ -73,7 +73,7 @@ def test_dry_run_summary_carries_populated_plan(tmp_path, monkeypatch):
     pack = _pack(tmp_path)
     # Build a synthetic bundle that points at the pack.
     bundle_yaml = (
-        "apiVersion: aidp-fusion-bundle/v1\n"
+        "apiVersion: aidp-fusion-autopilot/v1\n"
         "project: drytest\n"
         "fusion:\n"
         "  serviceUrl: https://example.com\n"
@@ -110,7 +110,7 @@ def test_dry_run_summary_carries_populated_plan(tmp_path, monkeypatch):
         encoding="utf-8",
     )
 
-    from oracle_ai_data_platform_fusion_bundle.schema.tenant_profile import (
+    from oracle_ai_data_platform_fusion_autopilot.schema.tenant_profile import (
         load_tenant_profile,
     )
     profile = load_tenant_profile(profile_dir / "finance-default.yaml")

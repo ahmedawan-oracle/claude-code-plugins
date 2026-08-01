@@ -1,4 +1,4 @@
-apiVersion: aidp-fusion-bundle/v1
+apiVersion: aidp-fusion-autopilot/v1
 version: "0.2.0"           # Option L — explicit schema version (§4.4d).
                            # Default if omitted is "0.2.0"; required when v0.3 ships.
 project: cecl-finance-lake
@@ -79,9 +79,9 @@ oac:
   # Workbook content is delivered as a single .bar snapshot the customer uploads
   # to their own OCI Object Storage bucket. See docs/oac_rest_api_setup.md.
   snapshot:
-    bucket: ${OAC_BAR_BUCKET}                # e.g. "aidp-fusion-bundle-bar"
+    bucket: ${OAC_BAR_BUCKET}                # e.g. "aidp-fusion-autopilot-bar"
     uri: bundle-v0.1.0a0.bar                  # object name in the bucket
-    snapshotName: aidp-fusion-bundle-v0.1.0a0
+    snapshotName: aidp-fusion-autopilot-v0.1.0a0
     # password: ${vault:ocid1.vaultsecret.oc1.iad.placeholder.bar_password}  # optional
   oauthClientId: ${OAC_OAUTH_CLIENT_ID}
   oauthClientSecret: ${vault:ocid1.vaultsecret.oc1.iad.placeholder.oac_client_secret}

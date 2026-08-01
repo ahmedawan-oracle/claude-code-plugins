@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.dispatch.notebook_builder import (
+from oracle_ai_data_platform_fusion_autopilot.dispatch.notebook_builder import (
     MARKER_BEGIN,
     MARKER_END,
     build_notebook,
@@ -23,7 +23,7 @@ from oracle_ai_data_platform_fusion_bundle.dispatch.notebook_builder import (
 
 @pytest.fixture
 def wheel(tmp_path: Path) -> Path:
-    p = tmp_path / "oracle_ai_data_platform_fusion_bundle-0.2.0-py3-none-any.whl"
+    p = tmp_path / "oracle_ai_data_platform_fusion_autopilot-0.2.0-py3-none-any.whl"
     p.write_bytes(b"PK\x03\x04 fake wheel bytes")
     return p
 
@@ -44,7 +44,7 @@ class TestNotebookStructure:
     def test_nbformat_metadata(self, wheel: Path) -> None:
         nb = build_notebook(
             wheel_path=wheel,
-            bundle_yaml="apiVersion: aidp-fusion-bundle/v1\n",
+            bundle_yaml="apiVersion: aidp-fusion-autopilot/v1\n",
             mode="seed",
             datasets=None,
             layers=None,
@@ -124,7 +124,7 @@ class TestCredsCell:
     def test_bundle_yaml_injected_via_repr(self, wheel: Path) -> None:
         # repr() preserves embedded newlines; the cluster-side write_text
         # gets the operator's bundle byte-for-byte.
-        yaml_body = "apiVersion: aidp-fusion-bundle/v1\nproject: test\n"
+        yaml_body = "apiVersion: aidp-fusion-autopilot/v1\nproject: test\n"
         nb = build_notebook(
             wheel_path=wheel,
             bundle_yaml=yaml_body,

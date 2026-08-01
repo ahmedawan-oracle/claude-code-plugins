@@ -90,7 +90,7 @@ On a **non-IDCS** instance, OAC issues tokens its own APIs reject, so bearer-tok
 # Reads OAC_URL / OAC_MCP_USER / OAC_MCP_PASSWORD from your env
 # (or pass --oac-url/--user/--password). OAC_ADMIN_* is accepted only as
 # a legacy fallback; the account should be least-privilege, not an admin.
-aidp-fusion-bundle dashboard mcp-setup \
+aidp-fusion-autopilot dashboard mcp-setup \
   --connector-js ~/Downloads/oac-mcp-connect/oac-mcp-connect.js
 ```
 
@@ -209,7 +209,7 @@ dataset; those remain manual OAC UI steps in the current workflow. The legacy
 
 ---
 
-## What this enables in the Fusion bundle pitch
+## What this enables in the Fusion Autopilot pitch
 
 This closes the bundle's pdf1-aligned end-to-end story:
 

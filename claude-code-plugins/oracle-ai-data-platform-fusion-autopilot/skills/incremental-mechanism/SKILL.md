@@ -141,7 +141,7 @@ user confirmation. Then apply the smallest appropriate change:
 Validate any authored pack change:
 
 ```bash
-aidp-fusion-bundle content-pack validate <pack-or-overlay>
+aidp-fusion-autopilot content-pack validate <pack-or-overlay>
 ```
 
 ### 6. Require end-to-end evidence

@@ -8,7 +8,7 @@ machine-readable result instead of each re-deriving readiness.
 
 It is a **helper, not orchestration logic** (CLAUDE.md layering rule): it calls
 the plugin's own loaders + the existing ``AidpRestClient`` cluster probe. It
-NEVER re-implements OCI signing, never touches ``fusion_bundle_state``, and
+NEVER re-implements OCI signing, never touches ``fusion_autopilot_state``, and
 never dispatches a run.
 
 Output contract (stdout JSON):
@@ -49,7 +49,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 # The skill runs from a plugin checkout where the package is not pip-installed;
-# add scripts/ to sys.path so ``oracle_ai_data_platform_fusion_bundle.*`` imports
+# add scripts/ to sys.path so ``oracle_ai_data_platform_fusion_autopilot.*`` imports
 # (mirrors skills/aidp-rest/client.py).
 _PLUGIN_SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
 if _PLUGIN_SCRIPTS.is_dir() and str(_PLUGIN_SCRIPTS) not in sys.path:
@@ -87,7 +87,7 @@ def check_validate(bundle_path: Path, config_path: Path, env_name: str) -> tuple
     try:
         from io import StringIO
 
-        from oracle_ai_data_platform_fusion_bundle.commands.validate import (
+        from oracle_ai_data_platform_fusion_autopilot.commands.validate import (
             validate as validate_impl,
         )
         from rich.console import Console
@@ -117,7 +117,7 @@ def check_config_placeholders(config_path: Path, env_name: str) -> tuple[list[st
     connectivity (which only a human can supply).
     """
     try:
-        from oracle_ai_data_platform_fusion_bundle.commands._config_helpers import (
+        from oracle_ai_data_platform_fusion_autopilot.commands._config_helpers import (
             env_or_error,
             load_aidp_config,
         )
@@ -154,7 +154,7 @@ def resolve_profile(bundle_path: Path) -> tuple[str | None, str | None, bool, st
     """
     try:
         import yaml
-        from oracle_ai_data_platform_fusion_bundle.schema.tenant_profile import (
+        from oracle_ai_data_platform_fusion_autopilot.schema.tenant_profile import (
             resolve_profile_path,
         )
 
@@ -194,11 +194,11 @@ def _default_cluster_probe(config_path: Path, env_name: str) -> tuple[str, str]:
     failure must classify as not-ACTIVE so the skill fails closed.
     """
     try:
-        from oracle_ai_data_platform_fusion_bundle.commands._config_helpers import (
+        from oracle_ai_data_platform_fusion_autopilot.commands._config_helpers import (
             env_or_error,
             load_aidp_config,
         )
-        from oracle_ai_data_platform_fusion_bundle.dispatch.rest_client import (
+        from oracle_ai_data_platform_fusion_autopilot.dispatch.rest_client import (
             AidpRestClient,
         )
 

@@ -7,7 +7,7 @@ sample-floor guard, and the multi-COA fail-closed gate weighing active rows.
 
 from __future__ import annotations
 
-from oracle_ai_data_platform_fusion_bundle.orchestrator.coa_gate import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.coa_gate import (
     AIDPF_2016_COA_DUP_ROLE_COLUMN,
     AIDPF_2017_COA_NATURAL_ACCOUNT_CONTRADICTION,
     AIDPF_2018_MULTI_COA_UNCONFIGURED,

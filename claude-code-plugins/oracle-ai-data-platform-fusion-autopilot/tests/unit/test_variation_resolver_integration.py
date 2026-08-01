@@ -17,16 +17,16 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.commands.bronze_probe import (
+from oracle_ai_data_platform_fusion_autopilot.commands.bronze_probe import (
     describe_bronze,
 )
-from oracle_ai_data_platform_fusion_bundle.commands.variation_resolver import (
+from oracle_ai_data_platform_fusion_autopilot.commands.variation_resolver import (
     AutoResolved,
     MultiMatch,
     walk_column_alias,
     walk_semantic_variant,
 )
-from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack import (
     load_pack,
 )
 
@@ -35,7 +35,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 PACK_ROOT = (
     REPO_ROOT
     / "scripts"
-    / "oracle_ai_data_platform_fusion_bundle"
+    / "oracle_ai_data_platform_fusion_autopilot"
     / "content_packs"
     / "fusion-finance-starter"
 )
@@ -156,7 +156,7 @@ class TestStarterPackMultiMatchCurrency:
     def test_invoice_currency_code_is_multi_match_with_both_columns(
         self,
     ) -> None:
-        from oracle_ai_data_platform_fusion_bundle.commands.variation_resolver import (
+        from oracle_ai_data_platform_fusion_autopilot.commands.variation_resolver import (
             MultiMatch,
         )
 
@@ -187,7 +187,7 @@ class TestStarterPackNoMatchOnMissingColumn:
     Walker returns NoMatch; bootstrap (Step 8) maps to AIDPF-2010."""
 
     def test_no_match_on_missing_vendor_id(self) -> None:
-        from oracle_ai_data_platform_fusion_bundle.commands.variation_resolver import (
+        from oracle_ai_data_platform_fusion_autopilot.commands.variation_resolver import (
             NoMatch,
         )
 

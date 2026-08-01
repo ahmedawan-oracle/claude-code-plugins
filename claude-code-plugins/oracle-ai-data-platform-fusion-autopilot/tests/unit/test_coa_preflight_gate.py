@@ -13,23 +13,23 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.orchestrator.coa_gate import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.coa_gate import (
     AIDPF_2018_MULTI_COA_UNCONFIGURED,
 )
-from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack import load_pack
-from oracle_ai_data_platform_fusion_bundle.orchestrator.node_preflight import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack import load_pack
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.node_preflight import (
     AIDPF_2013_STRUCTURAL_COA,
     _check_coa_gate,
     _coa_role_aliases,
     _evaluate_coa,
     _normalize_coa_structure,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.medallion_pack import ColumnAlias
+from oracle_ai_data_platform_fusion_autopilot.schema.medallion_pack import ColumnAlias
 
 PACK_ROOT = (
     Path(__file__).resolve().parents[2]
     / "scripts"
-    / "oracle_ai_data_platform_fusion_bundle"
+    / "oracle_ai_data_platform_fusion_autopilot"
     / "content_packs"
     / "fusion-finance-starter"
 )
@@ -161,7 +161,7 @@ def test_multi_coa_with_singleton_accepted_passes() -> None:
 
 # --- M3: $coa.* union existence + byChart completeness ----------------------
 
-from oracle_ai_data_platform_fusion_bundle.orchestrator.node_preflight import (  # noqa: E402
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.node_preflight import (  # noqa: E402
     preflight_node,
 )
 
@@ -396,7 +396,7 @@ def test_evaluate_coa_probe_failure_is_not_a_violation() -> None:
 # COA checkpoint helpers (ordering + applicability + disposition/hatch)
 # ---------------------------------------------------------------------------
 
-from oracle_ai_data_platform_fusion_bundle.orchestrator.node_preflight import (  # noqa: E402
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.node_preflight import (  # noqa: E402
     AIDPF_2074_COA_UNPROVABLE,
     coa_applicable_sources,
     evaluate_coa_checkpoint,
@@ -503,7 +503,7 @@ def test_checkpoint_probe_failure_downgraded_with_hatch() -> None:
 # Finding 1 — resume must run the FULL data checkpoint for already-landed COA
 # ---------------------------------------------------------------------------
 
-from oracle_ai_data_platform_fusion_bundle.orchestrator.node_preflight import (  # noqa: E402
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.node_preflight import (  # noqa: E402
     _node_consumes_source,
     split_landed_coa_sources,
 )

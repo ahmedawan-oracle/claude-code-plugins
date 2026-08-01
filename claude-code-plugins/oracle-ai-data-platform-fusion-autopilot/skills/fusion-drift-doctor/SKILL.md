@@ -47,7 +47,7 @@ diagnoses and hands off; it never edits packs/profiles or runs the pipeline.
 2. **Probe the live PVO (evidence).** For PVO drift (2072/4071), get the live PVO
    columns for the affected bronze sources — metadata-only, no row pull:
    ```bash
-   aidp-fusion-bundle catalog probe-pvo <id> --datastore <PVO> --bicc-schema <Financial|HCM|SCM> ...
+   aidp-fusion-autopilot catalog probe-pvo <id> --datastore <PVO> --bicc-schema <Financial|HCM|SCM> ...
    ```
    (or reuse the diagnostic's observed columns). Gather the pack's
    `columnAliases` (`content-pack info <pack> --json`) + the profile's `resolved`
@@ -58,7 +58,7 @@ diagnoses and hands off; it never edits packs/profiles or runs the pipeline.
    ```
    → per-alias `status` + `routes`.
 4. **Route + recommend (don't fix):**
-   - **`renamed_resolvable`** → tell the operator to run `aidp-fusion-bundle
+   - **`renamed_resolvable`** → tell the operator to run `aidp-fusion-autopilot
      bootstrap --refresh` — a declared candidate still matches; refresh re-pins
      the alias to it.
    - **`needs_overlay`** → route to **`/medallion-author`**: a new column name
@@ -88,7 +88,7 @@ diagnoses and hands off; it never edits packs/profiles or runs the pipeline.
         does NOT re-extract bronze or touch other marts), **or** pass the hidden
         `run --mode incremental --repin-plan-hash` to repin the new hash and
         proceed *without* a full rebuild (writes a `mode='plan_hash_repin'` audit
-        row to `fusion_bundle_state` — dev/sandbox only, never in SOX/production).
+        row to `fusion_autopilot_state` — dev/sandbox only, never in SOX/production).
         `--repin-plan-hash` is the cheap path when you know the change was
         deliberate and want a true delta-MERGE on the very next run.
      2. **Stale pin from a pre-2026-06-15 build** → before the `_build_hash_input`

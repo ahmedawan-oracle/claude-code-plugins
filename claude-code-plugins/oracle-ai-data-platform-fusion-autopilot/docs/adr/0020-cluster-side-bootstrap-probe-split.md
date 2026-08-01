@@ -6,7 +6,7 @@ Accepted — 2026-06-07. Ships with Phase 4.1 / D3.
 
 ## Context
 
-`aidp-fusion-bundle bootstrap`'s variation phase (Phase 3a) had a
+`aidp-fusion-autopilot bootstrap`'s variation phase (Phase 3a) had a
 load-bearing architectural assumption: the operator can probe the
 tenant's bronze schema from their laptop. The code path:
 
@@ -156,11 +156,11 @@ to make every decision.
 - PLAN §25 — `AIDPF-2047` / `AIDPF-2048` / `AIDPF-2049` rows.
 - PLAN §9.5.7 #6 — the laptop-only-writes invariant this split
   preserves.
-- `scripts/oracle_ai_data_platform_fusion_bundle/dispatch/notebook_dispatch.py`
+- `scripts/oracle_ai_data_platform_fusion_autopilot/dispatch/notebook_dispatch.py`
   — the neutral helper introduced by this ADR.
-- `scripts/oracle_ai_data_platform_fusion_bundle/commands/cluster_bootstrap_probe.py`
+- `scripts/oracle_ai_data_platform_fusion_autopilot/commands/cluster_bootstrap_probe.py`
   — the bootstrap-specific orchestration that consumes it.
-- `scripts/oracle_ai_data_platform_fusion_bundle/schema/cluster_probe_marker.py`
+- `scripts/oracle_ai_data_platform_fusion_autopilot/schema/cluster_probe_marker.py`
   — `ClusterProbeEnvelope` + `ClusterProbeMarker` Pydantic models
   carrying the cluster→laptop payload.
 

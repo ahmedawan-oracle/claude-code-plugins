@@ -1,4 +1,4 @@
-# Status - `oracle-ai-data-platform-fusion-bundle`
+# Status - `oracle-ai-data-platform-fusion-autopilot`
 
 Last reviewed: 2026-06-15.
 
@@ -17,8 +17,8 @@ For the operator workflow, use [workflow.md](workflow.md). For fresh setup, use
 | Package | Alpha, version `0.1.0a0` in `pyproject.toml`. |
 | Execution model | Single content-pack path. New bronze, silver, and gold work is YAML/SQL content-pack work, not legacy Python `dim_*.py` or `transforms/gold/*.py` modules. |
 | Starter pack | `fusion-finance-starter` ships 11 bronze datasets, 3 silver dimensions, 3 gold marts, and dashboard descriptors. |
-| Customer starter | `aidp-fusion-bundle init` writes only `bundle.yaml` and `aidp.config.yaml`. It does not copy bronze/silver/gold node YAML into the customer project. |
-| Customer extension | Overlays under `overlays/<name>/`, wired with `aidp-fusion-bundle use-pack`. Use `--no-align` for narrow bundles or one-mart overrides. |
+| Customer starter | `aidp-fusion-autopilot init` writes only `bundle.yaml` and `aidp.config.yaml`. It does not copy bronze/silver/gold node YAML into the customer project. |
+| Customer extension | Overlays under `overlays/<name>/`, wired with `aidp-fusion-autopilot use-pack`. Use `--no-align` for narrow bundles or one-mart overrides. |
 | OAC path | MCP-native workbook authoring is the preferred path. Legacy `.bar` snapshot install still ships for deployments that need it. |
 | Manual OAC boundary | Users still create the OAC AIDP connection and OAC dataset manually. The plugin can advise and generate connection JSON, but OAC UI remains the reliable creation path. |
 | Conversational entry point | `aidp-fusion-autopilot` drives the A-to-Z workflow and routes to setup, seed, advisor, mart-author, medallion-author, status, and workbook-authoring skills. |
@@ -28,18 +28,18 @@ For the operator workflow, use [workflow.md](workflow.md). For fresh setup, use
 The expected customer journey is:
 
 1. Install the CLI from this checkout.
-2. Create a customer bundle with `aidp-fusion-bundle init`.
+2. Create a customer bundle with `aidp-fusion-autopilot init`.
 3. Resolve AIDP workspace and cluster coordinates with `init-config`, or use
    `/aidp-fusion-config` when the user does not know the OCIDs/keys.
 4. Put the Fusion BICC password in the AIDP credential store. The default
    credential name is `fusion_bicc_password` and the default key is `password`.
 5. Set up operator OAC MCP early with `dashboard mcp-setup` or
    `dashboard mcp-token`, then restart or reconnect Claude Code.
-6. Run `aidp-fusion-bundle validate`.
-7. Run `aidp-fusion-bundle bootstrap --check-iam` to probe prerequisites and
+6. Run `aidp-fusion-autopilot validate`.
+7. Run `aidp-fusion-autopilot bootstrap --check-iam` to probe prerequisites and
    pin tenant variation into `profiles/<profile>.yaml`.
-8. Preview and run seed with `aidp-fusion-bundle run --mode seed --dry-run`
-   followed by `aidp-fusion-bundle run --mode seed`.
+8. Preview and run seed with `aidp-fusion-autopilot run --mode seed --dry-run`
+   followed by `aidp-fusion-autopilot run --mode seed`.
 9. Use `/oac-dataset-advisor` against the live AIDP catalog.
 10. If a needed mart is missing, use `/mart-author` for a new gold overlay or
     SQL override.

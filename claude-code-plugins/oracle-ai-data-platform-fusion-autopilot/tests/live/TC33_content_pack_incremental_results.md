@@ -42,7 +42,7 @@ run_ids / cursors → identical plan-hash).
 
 ### 1. Re-seed (re-pin the hash with the fixed renderer)
 ```
-aidp-fusion-bundle run --mode seed --datasets ar_invoice_summary \
+aidp-fusion-autopilot run --mode seed --datasets ar_invoice_summary \
     --layers gold --force-fingerprint-skip
 ```
 - wheel cache miss → `python -m build` (hash `3702fcf1…`) — fix is in this wheel
@@ -54,7 +54,7 @@ aidp-fusion-bundle run --mode seed --datasets ar_invoice_summary \
 
 ### 2. Incremental (the AIDPF-4040 proof)
 ```
-aidp-fusion-bundle run --mode incremental --datasets ar_invoice_summary \
+aidp-fusion-autopilot run --mode incremental --datasets ar_invoice_summary \
     --layers gold --force-fingerprint-skip
 ```
 - wheel cache **hit** `3702fcf1…` (same fixed artifact)

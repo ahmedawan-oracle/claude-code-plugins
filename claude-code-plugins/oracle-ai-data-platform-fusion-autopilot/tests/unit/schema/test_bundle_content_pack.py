@@ -21,7 +21,7 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from oracle_ai_data_platform_fusion_bundle.schema.bundle import (
+from oracle_ai_data_platform_fusion_autopilot.schema.bundle import (
     AIDPF_1037_INSTALLED_PACK_NOT_FOUND,
     AIDPF_1038_RESOLVED_ROOT_NO_PACK_YAML,
     Bundle,
@@ -173,7 +173,7 @@ class TestResolveContentPackRoot:
             "id: fusion-finance-starter\nversion: 1.0.0\n", encoding="utf-8"
         )
 
-        from oracle_ai_data_platform_fusion_bundle.commands import content_pack as cp_module
+        from oracle_ai_data_platform_fusion_autopilot.commands import content_pack as cp_module
         monkeypatch.setattr(cp_module, "INSTALLED_CONTENT_PACKS_DIR", installed_root)
 
         # bundle_path can be anywhere — installed-pack lookup ignores it.
@@ -189,7 +189,7 @@ class TestResolveContentPackRoot:
         installed_root = tmp_path / "fake_installed_packs"
         installed_root.mkdir()  # empty
 
-        from oracle_ai_data_platform_fusion_bundle.commands import content_pack as cp_module
+        from oracle_ai_data_platform_fusion_autopilot.commands import content_pack as cp_module
         monkeypatch.setattr(cp_module, "INSTALLED_CONTENT_PACKS_DIR", installed_root)
 
         spec = ContentPackSpec(name="does-not-exist")

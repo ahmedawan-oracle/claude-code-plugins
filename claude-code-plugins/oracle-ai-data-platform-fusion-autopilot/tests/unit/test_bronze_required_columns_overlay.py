@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack import (
     AIDPF_2001,
     AIDPF_2062_SAMEID_DROPS_REQUIRED_COLUMN,
     AIDPF_2063_RELAX_REQUIRED_COLUMN_ORPHAN,
@@ -268,7 +268,7 @@ def test_added_column_reaches_gate_input(tmp_path: Path) -> None:
     node = merged.bronze["erp_suppliers"]
     assert "PARTYID" in node.required_columns["erp_suppliers"]
     # And it resolves through the shared resolver the gates use.
-    from oracle_ai_data_platform_fusion_bundle.orchestrator.required_column_resolver import (
+    from oracle_ai_data_platform_fusion_autopilot.orchestrator.required_column_resolver import (
         resolve_required_column_entries,
     )
     resolved = resolve_required_column_entries(

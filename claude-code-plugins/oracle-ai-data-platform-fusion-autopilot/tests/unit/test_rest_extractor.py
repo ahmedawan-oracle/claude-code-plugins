@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import MagicMock
 
-from oracle_ai_data_platform_fusion_bundle.extractors.rest import (
+from oracle_ai_data_platform_fusion_autopilot.extractors.rest import (
     FUSION_PAGE_LIMIT_HARD_CAP,
     fetch_paged,
 )

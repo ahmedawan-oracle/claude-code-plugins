@@ -16,11 +16,11 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from oracle_ai_data_platform_fusion_bundle.commands import bronze_probe
-from oracle_ai_data_platform_fusion_bundle.commands.bronze_probe import (
+from oracle_ai_data_platform_fusion_autopilot.commands import bronze_probe
+from oracle_ai_data_platform_fusion_autopilot.commands.bronze_probe import (
     resolve_observed,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.bronze_fingerprint import (
+from oracle_ai_data_platform_fusion_autopilot.schema.bronze_fingerprint import (
     ColumnInfo,
 )
 

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.dispatch.errors import (
+from oracle_ai_data_platform_fusion_autopilot.dispatch.errors import (
     DispatchAuthError,
     DispatchClusterNotActiveError,
     DispatchConfigError,

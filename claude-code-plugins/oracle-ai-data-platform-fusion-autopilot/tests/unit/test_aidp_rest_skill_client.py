@@ -27,10 +27,10 @@ from client import AidpRestClient, AidpRestError  # noqa: E402
 
 
 # Canonical patch target — the skill's ``client`` module is a re-export shim
-# that imports from ``oracle_ai_data_platform_fusion_bundle.dispatch.rest_client``
+# that imports from ``oracle_ai_data_platform_fusion_autopilot.dispatch.rest_client``
 # (P1.5ε §Step 2). The ``oci`` module is imported by the canonical module,
 # not by the shim — patch it where it's looked up.
-_REST_CLIENT_MOD = "oracle_ai_data_platform_fusion_bundle.dispatch.rest_client"
+_REST_CLIENT_MOD = "oracle_ai_data_platform_fusion_autopilot.dispatch.rest_client"
 
 
 @pytest.fixture

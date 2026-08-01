@@ -19,9 +19,9 @@ behaviour.
 
 ## Sources
 
-- `scripts/oracle_ai_data_platform_fusion_bundle/orchestrator/errors.py` — Exception classes
-- `scripts/oracle_ai_data_platform_fusion_bundle/orchestrator/preflight.py:473` — `IncrementalTargetMissingError` raise site
-- `scripts/oracle_ai_data_platform_fusion_bundle/orchestrator/preflight_evidence.py:114` — `check_bronze_fingerprint_drift` (Phase 3c)
-- `scripts/oracle_ai_data_platform_fusion_bundle/orchestrator/sql_runner.py:258` — Profile-hash drift return
-- `scripts/oracle_ai_data_platform_fusion_bundle/orchestrator/sql_runner.py:346` — `StateCommitError` catch (Step 7a)
-- `scripts/oracle_ai_data_platform_fusion_bundle/schema/bronze_schema_snapshot.py` — Phase 3d snapshot loader
+- `scripts/oracle_ai_data_platform_fusion_autopilot/orchestrator/errors.py` — Exception classes
+- `scripts/oracle_ai_data_platform_fusion_autopilot/orchestrator/preflight.py:473` — `IncrementalTargetMissingError` raise site
+- `scripts/oracle_ai_data_platform_fusion_autopilot/orchestrator/preflight_evidence.py:114` — `check_bronze_fingerprint_drift` (Phase 3c)
+- `scripts/oracle_ai_data_platform_fusion_autopilot/orchestrator/sql_runner.py:258` — Profile-hash drift return
+- `scripts/oracle_ai_data_platform_fusion_autopilot/orchestrator/sql_runner.py:346` — `StateCommitError` catch (Step 7a)
+- `scripts/oracle_ai_data_platform_fusion_autopilot/schema/bronze_schema_snapshot.py` — Phase 3d snapshot loader

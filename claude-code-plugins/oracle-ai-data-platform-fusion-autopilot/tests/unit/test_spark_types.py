@@ -7,8 +7,8 @@ column-contract gate (imported from spark_types) — so the two gates agree.
 
 from __future__ import annotations
 
-from oracle_ai_data_platform_fusion_bundle.orchestrator import spark_types
-from oracle_ai_data_platform_fusion_bundle.orchestrator import sql_runner
+from oracle_ai_data_platform_fusion_autopilot.orchestrator import spark_types
+from oracle_ai_data_platform_fusion_autopilot.orchestrator import sql_runner
 
 
 def test_normalise_maps_synonyms() -> None:

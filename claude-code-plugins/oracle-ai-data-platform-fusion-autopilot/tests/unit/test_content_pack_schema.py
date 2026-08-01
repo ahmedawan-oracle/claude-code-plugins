@@ -19,7 +19,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from oracle_ai_data_platform_fusion_bundle.schema.medallion_pack import (
+from oracle_ai_data_platform_fusion_autopilot.schema.medallion_pack import (
     AIDPF_2001_ORPHAN_OVERRIDE,
     AIDPF_2002_INVALID_SEMVER,
     ColumnAlias,
@@ -30,7 +30,7 @@ from oracle_ai_data_platform_fusion_bundle.schema.medallion_pack import (
 
 # Path to the package-data JSON Schema artifact. Tests read it via the
 # importable package so the same path works in editable + installed modes.
-import oracle_ai_data_platform_fusion_bundle as _pkg
+import oracle_ai_data_platform_fusion_autopilot as _pkg
 
 PACK_SCHEMA_JSON = Path(_pkg.__file__).parent / "pack.schema.json"
 
@@ -257,8 +257,8 @@ def test_pack_schema_json_matches_models() -> None:
     Regenerate with::
 
         python -c 'import json; from pathlib import Path;
-        from oracle_ai_data_platform_fusion_bundle.schema.medallion_pack import PackYaml;
-        out = Path("scripts/oracle_ai_data_platform_fusion_bundle/pack.schema.json");
+        from oracle_ai_data_platform_fusion_autopilot.schema.medallion_pack import PackYaml;
+        out = Path("scripts/oracle_ai_data_platform_fusion_autopilot/pack.schema.json");
         out.write_text(json.dumps(PackYaml.model_json_schema(), indent=2, sort_keys=True) + chr(10))'
 
     Per PLAN §6.2 acceptance: "CI fails if [the JSON Schema artifact] drifts
@@ -308,7 +308,7 @@ def test_pack_yaml_with_variation_points() -> None:
 # Strategy validation matrix (PLAN §11.3 R1-R13)
 # ---------------------------------------------------------------------------
 
-from oracle_ai_data_platform_fusion_bundle.schema.medallion_pack import (
+from oracle_ai_data_platform_fusion_autopilot.schema.medallion_pack import (
     AIDPF_2020_MERGE_NO_NATURAL_KEY,
     AIDPF_2030_OUTPUT_SCHEMA_NO_PII,
     AIDPF_2050_MERGE_NO_WATERMARK,
@@ -559,7 +559,7 @@ def test_R12_output_schema_missing_pii_rejected() -> None:
 # Dashboard pack (Step 4)
 # ---------------------------------------------------------------------------
 
-from oracle_ai_data_platform_fusion_bundle.schema.dashboard_pack import DashboardYaml
+from oracle_ai_data_platform_fusion_autopilot.schema.dashboard_pack import DashboardYaml
 
 
 def _minimal_dashboard_dict(**overrides) -> dict:

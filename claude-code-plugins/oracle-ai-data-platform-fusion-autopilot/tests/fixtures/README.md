@@ -11,7 +11,7 @@ Transcribed from the v1 reference branch via `scripts/dev/transcribe_v1_registry
 - **Source branch**: `P1.5ε-fix5`
 - **Branch head at transcription time**: `650d6909655fd30618f56edbbded6e4b81d6cc3b`
 - **Source file blob hash**: `02ec45a7fae7c1fa5b94a3940144727da69dcc13`
-- **Source path on v1**: `scripts/oracle_ai_data_platform_fusion_bundle/schema/registry_metadata.py`
+- **Source path on v1**: `scripts/oracle_ai_data_platform_fusion_autopilot/schema/registry_metadata.py`
 
 **Purpose**: parity baseline for v2 Phase 4's dual-runner gate. When Phase 4 ships, it compares content-pack-backend output against the v1 registry's declared dependencies, natural keys, and `incremental_capable` flags. The snapshot is the single source of truth for "what v1 promised."
 

@@ -9,10 +9,10 @@ from __future__ import annotations
 
 import pathlib
 
-from oracle_ai_data_platform_fusion_bundle.orchestrator import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator import (
     _build_content_pack_dry_run_plan,
 )
-from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack import load_pack
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack import load_pack
 
 
 PACK_YAML = """

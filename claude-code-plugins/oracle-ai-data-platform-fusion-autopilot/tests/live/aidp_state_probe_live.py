@@ -4,12 +4,12 @@ Dispatches one notebook on an ACTIVE cluster that returns, as a marker JSON:
   * ``live``  — {table -> {exists, row_count}} for the gold schema (SHOW TABLES
     + COUNT(*));
   * ``state`` — latest-per-dataset rows from
-    ``<catalog>.<bronzeSchema>.fusion_bundle_state``.
+    ``<catalog>.<bronzeSchema>.fusion_autopilot_state``.
 
 Feed the result to ``skills/aidp-fusion-status/status_report.py``. Reuses the
 bundle's own AidpRestClient (no wheel). NOT collected by CI (not test_*.py);
 operator supplies coords via flags or AIDP_* env. The laptop
-``aidp-fusion-bundle status`` is local-Spark-only / no-JSON, so this cluster
+``aidp-fusion-autopilot status`` is local-Spark-only / no-JSON, so this cluster
 probe is the truthful path until ``status --json`` ships.
 """
 from __future__ import annotations
@@ -88,13 +88,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--aidp-id", default=os.environ.get("AIDP_DATALAKE_OCID"))
     ap.add_argument("--workspace-key", default=os.environ.get("AIDP_WORKSPACE_KEY"))
     ap.add_argument("--cluster-key", default=os.environ.get("AIDP_CLUSTER_ID"))
-    ap.add_argument("--cluster-name", default=os.environ.get("AIDP_CLUSTER", "fusion_bundle_dev"))
+    ap.add_argument("--cluster-name", default=os.environ.get("AIDP_CLUSTER", "fusion_autopilot_dev"))
     ap.add_argument("--region", default=os.environ.get("AIDP_REGION", "us-ashburn-1"))
     ap.add_argument("--oci-profile", default=os.environ.get("AIDP_OCI_PROFILE", "DEFAULT"))
     ap.add_argument("--catalog", default=os.environ.get("AIDP_CATALOG", "fusion_catalog"))
     ap.add_argument("--schemas", default="bronze,silver,gold",
                     help="Comma-separated schemas to probe for live tables (all layers state references).")
-    ap.add_argument("--state-table", default="bronze.fusion_bundle_state")
+    ap.add_argument("--state-table", default="bronze.fusion_autopilot_state")
     ap.add_argument("--workspace-root", default="Shared")
     ap.add_argument("--poll-timeout", type=int, default=900)
     ap.add_argument("--out", default=None)

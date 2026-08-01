@@ -1,7 +1,7 @@
-# TC24 — `gold.ap_aging` live verification on `fusion_bundle_dev`
+# TC24 — `gold.ap_aging` live verification on `fusion_autopilot_dev`
 
 > Date: 2026-05-10
-> Cluster: `fusion_bundle_dev` (workspace `aidp` saasfademo1 demo pod)
+> Cluster: `fusion_autopilot_dev` (workspace `aidp` saasfademo1 demo pod)
 > Probe runner: `TC24_ap_aging_probe_runner.py` (local, gitignored)
 > Live runner: `TC24_ap_aging_live_runner.py` (local, gitignored)
 > Bronze source: `fusion_catalog.bronze.ap_invoices` (49,552 rows; BICC `InvoiceHeaderExtractPVO`)
@@ -9,7 +9,7 @@
 
 ## Pre-flight probe outcomes (paste these into the module docstring's tenant-shape note)
 
-| Gate | Outcome on `fusion_bundle_dev` | Decision |
+| Gate | Outcome on `fusion_autopilot_dev` | Decision |
 |---|---|---|
 | Currency presence (HARD) | `ApInvoicesInvoiceCurrencyCode` ✅ | ship |
 | Real-due-date population | `terms_frac = 1.000000`, `coalesced_frac = 1.000000` (`DueDate` column absent on pod) | `due_date_mode='real'`, target `gold.ap_aging` |
@@ -173,7 +173,7 @@ Every AP invoice's `vendor_id` is missing from `silver.dim_supplier` on this pod
 ## Acceptance against PLAN §8
 
 * [x] `transforms/gold/ap_aging.py` exists; follows the gl_balance / supplier_spend pattern
-* [x] Writes `gold.ap_aging` Delta table on `fusion_bundle_dev`
+* [x] Writes `gold.ap_aging` Delta table on `fusion_autopilot_dev`
 * [x] Currency in grain — per-currency-per-bucket emitted; no cross-currency sum published
 * [x] Mart-name gate honoured — per-column and coalesced fractions recorded; decision (real mode) matches the 80% gate outcome
 * [x] Credit handling reported (table in stage 6); filter remains invariant `<> 0`

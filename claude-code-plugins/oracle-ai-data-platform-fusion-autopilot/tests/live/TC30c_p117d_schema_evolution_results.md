@@ -1,7 +1,7 @@
 # TC30c — P1.17d schema evolution under MERGE (live evidence)
 
 **Test case ID**: TC30c
-**Status**: ✅ **EXECUTED 2026-06-02** on `fusion_bundle_dev` cluster / `playground` workspace via OCI-signed REST dispatch. Three sequential phases (seed baseline → source-wider monkey-patch → target-wider ALTER ADD COLUMNS) all reached terminal `SUCCESS` with 2/2 orchestrator steps green per phase. Coordinates redacted per TC26 / TC30a / TC30b convention; full identifiers held by the dispatching operator.
+**Status**: ✅ **EXECUTED 2026-06-02** on `fusion_autopilot_dev` cluster / `playground` workspace via OCI-signed REST dispatch. Three sequential phases (seed baseline → source-wider monkey-patch → target-wider ALTER ADD COLUMNS) all reached terminal `SUCCESS` with 2/2 orchestrator steps green per phase. Coordinates redacted per TC26 / TC30a / TC30b convention; full identifiers held by the dispatching operator.
 **Tracks**: `BACKLOG.md` §P1.17d acceptance + `LIMITS.md` §P1.17-L6 resolution.
 
 ## What this verifies
@@ -39,13 +39,13 @@ Including only 2 nodes minimizes wall time (~3-5 min per phase). `dim_account` +
 - `docs/features/p1.17d-schema-evolution-under-merge/plan.md` — implementation plan + per-phase assertions.
 - `tests/live/TC30a_p117_incremental_merge_proof.md` — V1 baseline (no schema evolution).
 - `tests/live/TC30b_p117e_payload_diff_results.md` — sibling P1.17e evidence; same 2-cycle / dispatcher pattern.
-- `scripts/oracle_ai_data_platform_fusion_bundle/orchestrator/state.py` — `_ensure_target_schema_for_merge` helper + `SchemaReconcileResult` dataclass.
-- `scripts/oracle_ai_data_platform_fusion_bundle/orchestrator/errors.py` — `SchemaEvolutionTypeConflictError`.
-- `scripts/oracle_ai_data_platform_fusion_bundle/orchestrator/merge_sql.py` — explicit-column-list clause builders (NEW neutral module).
-- `scripts/oracle_ai_data_platform_fusion_bundle/orchestrator/__init__.py` — bronze MERGE renderer integration.
-- `scripts/oracle_ai_data_platform_fusion_bundle/dimensions/dim_supplier.py` — silver builder integration.
-- `scripts/oracle_ai_data_platform_fusion_bundle/dimensions/dim_account.py` — silver builder integration.
-- `scripts/oracle_ai_data_platform_fusion_bundle/transforms/gold/gl_balance.py` — gold builder integration.
+- `scripts/oracle_ai_data_platform_fusion_autopilot/orchestrator/state.py` — `_ensure_target_schema_for_merge` helper + `SchemaReconcileResult` dataclass.
+- `scripts/oracle_ai_data_platform_fusion_autopilot/orchestrator/errors.py` — `SchemaEvolutionTypeConflictError`.
+- `scripts/oracle_ai_data_platform_fusion_autopilot/orchestrator/merge_sql.py` — explicit-column-list clause builders (NEW neutral module).
+- `scripts/oracle_ai_data_platform_fusion_autopilot/orchestrator/__init__.py` — bronze MERGE renderer integration.
+- `scripts/oracle_ai_data_platform_fusion_autopilot/dimensions/dim_supplier.py` — silver builder integration.
+- `scripts/oracle_ai_data_platform_fusion_autopilot/dimensions/dim_account.py` — silver builder integration.
+- `scripts/oracle_ai_data_platform_fusion_autopilot/transforms/gold/gl_balance.py` — gold builder integration.
 
 ---
 
@@ -58,7 +58,7 @@ Including only 2 nodes minimizes wall time (~3-5 min per phase). `dim_account` +
 - Wall time: **165.1s (~2.7 min)** wall / 119.9s reported
 - Dispatched via `dev/_run_tc30c.py` (sequential 3-phase runner)
 
-**Purpose**: establish bronze + silver baseline in `fusion_bundle_state`. Captures baseline column lists for `bronze.erp_suppliers` + `silver.dim_supplier`. No drift introduced.
+**Purpose**: establish bronze + silver baseline in `fusion_autopilot_state`. Captures baseline column lists for `bronze.erp_suppliers` + `silver.dim_supplier`. No drift introduced.
 
 ### Per-step table (Phase A)
 

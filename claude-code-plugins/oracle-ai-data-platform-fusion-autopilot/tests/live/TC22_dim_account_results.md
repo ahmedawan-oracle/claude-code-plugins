@@ -1,10 +1,10 @@
 # TC22 — `silver.dim_account` live verification (2026-05-07)
 
-> **Status**: ✅ **PASS (full verification, production-shape data)** — Chart of Accounts dim materialized end-to-end on `fusion_bundle_dev` cluster against live `bronze.gl_coa`. All 5 BACKLOG P1.3 acceptance criteria satisfied. Unlike `dim_supplier` (where eseb-test's NULL `VENDORID` left the JOIN-form path live-untested), `dim_account` runs against a fully-populated production-shape CoA on the same demo pod — 63,464 rows, 100% populated on every key column, real account-type distribution.
+> **Status**: ✅ **PASS (full verification, production-shape data)** — Chart of Accounts dim materialized end-to-end on `fusion_autopilot_dev` cluster against live `bronze.gl_coa`. All 5 BACKLOG P1.3 acceptance criteria satisfied. Unlike `dim_supplier` (where eseb-test's NULL `VENDORID` left the JOIN-form path live-untested), `dim_account` runs against a fully-populated production-shape CoA on the same demo pod — 63,464 rows, 100% populated on every key column, real account-type distribution.
 
 ## Test setup
 
-* **Cluster**: `fusion_bundle_dev` (id `<CLUSTER_KEY>`) in workspace `<WORKSPACE_KEY>`
+* **Cluster**: `fusion_autopilot_dev` (id `<CLUSTER_KEY>`) in workspace `<WORKSPACE_KEY>`
 * **Source**: `bronze.gl_coa` (PVO `FscmTopModelAM.FinExtractAM.GlBiccExtractAM.CodeCombinationExtractPVO`), 63,464 rows / 64 cols, extracted via the internal bootstrap script (Step 5)
 * **SQL**: inlined from `dimensions/dim_account.py`, default parameters
 
@@ -121,6 +121,6 @@ Re-running the CTAS twice produces identical row counts with a fresh `silver_bui
 
 ## References
 
-* Module: [`scripts/.../dimensions/dim_account.py`](../../scripts/oracle_ai_data_platform_fusion_bundle/dimensions/dim_account.py)
+* Module: [`scripts/.../dimensions/dim_account.py`](../../scripts/oracle_ai_data_platform_fusion_autopilot/dimensions/dim_account.py)
 * Unit tests: [`tests/unit/test_dim_account.py`](../unit/test_dim_account.py)
-* Bronze source: catalog entry `gl_coa` in [`scripts/.../schema/fusion_catalog.py`](../../scripts/oracle_ai_data_platform_fusion_bundle/schema/fusion_catalog.py)
+* Bronze source: catalog entry `gl_coa` in [`scripts/.../schema/fusion_catalog.py`](../../scripts/oracle_ai_data_platform_fusion_autopilot/schema/fusion_catalog.py)

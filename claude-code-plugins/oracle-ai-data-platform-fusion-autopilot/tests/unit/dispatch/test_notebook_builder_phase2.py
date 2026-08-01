@@ -22,7 +22,7 @@ import re
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.dispatch.notebook_builder import (
+from oracle_ai_data_platform_fusion_autopilot.dispatch.notebook_builder import (
     _build_content_pack_bootstrap_cell,
     build_notebook,
 )
@@ -40,7 +40,7 @@ def tmp_wheel(tmp_path: pathlib.Path) -> pathlib.Path:
 def _minimal_args(wheel_path: pathlib.Path, **overrides) -> dict:
     base = dict(
         wheel_path=wheel_path,
-        bundle_yaml="apiVersion: aidp-fusion-bundle/v1\nproject: x\n",
+        bundle_yaml="apiVersion: aidp-fusion-autopilot/v1\nproject: x\n",
         mode="seed",
         datasets=None,
         layers=None,
@@ -223,7 +223,7 @@ class TestAdversarialRoundTrip:
         """
         import inspect
 
-        from oracle_ai_data_platform_fusion_bundle import orchestrator
+        from oracle_ai_data_platform_fusion_autopilot import orchestrator
 
         # Pull the real orchestrator.run signature.
         run_sig = inspect.signature(orchestrator.run)
@@ -267,7 +267,7 @@ class TestAdversarialRoundTrip:
         unsupported kwargs."""
         import inspect
 
-        from oracle_ai_data_platform_fusion_bundle import orchestrator
+        from oracle_ai_data_platform_fusion_autopilot import orchestrator
 
         accepted_kwargs = set(inspect.signature(orchestrator.run).parameters)
 
@@ -393,7 +393,7 @@ class TestPhase3dSchemaSnapshotStaging:
         ``force_fingerprint_skip`` round-1 thread-through test."""
         from unittest.mock import MagicMock
 
-        import oracle_ai_data_platform_fusion_bundle.dispatch as dispatch_mod
+        import oracle_ai_data_platform_fusion_autopilot.dispatch as dispatch_mod
 
         # Capture the kwargs that ``build_notebook`` is called with.
         captured: dict = {}
@@ -408,7 +408,7 @@ class TestPhase3dSchemaSnapshotStaging:
         )
 
         # Stub preflight + REST client so dispatch reaches build_notebook.
-        from oracle_ai_data_platform_fusion_bundle.dispatch.preflight import (
+        from oracle_ai_data_platform_fusion_autopilot.dispatch.preflight import (
             PreflightResult,
         )
 
@@ -427,7 +427,7 @@ class TestPhase3dSchemaSnapshotStaging:
         rest_client.upload_notebook.return_value = "/Workspace/x.ipynb"
         rest_client.create_notebook_job.return_value = "job-1"
         rest_client.submit_run.return_value = "run-1"
-        from oracle_ai_data_platform_fusion_bundle.dispatch.rest_client import (
+        from oracle_ai_data_platform_fusion_autopilot.dispatch.rest_client import (
             RunResult,
         )
 
@@ -436,7 +436,7 @@ class TestPhase3dSchemaSnapshotStaging:
         # Return a notebook with a parseable success marker so dispatch
         # builds a RunSummary without raising. Use the real
         # ``RunSummary.empty(...)`` shape via ``to_marker_dict``.
-        from oracle_ai_data_platform_fusion_bundle.schema.run_summary import (
+        from oracle_ai_data_platform_fusion_autopilot.schema.run_summary import (
             RunSummary,
         )
 
@@ -463,7 +463,7 @@ class TestPhase3dSchemaSnapshotStaging:
                 ]
             }
         )
-        from oracle_ai_data_platform_fusion_bundle.dispatch.rest_client import (
+        from oracle_ai_data_platform_fusion_autopilot.dispatch.rest_client import (
             AidpRestClient as RealAidpRestClient,
         )
 
@@ -474,10 +474,10 @@ class TestPhase3dSchemaSnapshotStaging:
 
         bundle_path = tmp_path / "bundle.yaml"
         bundle_path.write_text(
-            "apiVersion: aidp-fusion-bundle/v1\nproject: x\n", encoding="utf-8"
+            "apiVersion: aidp-fusion-autopilot/v1\nproject: x\n", encoding="utf-8"
         )
 
-        from oracle_ai_data_platform_fusion_bundle.schema.bundle import (
+        from oracle_ai_data_platform_fusion_autopilot.schema.bundle import (
             AidpConfig,
             EnvSpec,
         )
@@ -493,7 +493,7 @@ class TestPhase3dSchemaSnapshotStaging:
         )
         cfg = AidpConfig.model_validate(
             {
-                "apiVersion": "aidp-fusion-bundle/v1",
+                "apiVersion": "aidp-fusion-autopilot/v1",
                 "project": "x",
                 "environments": {"dev": env.model_dump(by_alias=True)},
             }

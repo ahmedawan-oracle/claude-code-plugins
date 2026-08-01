@@ -86,10 +86,10 @@ def test_untracked_live_table_without_state_row():
 def test_audit_and_underscore_tables_not_untracked():
     h, _ = _classify(
         [],
-        {"fusion_bundle_state": {"exists": True, "row_count": 30},
+        {"fusion_autopilot_state": {"exists": True, "row_count": 30},
          "_phase5_probe": {"exists": True, "row_count": 1}},
     )
-    assert "fusion_bundle_state" not in h and "_phase5_probe" not in h
+    assert "fusion_autopilot_state" not in h and "_phase5_probe" not in h
 
 
 def test_never_run_declared_node_absent_everywhere():

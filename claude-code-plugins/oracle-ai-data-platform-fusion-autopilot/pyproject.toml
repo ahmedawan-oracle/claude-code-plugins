@@ -3,7 +3,7 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "oracle-ai-data-platform-fusion-bundle"
+name = "oracle-ai-data-platform-fusion-autopilot"
 version = "0.1.0a0"
 description = "Productized Fusion ERP/HCM/SCM → Oracle AI Data Platform pipeline with curated BICC extracts, medallion bronze/silver/gold in Delta, conformed dimensions, gold marts, and MCP-native Oracle Analytics Cloud workbook authoring."
 readme = "README.md"
@@ -38,11 +38,11 @@ dependencies = [
   "requests>=2.31",
   "oci>=2.130",
   "rich>=13.0",
-  # P1.5ε — `aidp-fusion-bundle run` (no --inline) shells out to
+  # P1.5ε — `aidp-fusion-autopilot run` (no --inline) shells out to
   # `python -m build` to materialize the plugin wheel for cluster-side
   # install. The build backend MUST be available at runtime, not just
   # in dev extras — operators install via `pip install
-  # oracle-ai-data-platform-fusion-bundle` and expect dispatch to work
+  # oracle-ai-data-platform-fusion-autopilot` and expect dispatch to work
   # without separately installing the dev tooling.
   "build>=1.0"
 ]
@@ -66,14 +66,14 @@ Repository = "https://github.com/ahmedawan-oracle/claude-code-plugins"
 Issues = "https://github.com/ahmedawan-oracle/claude-code-plugins/issues"
 
 [project.scripts]
-aidp-fusion-bundle = "oracle_ai_data_platform_fusion_bundle.cli:main"
+aidp-fusion-autopilot = "oracle_ai_data_platform_fusion_autopilot.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["scripts"]
-include = ["oracle_ai_data_platform_fusion_bundle*"]
+include = ["oracle_ai_data_platform_fusion_autopilot*"]
 
 [tool.setuptools.package-data]
-oracle_ai_data_platform_fusion_bundle = [
+oracle_ai_data_platform_fusion_autopilot = [
   "py.typed",
   # Content packs ship as package data. The directory uses an underscore
   # (Python identifier convention) even though pack `id:` values use dashes.
@@ -90,7 +90,7 @@ oracle_ai_data_platform_fusion_bundle = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
-  "live: requires live Fusion pod / AIDP workspace / OAC instance (gated by AIDP_FUSION_BUNDLE_INTEGRATION=1)",
+  "live: requires live Fusion pod / AIDP workspace / OAC instance (gated by AIDP_FUSION_AUTOPILOT_INTEGRATION=1)",
 ]
 
 [tool.ruff]

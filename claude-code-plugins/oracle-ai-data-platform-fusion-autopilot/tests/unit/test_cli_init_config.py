@@ -1,4 +1,4 @@
-"""Unit tests for ``aidp-fusion-bundle init-config``.
+"""Unit tests for ``aidp-fusion-autopilot init-config``.
 
 The command's only network surface is ``AidpRestClient``; these tests mock
 it so we exercise name→key resolution, the YAML merge/write, the collision
@@ -12,14 +12,14 @@ from unittest.mock import MagicMock, patch
 
 import yaml
 from click.testing import CliRunner
-from oracle_ai_data_platform_fusion_bundle import cli
-from oracle_ai_data_platform_fusion_bundle.dispatch.rest_client import (
+from oracle_ai_data_platform_fusion_autopilot import cli
+from oracle_ai_data_platform_fusion_autopilot.dispatch.rest_client import (
     AidpRestError,
     ClusterSummary,
     WorkspaceSummary,
 )
 
-CLIENT_PATH = "oracle_ai_data_platform_fusion_bundle.dispatch.rest_client.AidpRestClient"
+CLIENT_PATH = "oracle_ai_data_platform_fusion_autopilot.dispatch.rest_client.AidpRestClient"
 
 
 def _fake_client(*, cluster_state: str = "ACTIVE") -> MagicMock:

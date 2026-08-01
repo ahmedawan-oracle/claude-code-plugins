@@ -146,7 +146,7 @@ After wiring the CLI command, ran a full ground-truth test that the bundle's pri
 ### Step 1 — generate JSON via the CLI
 
 ```bash
-$ aidp-fusion-bundle dashboard install --target oac \
+$ aidp-fusion-autopilot dashboard install --target oac \
     --oac-url https://oacai.cealinfra.com \
     --connection-name aidp_fusion_jdbc_v2 \
     --user-ocid ocid1.user.oc1..aaaa...erva \
@@ -242,12 +242,12 @@ The full pdf1 narrative — Fusion BICC -> AIDP medallion -> OAC dashboards + Ge
 | Oacadmin1 MFA enrollment via Oracle Mobile Authenticator (QR scan) | ✓ |
 | Identity Domain Administrator role granted to Oacadmin1 in `OracleIdentityCloudService` (the `oaseceal` IDCS domain) via OCI Console -> Domain administrators | ✓ |
 | Reach IDCS admin console at `/ui/v1/adminconsole` | ✓ — redirects to OCI Identity Domains UI (modern unified surface) |
-| Create Confidential Application `aidp-fusion-bundle-installer` | ✓ |
+| Create Confidential Application `aidp-fusion-autopilot-installer` | ✓ |
 | Configure as client (Client Credentials grant) + add OAC scope | ✓ — added scope from `ANALYTICSAPP_cealfdidev_iad`: `https://iots2b7pazvv7beps7xh5353asyguarq.data.analyticsapps.us-ashburn-1.ocs.oraclecloud.comurn:opc:resource:consumer::all` |
 | Activate the application | ✓ |
 | Capture client_id + client_secret | ✓ — client_id = `fa3e388608c34287a0d293a99e646d6d`; secret captured in-process for the test, treated as transient |
 | `IdcsTokenFetcher` live: `POST /oauth2/v1/token` with grant_type=client_credentials | ✓ — Bearer issued, decoded JWT shows correct `aud` (cealfdidev analytics resource) and `scope=urn:opc:resource:consumer::all` |
-| `aidp-fusion-bundle dashboard install --target oac --idcs-url ... --client-id ... --client-secret ...` | Command runs end-to-end through the bundle code path |
+| `aidp-fusion-autopilot dashboard install --target oac --idcs-url ... --client-id ... --client-secret ...` | Command runs end-to-end through the bundle code path |
 | OAC REST API `GET /api/20210901/catalog/connections` with the Bearer | **HTTP 401** `Bearer error="invalid_session"` |
 
 ### What this proves
@@ -311,7 +311,7 @@ The OAC service application `ANALYTICSAPP_cealfdidev_iad` does **not** publish a
 
 ### Test 1 — Application Administrator (narrower IDCS role)
 
-Granted `Application Administrator` IDCS app role to the Confidential Application `aidp-fusion-bundle-installer` (replacing the absent OAC-specific role). Re-fetched a token via Client Credentials grant.
+Granted `Application Administrator` IDCS app role to the Confidential Application `aidp-fusion-autopilot-installer` (replacing the absent OAC-specific role). Re-fetched a token via Client Credentials grant.
 
 **Token claims after grant — identical to before grant:**
 ```json
@@ -395,7 +395,7 @@ Across 8+ search axes (docs.oracle.com, blogs.oracle.com, A-Team, GitHub, Stack 
 
 ### Spike: Authorization Code + PKCE proves the path
 
-Provisioned fresh OAC `aidp-fusion-bundle-test` via OCI CLI (4-min ACTIVE), service URL `https://aidp-fusion-bundle-test-idseylbmv0mm-m0-ia.analytics.ocp.oraclecloud.com`. Created confidential app `aidp-installer-newoac` (client_id `afb2497bb5d6401e8698edc759bb7b2f`), patched it via IDCS API to enable `authorization_code` + `refresh_token` grants and registered loopback redirect `http://localhost:8765/callback`.
+Provisioned fresh OAC `aidp-fusion-autopilot-test` via OCI CLI (4-min ACTIVE), service URL `https://aidp-fusion-autopilot-test-idseylbmv0mm-m0-ia.analytics.ocp.oraclecloud.com`. Created confidential app `aidp-installer-newoac` (client_id `afb2497bb5d6401e8698edc759bb7b2f`), patched it via IDCS API to enable `authorization_code` + `refresh_token` grants and registered loopback redirect `http://localhost:8765/callback`.
 
 Hand-rolled Python spike (`C:\Temp\oac_spike\auth_code_spike_v2.py`, 154 lines):
 - PKCE code_challenge (SHA-256 of 64-byte random verifier).
@@ -411,7 +411,7 @@ Hand-rolled Python spike (`C:\Temp\oac_spike\auth_code_spike_v2.py`, 154 lines):
   "sub_type": "user",
   "scope": "offline_access urn:opc:resource:consumer::all",
   "aud": [
-    "https://aidp-fusion-bundle-test-idseylbmv0mm-m0-ia.analytics.ocp.oraclecloud.com",
+    "https://aidp-fusion-autopilot-test-idseylbmv0mm-m0-ia.analytics.ocp.oraclecloud.com",
     "https://tqa3fnvu5u6mjswcuphhqeorojsrl5wq.analytics.ocp.oraclecloud.com"
   ],
   "user_displayname": "Ahmed Awan"
@@ -437,7 +437,7 @@ The full-REST `dashboard install` path is **architecturally fixable** without ID
 1. **Replace `IdcsTokenFetcher`** (client_credentials only) with `OacOauthFlow` supporting:
    - Authorization Code + PKCE (default; opens browser on first run).
    - Device Authorization Grant (`--headless` flag for SSH boxes).
-   - Persistent refresh-token storage at `~/.aidp-fusion-bundle/oac-token.json` (mode 0600).
+   - Persistent refresh-token storage at `~/.aidp-fusion-autopilot/oac-token.json` (mode 0600).
    - Silent refresh-token round-trip on subsequent invocations.
 2. **Drop the hardcoded `urn:opc:resource:fawcommon:OAC` default.** Auto-discover the audience from the OAC service-app via `<idcs>/admin/v1/Apps?filter=...`.
 3. **Update `oac_rest_api_setup.md`** to document:
@@ -484,11 +484,11 @@ The bundle now ships **hybrid install** as the production path:
 1. **Connection** — generates the 6-key JSON via `print-only` (TC10d, byte-identical, works); admin uploads via OAC UI in ~3 minutes. Zero IAM impact, no IDCS app needed for this step.
 2. **Workbooks** — imports each `oac/workbooks/*.dva` via REST (`POST /api/20210901/catalog/workbooks/imports`). Uses Auth Code + PKCE + Refresh Token. First run opens browser for one-time SSO consent; subsequent runs are silent.
 
-**Verified live 2026-05-01 against new OAC `aidp-fusion-bundle-test`:**
+**Verified live 2026-05-01 against new OAC `aidp-fusion-autopilot-test`:**
 
 ```bash
-$ aidp-fusion-bundle dashboard install --target oac \
-    --oac-url https://aidp-fusion-bundle-test-...analytics.ocp.oraclecloud.com \
+$ aidp-fusion-autopilot dashboard install --target oac \
+    --oac-url https://aidp-fusion-autopilot-test-...analytics.ocp.oraclecloud.com \
     --connection-name aidp_fusion_jdbc_e2e \
     --client-id afb2497bb5d6401e8698edc759bb7b2f \
     --client-secret <secret> \
@@ -498,7 +498,7 @@ $ aidp-fusion-bundle dashboard install --target oac \
 [CONNECTION] Wrote OAC connection JSON: oac/data_source/aidp_fusion_jdbc_e2e.json
 
 Connection upload (one-time, ~3 min):
-  Open https://aidp-fusion-bundle-test-...oraclecloud.com -> Data -> Connections -> Create -> "Oracle AI Data Platform"
+  Open https://aidp-fusion-autopilot-test-...oraclecloud.com -> Data -> Connections -> Create -> "Oracle AI Data Platform"
   Connection Name: aidp_fusion_jdbc_e2e
   Connection Details: upload oac/data_source/aidp_fusion_jdbc_e2e.json
   Private API Key: upload C:/Users/anuma/.oci/oac_api_key.pem
@@ -514,7 +514,7 @@ Connection upload (one-time, ~3 min):
 |---|---|---|
 | Hardcoded FAW scope `urn:opc:resource:fawcommon:OAC` | Auto-discovered audience prefix → `<aud>urn:opc:resource:consumer::all offline_access` | ✅ TC10h spike |
 | `client_credentials` grant (broken — never works on OAC catalog) | Auth Code + PKCE with localhost loopback OR Device Code Grant | ✅ TC10h spike |
-| Manual token expiry handling | Refresh-token round-trip cached at `~/.aidp-fusion-bundle/oac-token.json` (mode 0600) | ✅ TC10h spike |
+| Manual token expiry handling | Refresh-token round-trip cached at `~/.aidp-fusion-autopilot/oac-token.json` (mode 0600) | ✅ TC10h spike |
 | Connection POST schema unknown — silent 500s | Connection via print-only (proven), workbooks via REST (proven) — hybrid | ✅ end-to-end |
 | Wrong scope name in `IdcsTokenFetcher` default | `OacOauthFlow` class with auto-derive | ✅ refactor |
 
@@ -588,7 +588,7 @@ The only inferred-shape risk is the AIDP `connectionType: "idljdbc"` payload (TC
 
 ## TC10h-2 live re-validation on disposable OAC1 (2026-05-03)
 
-After the TC10h-2 refactor commit landed in the umbrella, ran the bundle against a brand-new disposable OAC instance (`aidp-fusion-bundle-build`, OLPU 1, `us-ashburn-1`) to live-prove every claim:
+After the TC10h-2 refactor commit landed in the umbrella, ran the bundle against a brand-new disposable OAC instance (`aidp-fusion-autopilot-build`, OLPU 1, `us-ashburn-1`) to live-prove every claim:
 
 ### What was proven
 
@@ -598,7 +598,7 @@ After the TC10h-2 refactor commit landed in the umbrella, ran the bundle against
 | ✅ | Auth Code + PKCE flow works against a fresh IDCS confidential app | Browser opened, SSO consent silent (already federated), code captured at `localhost:8765/callback`, exchanged for access + refresh token. |
 | ✅ | OAC accepts our user-context Bearer | Multiple `/api/20210901/...` calls succeeded post-auth. |
 | ✅ | AIDP `connectionType: "idljdbc"` payload accepted by OAC's REST | `POST /catalog/connections` with the captured envelope returned `Connection created successfully` toast (UI-side validation; `idljdbc` discriminator works). Verified live both via UI (file upload) and via REST API (catalog browse showed the new connection). |
-| ✅ | OCI Object Storage bucket + IAM Resource Principal policy works | Bundle author's-side bucket (`aidp-fusion-bundle-bar`) created; IAM policy granting OAC1's RP `read/manage` on the bucket created. Independently verified bucket access via `oci os object put`. |
+| ✅ | OCI Object Storage bucket + IAM Resource Principal policy works | Bundle author's-side bucket (`aidp-fusion-autopilot-bar`) created; IAM policy granting OAC1's RP `read/manage` on the bucket created. Independently verified bucket access via `oci os object put`. |
 
 ### What hit a Oracle product wall
 
@@ -610,10 +610,10 @@ Tried (all 202 accepted at request layer; all FAILED with same error in work-req
 "bundle-rc1.bar"
 "/bundle-rc1.bar"
 "snapshots/bundle-rc1.bar"
-"oci://aidp-fusion-bundle-bar@idseylbmv0mm/bundle-rc1.bar"
+"oci://aidp-fusion-autopilot-bar@idseylbmv0mm/bundle-rc1.bar"
 "https://objectstorage.us-ashburn-1.oraclecloud.com/n/<ns>/b/<bucket>/o/snapshot.bar"
 "snapshot"          # bare name
-"AIDP_FUSION_BUNDLE_RC1"  # uppercase + underscore
+"AIDP_FUSION_AUTOPILOT_RC1"  # uppercase + underscore
 ```
 
 All combinations with explicit `bucketOciNamespace` + `bucketOciRegion` also failed identically. Bucket access from outside (via `oci os` CLI from the same tenancy) confirmed working. OAC's snapshot CREATE has undocumented URI-validation logic that's rejecting all variants.
@@ -634,23 +634,23 @@ The remaining live validation (snapshot register + restore + poll round-trip) is
 ### Disposable resources used
 
 OAC1: `ocid1.analyticsinstance.oc1.iad.aaaaaaaa255venfsd3nqirh5c37v4qck5hfxurcdflnchfr2zkmhiuq74tba`
-Bucket: `aidp-fusion-bundle-bar` (namespace `idseylbmv0mm`)
-IAM policy: `aidp-fusion-bundle-oac-bar-read`
-IDCS confidential app: `aidp-fusion-bundle-installer-build`
+Bucket: `aidp-fusion-autopilot-bar` (namespace `idseylbmv0mm`)
+IAM policy: `aidp-fusion-autopilot-oac-bar-read`
+IDCS confidential app: `aidp-fusion-autopilot-installer-build`
 
 ---
 
 ## TC10h-3 — Snapshot register + restore round-trip live-validated (2026-05-03)
 
-After the OAC Console UI was used to take a snapshot named `aidp-fusion-bundle-rc1` and the resulting `.bar` was confirmed in the bucket (180,537 bytes — file URI shape `file:///<folder>/<name>.bar`), the snapshot REGISTER + RESTORE + work-request poll round-trip was exercised end-to-end against OAC1 via the bundle's helpers (`scripts/oracle_ai_data_platform_fusion_bundle/oac/rest/client.py`).
+After the OAC Console UI was used to take a snapshot named `aidp-fusion-autopilot-rc1` and the resulting `.bar` was confirmed in the bucket (180,537 bytes — file URI shape `file:///<folder>/<name>.bar`), the snapshot REGISTER + RESTORE + work-request poll round-trip was exercised end-to-end against OAC1 via the bundle's helpers (`scripts/oracle_ai_data_platform_fusion_autopilot/oac/rest/client.py`).
 
 ### What was proven live
 
 | ✅/❌ | Step | Evidence |
 |---|---|---|
-| ✅ | Snapshot CREATE via REST works | First REST CREATE with `"uri": "file:///aidp-fusion-bundle/bundle-v0.1.0a0-rc1.bar"` succeeded (snapshot `id=6e01ce21-f8a3-481b-a333-4a0e0db0844f`). The `file:///<folder>/<name>.bar` URI shape was the missing piece — none of the seven URI variants tried in TC10h were correct. |
+| ✅ | Snapshot CREATE via REST works | First REST CREATE with `"uri": "file:///aidp-fusion-autopilot/bundle-v0.1.0a0-rc1.bar"` succeeded (snapshot `id=6e01ce21-f8a3-481b-a333-4a0e0db0844f`). The `file:///<folder>/<name>.bar` URI shape was the missing piece — none of the seven URI variants tried in TC10h were correct. |
 | ✅ | `.bar` download from bucket works | `oci os object get` returned a 180,537-byte JAR/ZIP archive at `C:/Temp/oac_bar/bundle-v0.1.0a0-rc1.bar`. |
-| ✅ | Snapshot REGISTER via REST works | `POST /api/20210901/snapshots type=REGISTER` with the same `file:///` URI returned 202 + `{"workRequestId": "lfc-cb:13346-c7:3962263"}` (async). Polling the work request reached `SUCCEEDED`; subsequent `GET /snapshots` showed the new snapshot record `id=b5b86271-6b03-4c8c-8979-563d2b5aace3 name=aidp-fusion-bundle-roundtrip-rc1`. The bundle's `register_snapshot` helper was updated this run to handle the async response (poll → look up by name) — it had previously assumed synchronous `id` return. |
+| ✅ | Snapshot REGISTER via REST works | `POST /api/20210901/snapshots type=REGISTER` with the same `file:///` URI returned 202 + `{"workRequestId": "lfc-cb:13346-c7:3962263"}` (async). Polling the work request reached `SUCCEEDED`; subsequent `GET /snapshots` showed the new snapshot record `id=b5b86271-6b03-4c8c-8979-563d2b5aace3 name=aidp-fusion-autopilot-roundtrip-rc1`. The bundle's `register_snapshot` helper was updated this run to handle the async response (poll → look up by name) — it had previously assumed synchronous `id` return. |
 | ✅ | Snapshot RESTORE via REST works | `POST /api/20210901/system/actions/restoreSnapshot` with `{"snapshot": {"id": "b5b86271-..."}}` returned 202 + `oa-work-request-id: lfc-cc:13347-ch:3962283`. |
 | ✅ | Work-request poll reaches SUCCEEDED | `GET /api/20210901/workRequests/lfc-cc:13347-ch:3962283` returned `status=SUCCEEDED, percentComplete=100, operationType=RESTORE_SNAPSHOT, resources=[{resourceType: SYSTEM, actionResult: SNAPSHOT_RESTORED}]`. Total elapsed `timeAccepted → timeFinished`: ~32 seconds (`2026-05-03T09:17:48Z → 09:18:20Z`). |
 | ✅ | Restored snapshot re-creates the AIDP connection | The connection had been deleted on OAC1 before the round-trip. After RESTORE, `GET /api/20210901/catalog/connections/L3VzZXJzL2FobWVkLnNoYWh6YWQuYXdhbkBvcmFjbGUuY29tL2FpZHBfZnVzaW9uX2pkYmM` returned HTTP 200 with `name=aidp_fusion_jdbc, type=connections, path=/@Catalog/users/ahmed.shahzad.awan@oracle.com/aidp_fusion_jdbc` — the snapshot brought it back exactly as it had been when captured. |
@@ -688,15 +688,15 @@ After fixing two upstream bugs surfaced in TC10h-3 (`register_snapshot` async ha
 ### Single command, all four REST calls green
 
 ```
-PYTHONPATH=scripts python -m oracle_ai_data_platform_fusion_bundle.cli dashboard install \
+PYTHONPATH=scripts python -m oracle_ai_data_platform_fusion_autopilot.cli dashboard install \
   --target oac \
-  --oac-url https://aidp-fusion-bundle-build-idseylbmv0mm-g2-ia.analytics.ocp.oraclecloud.com \
+  --oac-url https://aidp-fusion-autopilot-build-idseylbmv0mm-g2-ia.analytics.ocp.oraclecloud.com \
   --connection-name aidp_fusion_jdbc \
   ...AIDP identity flags...
-  --bar-bucket aidp-fusion-bundle-bar \
-  --bar-uri file:///aidp-fusion-bundle/bundle-v0.1.0a0-rc1.bar \
+  --bar-bucket aidp-fusion-autopilot-bar \
+  --bar-uri file:///aidp-fusion-autopilot/bundle-v0.1.0a0-rc1.bar \
   --bar-password '...' \
-  --snapshot-name aidp-fusion-bundle-e2e-rc1 \
+  --snapshot-name aidp-fusion-autopilot-e2e-rc1 \
   --idcs-url https://idcs-f5e26b80ce5d4d20a66ba648b5e00403.identity.oraclecloud.com \
   --client-id 6d4529b96dd6403fbb1ddbde8eefd9eb \
   --client-secret '...'
@@ -708,7 +708,7 @@ Output:
 Connection 'aidp_fusion_jdbc' already exists
   (id=L3VzZXJzL2FobWVkLnNoYWh6YWQuYXdhbkBvcmFjbGUuY29tL2FpZHBfZnVzaW9uX2pkYmM).
   Skipping create. Use --overwrite-connection to recreate.
-Registering snapshot aidp-fusion-bundle-e2e-rc1 from aidp-fusion-bundle-bar/file:///... ...
+Registering snapshot aidp-fusion-autopilot-e2e-rc1 from aidp-fusion-autopilot-bar/file:///... ...
   registered (snapshotId=bd820501-9a3f-426e-8354-2d8c279b35b2)
 Restoring snapshot bd820501-9a3f-426e-8354-2d8c279b35b2 ...
   restore accepted (workRequestId=lfc-cc:13347-c9:3962654); polling ...
@@ -733,7 +733,7 @@ The `dashboard install` command is **install-ready end-to-end** for the realisti
 
 1. (Out-of-band, one-time) Customer creates the AIDP connection via OAC UI using the bundled config.json.
 2. Customer uploads the `.bar` to their OCI Object Storage bucket; grants OAC's RP read on the bucket.
-3. Customer runs `aidp-fusion-bundle dashboard install` — bundle handles connection-discovery + snapshot register + restore + poll, all via Oracle-documented REST endpoints.
+3. Customer runs `aidp-fusion-autopilot dashboard install` — bundle handles connection-discovery + snapshot register + restore + poll, all via Oracle-documented REST endpoints.
 
 The `--overwrite-connection` path, which exercises the `delete + POST` flow (and would still hit the `idljdbc` validator gap on the POST), is not required for the realistic flow.
 
@@ -753,13 +753,13 @@ The `dashboard install` end-to-end success in TC10h-4 used an empty 180 KB `.bar
 
 4. **Custom snapshot via OAC UI** — taken via Console → Snapshots → Create Snapshot ("Includes Everything"), 203 KB, password-protected. Exported to Local File System (UI did not have an OCI Resource Connection configured for Object Storage, so the direct-to-bucket path was unavailable; downloaded locally + uploaded via `oci os object put` instead).
 
-5. **Bucket upload** — `aidp-fusion-bundle-bar/aidp-fusion-bundle/bundle-v0.1.0a0-rc2.bar` (208,853 bytes).
+5. **Bucket upload** — `aidp-fusion-autopilot-bar/aidp-fusion-autopilot/bundle-v0.1.0a0-rc2.bar` (208,853 bytes).
 
 6. **`dashboard install` end-to-end** — single command, all four documented OAC REST calls green:
    ```
    Connection 'aidp_fusion_jdbc' already exists ... Skipping create.
-   Registering snapshot aidp-fusion-bundle-rc2-restore from
-     aidp-fusion-bundle-bar/file:///aidp-fusion-bundle/bundle-v0.1.0a0-rc2.bar ...
+   Registering snapshot aidp-fusion-autopilot-rc2-restore from
+     aidp-fusion-autopilot-bar/file:///aidp-fusion-autopilot/bundle-v0.1.0a0-rc2.bar ...
      registered (snapshotId=3d4f22f9-2ad1-4944-94a2-ed582a7689a2)
    Restoring snapshot 3d4f22f9-2ad1-4944-94a2-ed582a7689a2 ...
      restore accepted (workRequestId=lfc-cc:13347-cs:3964246); polling ...
@@ -790,7 +790,7 @@ saasfademo1 Fusion pod  ──BICC──▶  AIDP bronze
                                        │ Custom snapshot
                                        ▼
                            OCI Object Storage bucket
-                                       │ aidp-fusion-bundle dashboard install
+                                       │ aidp-fusion-autopilot dashboard install
                                        ▼
                        OAC1 catalog: workbook visible + chart renders
 ```
@@ -804,7 +804,7 @@ saasfademo1 Fusion pod  ──BICC──▶  AIDP bronze
 ### Artifacts (this run)
 
 - Gold mart SQL: `tests/live/sql/gold_ap_invoice_status.sql`
-- Snapshot upload: `aidp-fusion-bundle-bar/aidp-fusion-bundle/bundle-v0.1.0a0-rc2.bar` (208,853 bytes)
+- Snapshot upload: `aidp-fusion-autopilot-bar/aidp-fusion-autopilot/bundle-v0.1.0a0-rc2.bar` (208,853 bytes)
 - Install run output: `C:/Temp/install_e2e_rc2.out`
 - Screenshot proof: `tests/live/screenshots/TC10h-5_workbook_after_restore.png`
 
@@ -827,8 +827,8 @@ All saved under `/@Catalog/shared/AIDP_Fusion_Bundle/`.
 
 ### Snapshot + install evidence
 
-- Snapshot taken via OAC UI: `aidp-fusion-bundle-rc3` (243 KB — ~40 KB larger than rc2's 203 KB, accounting for the 3 additional workbooks).
-- `.bar` exported to local file system, uploaded to OCI Object Storage as `aidp-fusion-bundle-bar/aidp-fusion-bundle/bundle-v0.1.0a0-rc3.bar` (249,633 bytes).
+- Snapshot taken via OAC UI: `aidp-fusion-autopilot-rc3` (243 KB — ~40 KB larger than rc2's 203 KB, accounting for the 3 additional workbooks).
+- `.bar` exported to local file system, uploaded to OCI Object Storage as `aidp-fusion-autopilot-bar/aidp-fusion-autopilot/bundle-v0.1.0a0-rc3.bar` (249,633 bytes).
 - `dashboard install` end-to-end:
   - Connection precheck: `aidp_fusion_jdbc` exists → skipped POST
   - REGISTER (async): snapshot `8a19488d-feb0-479c-94c3-3ff4f361a65a`
@@ -904,14 +904,14 @@ A Tile KPI showing `total_period_dr = 204,204,662,548.8` ($204.2B) — the grand
 
 ### rc4 snapshot → install → verify
 
-`bundle-v0.1.0a0-rc4.bar` (292,615 bytes) was created via OAC Console UI → Create Snapshot (Everything mode) → Export to Local FS, then uploaded to `oci://idseylbmv0mm@aidp-fusion-bundle-bar/aidp-fusion-bundle/bundle-v0.1.0a0-rc4.bar`.
+`bundle-v0.1.0a0-rc4.bar` (292,615 bytes) was created via OAC Console UI → Create Snapshot (Everything mode) → Export to Local FS, then uploaded to `oci://idseylbmv0mm@aidp-fusion-autopilot-bar/aidp-fusion-autopilot/bundle-v0.1.0a0-rc4.bar`.
 
 `dashboard install` ran end-to-end clean:
 
 ```
 Connection 'aidp_fusion_jdbc' already exists. Skipping create.
-Registering snapshot aidp-fusion-bundle-rc4-restore from
-aidp-fusion-bundle-bar/file:///aidp-fusion-bundle/bundle-v0.1.0a0-rc4.bar ...
+Registering snapshot aidp-fusion-autopilot-rc4-restore from
+aidp-fusion-autopilot-bar/file:///aidp-fusion-autopilot/bundle-v0.1.0a0-rc4.bar ...
   registered (snapshotId=9ab6498c-61ff-4523-9834-ac69e3064bc6)
 Restoring snapshot 9ab6498c-61ff-4523-9834-ac69e3064bc6 ...
   restore accepted (workRequestId=lfc-cc:13347-cj:4001268); polling ...
@@ -944,7 +944,7 @@ Workbooks in /shared/AIDP_Fusion_Bundle/: 6
 |---|---|
 | Install output | `C:/Temp/install_e2e_rc4.out` (in author's local env) |
 | Verify output | `C:/Temp/verify_6_workbooks.py` + run output |
-| BAR file | `oci://idseylbmv0mm@aidp-fusion-bundle-bar/aidp-fusion-bundle/bundle-v0.1.0a0-rc4.bar` (292,615 bytes) |
+| BAR file | `oci://idseylbmv0mm@aidp-fusion-autopilot-bar/aidp-fusion-autopilot/bundle-v0.1.0a0-rc4.bar` (292,615 bytes) |
 | Snapshot ID on OAC1 | `9ab6498c-61ff-4523-9834-ac69e3064bc6` |
 | Work request | `lfc-cc:13347-cj:4001268` (SUCCEEDED) |
 | Connection ID | `L3VzZXJzL2FobWVkLnNoYWh6YWQuYXdhbkBvcmFjbGUuY29tL2FpZHBfZnVzaW9uX2pkYmM` |
@@ -953,12 +953,12 @@ Workbooks in /shared/AIDP_Fusion_Bundle/: 6
 
 The original TC10h-7 GL_Balance_Workbook was a single Tile KPI ($204.2B `total_period_dr`). User feedback: too basic. Reauthored as a richer visualization — **60-box Treemap** sized by `total_period_dr`, colored by `company`. Largest box: $7.76B (3.8% of total) for company `942`. The Treemap surfaces inter-company concentration that a flat KPI hides.
 
-Re-snapshotted as `aidp-fusion-bundle-rc5`, exported, uploaded, and re-installed via REST end-to-end — all four documented OAC REST calls green:
+Re-snapshotted as `aidp-fusion-autopilot-rc5`, exported, uploaded, and re-installed via REST end-to-end — all four documented OAC REST calls green:
 
 ```
 Connection 'aidp_fusion_jdbc' already exists. Skipping create.
-Registering snapshot aidp-fusion-bundle-rc5-restore from
-aidp-fusion-bundle-bar/file:///aidp-fusion-bundle/bundle-v0.1.0a0-rc5.bar ...
+Registering snapshot aidp-fusion-autopilot-rc5-restore from
+aidp-fusion-autopilot-bar/file:///aidp-fusion-autopilot/bundle-v0.1.0a0-rc5.bar ...
   registered (snapshotId=e3736a90-b55c-4a6b-a5e8-2fc8654fb747)
 Restoring snapshot e3736a90-b55c-4a6b-a5e8-2fc8654fb747 ...
   restore accepted (workRequestId=lfc-cc:13347-cc:4004921); polling ...

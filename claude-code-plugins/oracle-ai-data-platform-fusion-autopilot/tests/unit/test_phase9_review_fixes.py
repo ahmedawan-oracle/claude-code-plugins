@@ -104,7 +104,7 @@ outputSchema:
 
 @pytest.fixture
 def pack(tmp_path: pathlib.Path):
-    from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack import (
+    from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack import (
         load_pack,
     )
 
@@ -146,7 +146,7 @@ class TestBronzeTargetIdentifierPathsAware:
     """
 
     def _ctx(self):
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.sql_renderer import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.sql_renderer import (
             RunContext,
         )
         return RunContext(
@@ -159,7 +159,7 @@ class TestBronzeTargetIdentifierPathsAware:
         )
 
     def _bronze_node(self):
-        from oracle_ai_data_platform_fusion_bundle.schema.medallion_pack import (
+        from oracle_ai_data_platform_fusion_autopilot.schema.medallion_pack import (
             NodeYaml,
         )
         return NodeYaml.model_validate({
@@ -193,7 +193,7 @@ class TestBronzeTargetIdentifierPathsAware:
         """``paths`` is now a REQUIRED positional argument — calling the
         helper without it must raise ``TypeError``. Locks the Phase 9
         follow-up contract that deleted the ctx-only legacy fallback."""
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.sql_runner import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.sql_runner import (
             _build_target_identifier,
         )
         with pytest.raises(TypeError, match="paths"):
@@ -203,7 +203,7 @@ class TestBronzeTargetIdentifierPathsAware:
         """With ``paths``, the helper routes through
         ``paths.bronze(node.target)`` so identifier validation fires
         centrally."""
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.sql_runner import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.sql_runner import (
             _build_target_identifier,
         )
         paths = MagicMock()
@@ -229,7 +229,7 @@ class TestPvoDriftGateScopeFromResolvedPlan:
     def test_resolver_returns_transitive_bronze_for_gold_root(self, pack):
         """The resolver itself must return the transitive bronze deps
         when only a gold node is declared."""
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack_plan_resolver import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack_plan_resolver import (
             resolve_content_pack_plan,
         )
         plan = resolve_content_pack_plan(
@@ -253,7 +253,7 @@ class TestPvoDriftGateScopeFromResolvedPlan:
     def test_resolver_returns_transitive_bronze_for_layers_gold(self, pack):
         """``--layers gold`` filters declared roots but D-1 still
         pulls transitive bronze deps; the drift gate must see them."""
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack_plan_resolver import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack_plan_resolver import (
             resolve_content_pack_plan,
         )
         plan = resolve_content_pack_plan(pack, datasets=None, layers=["gold"])
@@ -267,7 +267,7 @@ class TestPvoDriftGateScopeFromResolvedPlan:
         """With ``--strict-scope``, D-1 is disabled — gold roots without
         their bronze deps explicitly declared raise (and the gate
         consequently sees no bronze in scope)."""
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack_plan_resolver import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack_plan_resolver import (
             resolve_content_pack_plan,
             StrictScopeMissingDependencyError,
         )
@@ -301,11 +301,11 @@ class TestBundleScopeRespectedByResolver:
 
     def _bundle(self, tmp_path: pathlib.Path, dataset_ids: list[str]):
         """Author a bundle whose contentPack points at ``pack`` fixture."""
-        from oracle_ai_data_platform_fusion_bundle.schema.bundle import Bundle
+        from oracle_ai_data_platform_fusion_autopilot.schema.bundle import Bundle
         import yaml as _yaml
         bp = tmp_path / "bundle.yaml"
         bp.write_text(
-            "apiVersion: aidp-fusion-bundle/v1\n"
+            "apiVersion: aidp-fusion-autopilot/v1\n"
             "project: scope-test\n"
             "fusion:\n  serviceUrl: https://example.com\n  username: u\n"
             "  password: p\n  externalStorage: s\n"
@@ -335,15 +335,15 @@ class TestBundleScopeRespectedByResolver:
         ``for name in (dims.build or []): scope.add(name)`` which
         always pulled the defaults.
         """
-        from oracle_ai_data_platform_fusion_bundle.schema.bundle import Bundle
-        from oracle_ai_data_platform_fusion_bundle.orchestrator import (
+        from oracle_ai_data_platform_fusion_autopilot.schema.bundle import Bundle
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator import (
             _effective_bundle_scope,
         )
         import yaml as _yaml
 
         # IMPORTANT — no ``dimensions:`` or ``gold:`` blocks.
         bundle = Bundle.model_validate(_yaml.safe_load(
-            "apiVersion: aidp-fusion-bundle/v1\n"
+            "apiVersion: aidp-fusion-autopilot/v1\n"
             "project: omit-legacy-test\n"
             "fusion:\n  serviceUrl: https://example.com\n  username: u\n"
             "  password: p\n  externalStorage: s\n"
@@ -363,7 +363,7 @@ class TestBundleScopeRespectedByResolver:
         # No-filter run with this bundle must execute ONLY
         # erp_suppliers — no dim_supplier, no dim_account, no
         # supplier_spend, no other pack node.
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack_plan_resolver import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack_plan_resolver import (
             resolve_content_pack_plan,
         )
         plan = resolve_content_pack_plan(
@@ -380,14 +380,14 @@ class TestBundleScopeRespectedByResolver:
         """An author who explicitly writes ``dimensions: { build:
         [dim_supplier] }`` opts INTO the legacy contract; that id
         folds into scope."""
-        from oracle_ai_data_platform_fusion_bundle.schema.bundle import Bundle
-        from oracle_ai_data_platform_fusion_bundle.orchestrator import (
+        from oracle_ai_data_platform_fusion_autopilot.schema.bundle import Bundle
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator import (
             _effective_bundle_scope,
         )
         import yaml as _yaml
 
         bundle = Bundle.model_validate(_yaml.safe_load(
-            "apiVersion: aidp-fusion-bundle/v1\n"
+            "apiVersion: aidp-fusion-autopilot/v1\n"
             "project: explicit-legacy-test\n"
             "fusion:\n  serviceUrl: https://example.com\n  username: u\n"
             "  password: p\n  externalStorage: s\n"
@@ -409,14 +409,14 @@ class TestBundleScopeRespectedByResolver:
         empty list) opts INTO the legacy contract but contributes no
         scope ids. ``model_fields_set`` includes ``dimensions`` so the
         helper sees the authored block; the empty list folds nothing."""
-        from oracle_ai_data_platform_fusion_bundle.schema.bundle import Bundle
-        from oracle_ai_data_platform_fusion_bundle.orchestrator import (
+        from oracle_ai_data_platform_fusion_autopilot.schema.bundle import Bundle
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator import (
             _effective_bundle_scope,
         )
         import yaml as _yaml
 
         bundle = Bundle.model_validate(_yaml.safe_load(
-            "apiVersion: aidp-fusion-bundle/v1\n"
+            "apiVersion: aidp-fusion-autopilot/v1\n"
             "project: explicit-empty-legacy-test\n"
             "fusion:\n  serviceUrl: https://example.com\n  username: u\n"
             "  password: p\n  externalStorage: s\n"
@@ -440,11 +440,11 @@ class TestBundleScopeRespectedByResolver:
         (a bronze sibling that's NOT in bundle.datasets[]).
         Pre-fix behavior treated every pack node as a root and would
         have returned the full pack."""
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack_plan_resolver import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack_plan_resolver import (
             resolve_content_pack_plan,
         )
         bundle, _ = self._bundle(tmp_path, ["erp_suppliers"])
-        from oracle_ai_data_platform_fusion_bundle.orchestrator import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator import (
             _effective_bundle_scope,
         )
         scope = _effective_bundle_scope(bundle)
@@ -464,11 +464,11 @@ class TestBundleScopeRespectedByResolver:
         """A bundle declaring supplier_spend (gold) must execute it
         PLUS D-1 transitive deps — but NOT gl_journal_lines (a sibling
         pack node that's not in scope)."""
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack_plan_resolver import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack_plan_resolver import (
             resolve_content_pack_plan,
         )
         bundle, _ = self._bundle(tmp_path, ["supplier_spend"])
-        from oracle_ai_data_platform_fusion_bundle.orchestrator import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator import (
             _effective_bundle_scope,
         )
         scope = _effective_bundle_scope(bundle)
@@ -492,13 +492,13 @@ class TestBundleScopeRespectedByResolver:
         """CLI ``--datasets gl_journal_lines`` against a bundle whose
         datasets=[erp_suppliers] must raise AIDPF-1043 — the operator
         cannot smuggle in undeclared roots via the CLI."""
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack_plan_resolver import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack_plan_resolver import (
             resolve_content_pack_plan,
             CliDatasetOutsideBundleScopeError,
             AIDPF_1043_CLI_DATASET_OUTSIDE_BUNDLE_SCOPE,
         )
         bundle, _ = self._bundle(tmp_path, ["erp_suppliers"])
-        from oracle_ai_data_platform_fusion_bundle.orchestrator import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator import (
             _effective_bundle_scope,
         )
         scope = _effective_bundle_scope(bundle)
@@ -520,12 +520,12 @@ class TestBundleScopeRespectedByResolver:
         and returns empty prereqs — every materializable dep is in
         the plan.
         """
-        from oracle_ai_data_platform_fusion_bundle.config.paths import TablePaths
-        from oracle_ai_data_platform_fusion_bundle.orchestrator import (
+        from oracle_ai_data_platform_fusion_autopilot.config.paths import TablePaths
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator import (
             _build_content_pack_dry_run_plan,
             _effective_bundle_scope,
         )
-        from oracle_ai_data_platform_fusion_bundle.schema.plan_resolver import (
+        from oracle_ai_data_platform_fusion_autopilot.schema.plan_resolver import (
             resolve_dry_run_plan,
         )
 
@@ -575,12 +575,12 @@ class TestBronzeTableForSourceUsesNodeTarget:
         """Validate the precondition: the starter pack still ships an
         id/target mismatch that exercises this code path."""
         import pathlib
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack import (
             load_pack,
         )
         here = pathlib.Path(__file__).parent.parent.parent
         starter = (
-            here / "scripts" / "oracle_ai_data_platform_fusion_bundle"
+            here / "scripts" / "oracle_ai_data_platform_fusion_autopilot"
             / "content_packs" / "fusion-finance-starter"
         )
         if not starter.is_dir():
@@ -598,7 +598,7 @@ class TestBronzeTableForSourceUsesNodeTarget:
         """The map's KEY is the node id; the VALUE is built from
         ``paths.bronze(node.target)``. For gl_journal_lines, the value
         must be ``cat.bronze.gl_journal_headers``."""
-        from oracle_ai_data_platform_fusion_bundle.config.paths import TablePaths
+        from oracle_ai_data_platform_fusion_autopilot.config.paths import TablePaths
 
         paths = TablePaths(
             catalog="cat",
@@ -632,14 +632,14 @@ class TestStrictScopeWiredEndToEnd:
         """CLI --strict-scope must thread to dispatch_via_rest(...)."""
         from unittest.mock import patch
         from click.testing import CliRunner
-        from oracle_ai_data_platform_fusion_bundle import cli
-        from oracle_ai_data_platform_fusion_bundle.schema.run_summary import RunSummary
+        from oracle_ai_data_platform_fusion_autopilot import cli
+        from oracle_ai_data_platform_fusion_autopilot.schema.run_summary import RunSummary
 
         # Minimal bundle without a content pack (legacy path) so we
         # don't have to set up profile/pack/snapshot — Phase 9 still
         # routes through dispatch_via_rest with strict_scope.
         bundle_yaml = """\
-apiVersion: aidp-fusion-bundle/v1
+apiVersion: aidp-fusion-autopilot/v1
 project: strict-scope-cli-test
 fusion:
   serviceUrl: https://example.com
@@ -654,7 +654,7 @@ aidp:
 datasets: []
 """
         config_yaml = """\
-apiVersion: aidp-fusion-bundle/v1
+apiVersion: aidp-fusion-autopilot/v1
 project: strict-scope-cli-test
 defaults:
   region: us-phoenix-1
@@ -680,7 +680,7 @@ environments:
             )
 
         with patch(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.dispatch_via_rest",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.dispatch_via_rest",
             side_effect=_fake_dispatch,
         ):
             result = CliRunner().invoke(
@@ -711,11 +711,11 @@ environments:
         run) / treated as falsy by the resolver — not collapsed at the CLI."""
         from unittest.mock import patch
         from click.testing import CliRunner
-        from oracle_ai_data_platform_fusion_bundle import cli
-        from oracle_ai_data_platform_fusion_bundle.schema.run_summary import RunSummary
+        from oracle_ai_data_platform_fusion_autopilot import cli
+        from oracle_ai_data_platform_fusion_autopilot.schema.run_summary import RunSummary
 
         bundle_yaml = """\
-apiVersion: aidp-fusion-bundle/v1
+apiVersion: aidp-fusion-autopilot/v1
 project: strict-scope-cli-default
 fusion:
   serviceUrl: https://example.com
@@ -730,7 +730,7 @@ aidp:
 datasets: []
 """
         config_yaml = """\
-apiVersion: aidp-fusion-bundle/v1
+apiVersion: aidp-fusion-autopilot/v1
 project: strict-scope-cli-default
 defaults:
   region: us-phoenix-1
@@ -756,7 +756,7 @@ environments:
             )
 
         with patch(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.dispatch_via_rest",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.dispatch_via_rest",
             side_effect=_fake,
         ):
             result = CliRunner().invoke(
@@ -786,15 +786,15 @@ environments:
         inside the fake build_notebook so the test doesn't have to mock
         the rest of the post-notebook upload+poll+marker flow."""
         from unittest.mock import patch
-        from oracle_ai_data_platform_fusion_bundle.dispatch import dispatch_via_rest
-        from oracle_ai_data_platform_fusion_bundle.dispatch.preflight import (
+        from oracle_ai_data_platform_fusion_autopilot.dispatch import dispatch_via_rest
+        from oracle_ai_data_platform_fusion_autopilot.dispatch.preflight import (
             PreflightResult,
         )
-        from oracle_ai_data_platform_fusion_bundle.schema.bundle import AidpConfig
+        from oracle_ai_data_platform_fusion_autopilot.schema.bundle import AidpConfig
 
         bundle_path = tmp_path / "bundle.yaml"
         bundle_path.write_text(
-            "apiVersion: aidp-fusion-bundle/v1\n"
+            "apiVersion: aidp-fusion-autopilot/v1\n"
             "project: strict-scope-disp\n"
             "fusion:\n"
             "  serviceUrl: https://x\n  username: u\n  password: p\n"
@@ -808,7 +808,7 @@ environments:
 
         config = AidpConfig.model_validate({
             "project": "strict-scope-disp",
-            "apiVersion": "aidp-fusion-bundle/v1",
+            "apiVersion": "aidp-fusion-autopilot/v1",
             "defaults": {"region": "us-phoenix-1", "workspaceRoot": "/Workspace"},
             "environments": {
                 "dev": {
@@ -832,18 +832,18 @@ environments:
         ok = [PreflightResult("x", "PASS", "ok", "")]
 
         with patch(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.run_local_preflight",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.run_local_preflight",
             return_value=ok,
         ), patch(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.run_remote_preflight",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.run_remote_preflight",
             return_value=ok,
         ), patch(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.AidpRestClient",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.AidpRestClient",
         ), patch(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.build_wheel",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.build_wheel",
             return_value=wheel,
         ), patch(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.build_notebook",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.build_notebook",
             side_effect=_fake_build_notebook,
         ):
             with pytest.raises(_StopAfterBuildNotebook):
@@ -864,7 +864,7 @@ environments:
         """build_notebook(strict_scope=True) must emit the literal
         ``strict_scope=True`` inside the generated orchestrator.run(...)
         call so the cluster honours the operator's opt-out."""
-        from oracle_ai_data_platform_fusion_bundle.dispatch.notebook_builder import (
+        from oracle_ai_data_platform_fusion_autopilot.dispatch.notebook_builder import (
             build_notebook,
         )
 
@@ -913,17 +913,17 @@ environments:
         as the inline path."""
         from unittest.mock import patch, MagicMock
         from pathlib import Path
-        from oracle_ai_data_platform_fusion_bundle.dispatch import dispatch_via_rest
-        from oracle_ai_data_platform_fusion_bundle.dispatch.preflight import (
+        from oracle_ai_data_platform_fusion_autopilot.dispatch import dispatch_via_rest
+        from oracle_ai_data_platform_fusion_autopilot.dispatch.preflight import (
             PreflightResult,
         )
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack import (
             load_pack,
         )
-        from oracle_ai_data_platform_fusion_bundle.schema.bundle import (
+        from oracle_ai_data_platform_fusion_autopilot.schema.bundle import (
             AidpConfig,
         )
-        from oracle_ai_data_platform_fusion_bundle.schema.errors import (
+        from oracle_ai_data_platform_fusion_autopilot.schema.errors import (
             MissingDependencyError,
         )
 
@@ -947,7 +947,7 @@ environments:
         # under strict_scope this is an AIDPF-1042 violation.
         bundle_path = tmp_path / "bundle.yaml"
         bundle_path.write_text(
-            "apiVersion: aidp-fusion-bundle/v1\n"
+            "apiVersion: aidp-fusion-autopilot/v1\n"
             "project: strict-scope-rest-dryrun\n"
             "fusion:\n"
             "  serviceUrl: https://x\n  username: u\n  password: p\n"
@@ -961,7 +961,7 @@ environments:
 
         config = AidpConfig.model_validate({
             "project": "strict-scope-rest-dryrun",
-            "apiVersion": "aidp-fusion-bundle/v1",
+            "apiVersion": "aidp-fusion-autopilot/v1",
             "defaults": {"region": "us-phoenix-1", "workspaceRoot": "/Workspace"},
             "environments": {
                 "dev": {
@@ -979,13 +979,13 @@ environments:
         # strict_scope=True with the undeclared erp_suppliers upstream
         # must raise AIDPF-1042 from the dispatch dry-run path.
         with patch(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.run_local_preflight",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.run_local_preflight",
             return_value=ok,
         ), patch(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.run_remote_preflight",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.run_remote_preflight",
             return_value=ok,
         ), patch(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.AidpRestClient",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.AidpRestClient",
             return_value=fake_client,
         ):
             with pytest.raises(MissingDependencyError, match="erp_suppliers"):
@@ -1003,14 +1003,14 @@ environments:
         must NOT raise — D-1 auto-includes the undeclared bronze dep
         so the operator sees the same plan as inline."""
         from unittest.mock import patch, MagicMock
-        from oracle_ai_data_platform_fusion_bundle.dispatch import dispatch_via_rest
-        from oracle_ai_data_platform_fusion_bundle.dispatch.preflight import (
+        from oracle_ai_data_platform_fusion_autopilot.dispatch import dispatch_via_rest
+        from oracle_ai_data_platform_fusion_autopilot.dispatch.preflight import (
             PreflightResult,
         )
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack import (
             load_pack,
         )
-        from oracle_ai_data_platform_fusion_bundle.schema.bundle import AidpConfig
+        from oracle_ai_data_platform_fusion_autopilot.schema.bundle import AidpConfig
 
         pack_root = tmp_path / "pack"
         pack_root.mkdir()
@@ -1028,7 +1028,7 @@ environments:
 
         bundle_path = tmp_path / "bundle.yaml"
         bundle_path.write_text(
-            "apiVersion: aidp-fusion-bundle/v1\n"
+            "apiVersion: aidp-fusion-autopilot/v1\n"
             "project: strict-scope-rest-default\n"
             "fusion:\n"
             "  serviceUrl: https://x\n  username: u\n  password: p\n"
@@ -1042,7 +1042,7 @@ environments:
 
         config = AidpConfig.model_validate({
             "project": "strict-scope-rest-default",
-            "apiVersion": "aidp-fusion-bundle/v1",
+            "apiVersion": "aidp-fusion-autopilot/v1",
             "defaults": {"region": "us-phoenix-1", "workspaceRoot": "/Workspace"},
             "environments": {
                 "dev": {
@@ -1057,13 +1057,13 @@ environments:
         fake_client = MagicMock()
 
         with patch(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.run_local_preflight",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.run_local_preflight",
             return_value=ok,
         ), patch(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.run_remote_preflight",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.run_remote_preflight",
             return_value=ok,
         ), patch(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.AidpRestClient",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.AidpRestClient",
             return_value=fake_client,
         ):
             # strict_scope omitted (default False) must succeed.
@@ -1103,15 +1103,15 @@ environments:
         is filtered to layer=silver, leaving the empty set.
         """
         from unittest.mock import patch, MagicMock
-        from oracle_ai_data_platform_fusion_bundle.dispatch import dispatch_via_rest
-        from oracle_ai_data_platform_fusion_bundle.dispatch.preflight import (
+        from oracle_ai_data_platform_fusion_autopilot.dispatch import dispatch_via_rest
+        from oracle_ai_data_platform_fusion_autopilot.dispatch.preflight import (
             PreflightResult,
         )
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack import (
             load_pack,
         )
-        from oracle_ai_data_platform_fusion_bundle.schema.bundle import AidpConfig
-        from oracle_ai_data_platform_fusion_bundle.schema.errors import (
+        from oracle_ai_data_platform_fusion_autopilot.schema.bundle import AidpConfig
+        from oracle_ai_data_platform_fusion_autopilot.schema.errors import (
             MissingDependencyError,
         )
 
@@ -1139,7 +1139,7 @@ environments:
 
         bundle_path = tmp_path / "bundle.yaml"
         bundle_path.write_text(
-            "apiVersion: aidp-fusion-bundle/v1\n"
+            "apiVersion: aidp-fusion-autopilot/v1\n"
             "project: layer-filter-empty\n"
             "fusion:\n"
             "  serviceUrl: https://x\n  username: u\n  password: p\n"
@@ -1153,7 +1153,7 @@ environments:
 
         config = AidpConfig.model_validate({
             "project": "layer-filter-empty",
-            "apiVersion": "aidp-fusion-bundle/v1",
+            "apiVersion": "aidp-fusion-autopilot/v1",
             "defaults": {"region": "us-phoenix-1", "workspaceRoot": "/Workspace"},
             "environments": {
                 "dev": {
@@ -1168,13 +1168,13 @@ environments:
         fake_client = MagicMock()
 
         with patch(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.run_local_preflight",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.run_local_preflight",
             return_value=ok,
         ), patch(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.run_remote_preflight",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.run_remote_preflight",
             return_value=ok,
         ), patch(
-            "oracle_ai_data_platform_fusion_bundle.dispatch.AidpRestClient",
+            "oracle_ai_data_platform_fusion_autopilot.dispatch.AidpRestClient",
             return_value=fake_client,
         ):
             with pytest.raises(MissingDependencyError, match="AIDPF-1045"):

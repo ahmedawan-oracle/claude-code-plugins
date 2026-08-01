@@ -6,18 +6,18 @@ from pathlib import Path
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.commands._config_helpers import (
+from oracle_ai_data_platform_fusion_autopilot.commands._config_helpers import (
     env_or_error,
     load_aidp_config,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.bundle import AidpConfig
-from oracle_ai_data_platform_fusion_bundle.schema.errors import (
+from oracle_ai_data_platform_fusion_autopilot.schema.bundle import AidpConfig
+from oracle_ai_data_platform_fusion_autopilot.schema.errors import (
     OrchestratorConfigError,
 )
 
 
 _GOOD_CONFIG = """\
-apiVersion: aidp-fusion-bundle/v1
+apiVersion: aidp-fusion-autopilot/v1
 project: test
 environments:
   dev:
@@ -52,7 +52,7 @@ class TestLoadAidpConfig:
         self, tmp_path: Path
     ) -> None:
         p = tmp_path / "bad.yaml"
-        p.write_text("apiVersion: aidp-fusion-bundle/v1\nproject: x\n")  # no environments
+        p.write_text("apiVersion: aidp-fusion-autopilot/v1\nproject: x\n")  # no environments
         with pytest.raises(OrchestratorConfigError, match="schema errors"):
             load_aidp_config(p)
 

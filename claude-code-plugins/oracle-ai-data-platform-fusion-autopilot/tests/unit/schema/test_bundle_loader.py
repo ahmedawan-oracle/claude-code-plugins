@@ -19,7 +19,7 @@ import pytest
 
 
 _MINIMAL_BUNDLE_TEMPLATE = """\
-apiVersion: aidp-fusion-bundle/v1
+apiVersion: aidp-fusion-autopilot/v1
 project: test-load-bundle
 fusion:
   serviceUrl: https://fusion.example.com
@@ -39,19 +39,19 @@ def _write_bundle(tmp_path: Path, password: str) -> Path:
 
 class TestLoadBundleIdentity:
     def test_runtime_re_export_is_schema_function(self) -> None:
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.runtime import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.runtime import (
             load_bundle as from_runtime,
         )
-        from oracle_ai_data_platform_fusion_bundle.schema.bundle import (
+        from oracle_ai_data_platform_fusion_autopilot.schema.bundle import (
             load_bundle as from_schema,
         )
         assert from_runtime is from_schema
 
     def test_render_env_vars_re_export_identity(self) -> None:
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.runtime import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.runtime import (
             _render_env_vars as from_runtime,
         )
-        from oracle_ai_data_platform_fusion_bundle.schema.bundle import (
+        from oracle_ai_data_platform_fusion_autopilot.schema.bundle import (
             _render_env_vars as from_schema,
         )
         assert from_runtime is from_schema
@@ -67,7 +67,7 @@ class TestVarContracts:
         # load_bundle. A real password value is what lands on the model.
         monkeypatch.setenv("FUSION_BICC_PASSWORD", "actual-password")
         bundle_path = _write_bundle(tmp_path, "${FUSION_BICC_PASSWORD}")
-        from oracle_ai_data_platform_fusion_bundle.schema.bundle import load_bundle
+        from oracle_ai_data_platform_fusion_autopilot.schema.bundle import load_bundle
 
         bundle, _ = load_bundle(bundle_path)
         assert bundle.fusion.password == "actual-password"
@@ -77,8 +77,8 @@ class TestVarContracts:
     ) -> None:
         monkeypatch.delenv("FUSION_BICC_PASSWORD", raising=False)
         bundle_path = _write_bundle(tmp_path, "${FUSION_BICC_PASSWORD}")
-        from oracle_ai_data_platform_fusion_bundle.schema.bundle import load_bundle
-        from oracle_ai_data_platform_fusion_bundle.schema.errors import BundleLoadError
+        from oracle_ai_data_platform_fusion_autopilot.schema.bundle import load_bundle
+        from oracle_ai_data_platform_fusion_autopilot.schema.errors import BundleLoadError
 
         with pytest.raises(BundleLoadError, match="FUSION_BICC_PASSWORD"):
             load_bundle(bundle_path)
@@ -91,7 +91,7 @@ class TestVarContracts:
         # separate (later) phase via _resolve_password.
         monkeypatch.delenv("UNSET_AT_LOAD_TIME", raising=False)
         bundle_path = _write_bundle(tmp_path, "${env:UNSET_AT_LOAD_TIME}")
-        from oracle_ai_data_platform_fusion_bundle.schema.bundle import load_bundle
+        from oracle_ai_data_platform_fusion_autopilot.schema.bundle import load_bundle
 
         bundle, _ = load_bundle(bundle_path)
         assert bundle.fusion.password == "${env:UNSET_AT_LOAD_TIME}"
@@ -101,7 +101,7 @@ class TestVarContracts:
         bundle_path = _write_bundle(
             tmp_path, "${vault:ocid1.vaultsecret.oc1.iad.example}"
         )
-        from oracle_ai_data_platform_fusion_bundle.schema.bundle import load_bundle
+        from oracle_ai_data_platform_fusion_autopilot.schema.bundle import load_bundle
 
         bundle, _ = load_bundle(bundle_path)
         assert (
@@ -111,8 +111,8 @@ class TestVarContracts:
 
 class TestFailureMessageWrapping:
     def test_missing_file_wrapped_as_bundle_load_error(self, tmp_path: Path) -> None:
-        from oracle_ai_data_platform_fusion_bundle.schema.bundle import load_bundle
-        from oracle_ai_data_platform_fusion_bundle.schema.errors import BundleLoadError
+        from oracle_ai_data_platform_fusion_autopilot.schema.bundle import load_bundle
+        from oracle_ai_data_platform_fusion_autopilot.schema.errors import BundleLoadError
 
         with pytest.raises(BundleLoadError, match="not found"):
             load_bundle(tmp_path / "does-not-exist.yaml")
@@ -122,8 +122,8 @@ class TestFailureMessageWrapping:
     ) -> None:
         bundle_path = tmp_path / "bundle.yaml"
         bundle_path.write_text("not: valid: yaml: at: all", encoding="utf-8")
-        from oracle_ai_data_platform_fusion_bundle.schema.bundle import load_bundle
-        from oracle_ai_data_platform_fusion_bundle.schema.errors import BundleLoadError
+        from oracle_ai_data_platform_fusion_autopilot.schema.bundle import load_bundle
+        from oracle_ai_data_platform_fusion_autopilot.schema.errors import BundleLoadError
 
         with pytest.raises(BundleLoadError, match="Malformed YAML"):
             load_bundle(bundle_path)

@@ -44,7 +44,7 @@ from datetime import datetime, timezone
 aidp_now = datetime.now(timezone.utc)
 
 # 2a. Fusion-side primary — BICC metadata after a no-op tiny-PVO extract
-from oracle_ai_data_platform_fusion_bundle.extractors import bicc as _bicc
+from oracle_ai_data_platform_fusion_autopilot.extractors import bicc as _bicc
 # Pick a tiny PVO (e.g. LookupTypeExtractPVO) and run a one-shot extract;
 # read the snapshot timestamp from the BICC response metadata.
 # (Exact field name + access pattern: confirm via the extractor's debug
@@ -55,7 +55,7 @@ from oracle_ai_data_platform_fusion_bundle.extractors import bicc as _bicc
 # capable of executing ad-hoc SQL. See docs/oac_rest_api_setup.md.)
 
 # 3. Skew assertion
-from oracle_ai_data_platform_fusion_bundle.orchestrator.runtime import WATERMARK_SAFETY_WINDOW
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.runtime import WATERMARK_SAFETY_WINDOW
 skew = abs(aidp_now - fusion_now)
 print(f"aidp_now = {aidp_now} (UTC)")
 print(f"fusion_now = {fusion_now} (UTC)")

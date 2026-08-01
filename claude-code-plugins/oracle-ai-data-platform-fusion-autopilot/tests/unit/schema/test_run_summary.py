@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.schema.run_summary import (
+from oracle_ai_data_platform_fusion_autopilot.schema.run_summary import (
     MARKER_SCHEMA_VERSION,
     PlanNode,
     RunStep,
@@ -187,13 +187,13 @@ class TestBackCompatReExport:
     ``isinstance`` checks keep working."""
 
     def test_runstep_identity_across_modules(self) -> None:
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.runtime import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.runtime import (
             RunStep as FromRuntime,
         )
         assert FromRuntime is RunStep
 
     def test_runsummary_identity_across_modules(self) -> None:
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.runtime import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.runtime import (
             RunSummary as FromRuntime,
         )
         assert FromRuntime is RunSummary

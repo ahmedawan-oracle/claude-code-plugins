@@ -1,5 +1,5 @@
 """Integration tests for the bootstrap variation phase
-(:mod:`oracle_ai_data_platform_fusion_bundle.commands.variation_phase`).
+(:mod:`oracle_ai_data_platform_fusion_autopilot.commands.variation_phase`).
 
 Drives the full pipeline (probe → walk → write profile + evidence) with
 an injected mock Spark and asserts:
@@ -27,18 +27,18 @@ from unittest.mock import MagicMock
 import pytest
 import yaml
 
-from oracle_ai_data_platform_fusion_bundle.commands.variation_phase import (
+from oracle_ai_data_platform_fusion_autopilot.commands.variation_phase import (
     VariationPhaseOptions,
     run_variation_phase,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.bundle import Bundle
+from oracle_ai_data_platform_fusion_autopilot.schema.bundle import Bundle
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PACK_ROOT = (
     REPO_ROOT
     / "scripts"
-    / "oracle_ai_data_platform_fusion_bundle"
+    / "oracle_ai_data_platform_fusion_autopilot"
     / "content_packs"
     / "fusion-finance-starter"
 )
@@ -86,7 +86,7 @@ def bundle_dir(tmp_path: Path) -> Path:
     bundle_yaml.write_text(
         yaml.safe_dump(
             {
-                "apiVersion": "aidp-fusion-bundle/v1",
+                "apiVersion": "aidp-fusion-autopilot/v1",
                 "version": "0.2.0",
                 "project": "test",
                 "fusion": {
@@ -340,11 +340,11 @@ class TestWorkdirAnchor:
 
 from datetime import datetime, timezone
 
-from oracle_ai_data_platform_fusion_bundle.schema.bronze_fingerprint import (
+from oracle_ai_data_platform_fusion_autopilot.schema.bronze_fingerprint import (
     ColumnInfo,
     compute_bronze_fingerprint,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.bronze_schema_snapshot import (
+from oracle_ai_data_platform_fusion_autopilot.schema.bronze_schema_snapshot import (
     from_observed as snapshot_from_observed,
     load_bronze_schema_snapshot,
     resolve_snapshot_path,
@@ -603,7 +603,7 @@ class TestPhase3dRefreshBackfill:
         assert "back-filled" in outcome2.summary
         # Snapshot is now self-consistent again.
         loaded = load_bronze_schema_snapshot(snapshot_path)
-        from oracle_ai_data_platform_fusion_bundle.schema.bronze_schema_snapshot import (
+        from oracle_ai_data_platform_fusion_autopilot.schema.bronze_schema_snapshot import (
             snapshot_to_observed,
         )
         assert compute_bronze_fingerprint(
@@ -659,7 +659,7 @@ class TestPhase3dRefreshBackfill:
         """
         from unittest.mock import MagicMock
 
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.preflight_evidence import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.preflight_evidence import (
             check_bronze_fingerprint_drift,
         )
 
@@ -716,7 +716,7 @@ class TestPhase3dRefreshBackfill:
         # exist) and emitted empty datasetDeltas. With the fix, it
         # keys on bundle.contentPack.profile="finance-default" and
         # finds the back-filled snapshot — populating datasetDeltas.
-        from oracle_ai_data_platform_fusion_bundle.schema.tenant_profile import (
+        from oracle_ai_data_platform_fusion_autopilot.schema.tenant_profile import (
             load_tenant_profile,
         )
 
@@ -821,8 +821,8 @@ class TestFreshTenantSourceProbe:
         bundle_dir: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from oracle_ai_data_platform_fusion_bundle.commands import bronze_probe
-        from oracle_ai_data_platform_fusion_bundle.schema.bronze_fingerprint import (
+        from oracle_ai_data_platform_fusion_autopilot.commands import bronze_probe
+        from oracle_ai_data_platform_fusion_autopilot.schema.bronze_fingerprint import (
             ColumnInfo,
         )
 
@@ -891,10 +891,10 @@ from io import StringIO
 
 from rich.console import Console
 
-from oracle_ai_data_platform_fusion_bundle.commands import (
+from oracle_ai_data_platform_fusion_autopilot.commands import (
     coa_advisory as coa_advisory_module,
 )
-from oracle_ai_data_platform_fusion_bundle.commands.coa_advisory import (
+from oracle_ai_data_platform_fusion_autopilot.commands.coa_advisory import (
     CoaAdvisoryResult,
 )
 

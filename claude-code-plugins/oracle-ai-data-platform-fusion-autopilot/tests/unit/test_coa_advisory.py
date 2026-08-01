@@ -16,13 +16,13 @@ from types import SimpleNamespace
 import pytest
 import requests
 
-from oracle_ai_data_platform_fusion_bundle.commands.coa_advisory import (
+from oracle_ai_data_platform_fusion_autopilot.commands.coa_advisory import (
     CoaAdvisoryResult,
     _enabled_flag,
     compare_charts,
     run_coa_advisory,
 )
-from oracle_ai_data_platform_fusion_bundle.extractors.rest import (
+from oracle_ai_data_platform_fusion_autopilot.extractors.rest import (
     DeadlineExceeded,
     fetch_first,
     fetch_paged,

@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.oac.rest.connection import (
+from oracle_ai_data_platform_fusion_autopilot.oac.rest.connection import (
     AidpConnectionPayload,
     build_dsn,
     build_payload,

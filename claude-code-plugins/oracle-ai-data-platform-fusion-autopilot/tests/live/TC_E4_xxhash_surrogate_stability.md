@@ -1,8 +1,8 @@
-# TC-E4 — P1.19 xxhash64 surrogate-key stability on `fusion_bundle_dev`
+# TC-E4 — P1.19 xxhash64 surrogate-key stability on `fusion_autopilot_dev`
 
 **Test case ID**: TC-E4 (corresponds to plan item E4 — surrogate-key stability live evidence).
 **Stage E plan item**: E4 (`docs/features/p1.17-incremental-merge/plan.md`).
-**Status**: ✅ **EXECUTED 2026-06-02** on `fusion_bundle_dev` cluster.
+**Status**: ✅ **EXECUTED 2026-06-02** on `fusion_autopilot_dev` cluster.
 
 ## What this verifies
 
@@ -59,12 +59,12 @@ The same surrogate-stability contract is also pinned by the unit test
 
 - `docs/features/p1.17-incremental-merge/plan.md` §B9 — P1.19 surrogate-key contract.
 - `tests/unit/test_p117_builder_merge_sql.py::TestSurrogateKeyStabilityShape` — unit-level SQL-shape pin.
-- `scripts/oracle_ai_data_platform_fusion_bundle/dimensions/dim_supplier.py` — surrogate SQL line.
-- `scripts/oracle_ai_data_platform_fusion_bundle/dimensions/dim_account.py` — same swap for `dim_account.account_key` (covered transitively because the same SQL renderer pattern is used).
+- `scripts/oracle_ai_data_platform_fusion_autopilot/dimensions/dim_supplier.py` — surrogate SQL line.
+- `scripts/oracle_ai_data_platform_fusion_autopilot/dimensions/dim_account.py` — same swap for `dim_account.account_key` (covered transitively because the same SQL renderer pattern is used).
 
 ## Dispatch metadata (redacted)
 
 - AIDP wheel: P1.17 head (built fresh on dispatch).
-- Cluster: `fusion_bundle_dev` (ACTIVE state at dispatch time).
+- Cluster: `fusion_autopilot_dev` (ACTIVE state at dispatch time).
 - Workspace path: `/Workspace/Shared/p1.17-stage-e/e4_xxhash_stability.ipynb`.
 - jobKey / jobRunKey / taskRunKey: operator-redacted.

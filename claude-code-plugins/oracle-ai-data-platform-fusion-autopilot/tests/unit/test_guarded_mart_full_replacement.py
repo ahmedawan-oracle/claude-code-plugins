@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack import (
     AIDPF_2001,
     AIDPF_2064_FORK_BASE_DRIFT,
     AIDPF_2065_REPLACE_NODE_IDENTITY,
@@ -25,7 +25,7 @@ from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack import (
     load_pack,
     merge_overlay,
 )
-from oracle_ai_data_platform_fusion_bundle.orchestrator.sql_renderer import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.sql_renderer import (
     compute_contract_fingerprint,
     compute_fork_fingerprint,
 )
@@ -281,7 +281,7 @@ def test_depends_on_normalization_is_layer_aware() -> None:
     different edge — a `silver/foo` move can't be mistaken for `bronze/foo`."""
     from types import SimpleNamespace
 
-    from oracle_ai_data_platform_fusion_bundle.schema.medallion_pack import (
+    from oracle_ai_data_platform_fusion_autopilot.schema.medallion_pack import (
         DependsOn,
         SourceRef,
         WatermarkSpec,
@@ -474,7 +474,7 @@ _BUILTIN_NODE = {
     "layer": "silver",
     "implementation": {
         "type": "builtin",
-        "callable": "oracle_ai_data_platform_fusion_bundle.dimensions.dim_calendar:build",
+        "callable": "oracle_ai_data_platform_fusion_autopilot.dimensions.dim_calendar:build",
     },
     "target": "dim_calendar",
     "dependsOn": {"bronze": [], "silver": []},
@@ -528,7 +528,7 @@ def test_replace_node_on_builtin_fails_closed(tmp_path: Path) -> None:
 
 
 def test_replace_node_mutually_exclusive() -> None:
-    from oracle_ai_data_platform_fusion_bundle.schema.medallion_pack import OverrideEntry
+    from oracle_ai_data_platform_fusion_autopilot.schema.medallion_pack import OverrideEntry
 
     fk = {"sqlSha256": "a", "contractSha256": "b", "packVersion": "1"}
     with pytest.raises(Exception) as exc:
@@ -539,7 +539,7 @@ def test_replace_node_mutually_exclusive() -> None:
 
 
 def test_replace_node_blank_reason_rejected() -> None:
-    from oracle_ai_data_platform_fusion_bundle.schema.medallion_pack import OverrideEntry
+    from oracle_ai_data_platform_fusion_autopilot.schema.medallion_pack import OverrideEntry
 
     fk = {"sqlSha256": "a", "contractSha256": "b", "packVersion": "1"}
     with pytest.raises(Exception) as exc:
@@ -548,7 +548,7 @@ def test_replace_node_blank_reason_rejected() -> None:
 
 
 def test_forked_from_blank_fingerprint_rejected() -> None:
-    from oracle_ai_data_platform_fusion_bundle.schema.medallion_pack import OverrideEntry
+    from oracle_ai_data_platform_fusion_autopilot.schema.medallion_pack import OverrideEntry
 
     with pytest.raises(Exception) as exc:
         OverrideEntry.model_validate(

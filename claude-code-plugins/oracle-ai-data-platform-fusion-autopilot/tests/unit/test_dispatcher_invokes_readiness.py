@@ -23,18 +23,18 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.orchestrator import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator import (
     _run_content_pack_backend,
 )
-from oracle_ai_data_platform_fusion_bundle.orchestrator.bronze_readiness import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.bronze_readiness import (
     AIDPF_2071_BRONZE_READINESS_GATE_FAILED,
     BronzeReadinessGateError,
 )
-from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack import (
     load_full_chain,
     make_filesystem_base_resolver,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.tenant_profile import (
+from oracle_ai_data_platform_fusion_autopilot.schema.tenant_profile import (
     load_tenant_profile,
 )
 from pathlib import Path
@@ -63,13 +63,13 @@ class TestDispatcherInvokesReadinessGate:
         run → bronze pre-exists) auto-fires the readiness gate even with
         ``enable_bronze_readiness_gate=False`` — to validate the landed
         bronze tables before any mart runs."""
-        from oracle_ai_data_platform_fusion_bundle.orchestrator import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator import (
             bronze_readiness, sql_runner,
         )
-        from oracle_ai_data_platform_fusion_bundle.orchestrator import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator import (
             state as v1_state, state_phase2,
         )
-        import oracle_ai_data_platform_fusion_bundle.orchestrator as _o
+        import oracle_ai_data_platform_fusion_autopilot.orchestrator as _o
 
         gate_calls = []
         # Stub to record + pass (don't run the real DESCRIBE against the mock).
@@ -78,7 +78,7 @@ class TestDispatcherInvokesReadinessGate:
             lambda *a, **kw: gate_calls.append(kw),
         )
 
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.sql_runner import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.sql_runner import (
             NodeExecutionResult,
         )
         monkeypatch.setattr(
@@ -113,7 +113,7 @@ class TestDispatcherInvokesReadinessGate:
     def test_gate_NOT_invoked_in_dry_run(self, monkeypatch, pack, profile) -> None:
         """``dry_run=True`` MUST skip the gate — no Spark DESCRIBE work
         during planning."""
-        from oracle_ai_data_platform_fusion_bundle.orchestrator import bronze_readiness
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator import bronze_readiness
 
         gate_calls = []
         monkeypatch.setattr(
@@ -142,11 +142,11 @@ class TestDispatcherInvokesReadinessGate:
         appends a synthetic gate-failure RunStep, and RETURNS the
         summary. No silver/gold state row is written for any node.
         """
-        from oracle_ai_data_platform_fusion_bundle.orchestrator import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator import (
             bronze_readiness, sql_runner, state as v1_state, state_phase2,
         )
-        import oracle_ai_data_platform_fusion_bundle.orchestrator as _o
-        from oracle_ai_data_platform_fusion_bundle.orchestrator.sql_runner import (
+        import oracle_ai_data_platform_fusion_autopilot.orchestrator as _o
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator.sql_runner import (
             NodeExecutionResult,
         )
 
@@ -206,19 +206,19 @@ class TestMartOnlyDetection:
     bronze is NOT re-seeded; the readiness gate validates landed tables."""
 
     def test_silver_gold_layers_is_mart_only(self):
-        from oracle_ai_data_platform_fusion_bundle.orchestrator import _is_mart_only_run
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator import _is_mart_only_run
         assert _is_mart_only_run(["silver", "gold"]) is True
         assert _is_mart_only_run(["silver"]) is True
         assert _is_mart_only_run(["gold"]) is True
 
     def test_bronze_in_layers_is_not_mart_only(self):
-        from oracle_ai_data_platform_fusion_bundle.orchestrator import _is_mart_only_run
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator import _is_mart_only_run
         # bronze requested → full run → bronze IS seeded
         assert _is_mart_only_run(["bronze", "silver", "gold"]) is False
         assert _is_mart_only_run(["bronze"]) is False  # bronze-only
 
     def test_no_layer_filter_is_not_mart_only(self):
-        from oracle_ai_data_platform_fusion_bundle.orchestrator import _is_mart_only_run
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator import _is_mart_only_run
         # None / empty = all layers = full run
         assert _is_mart_only_run(None) is False
         assert _is_mart_only_run([]) is False

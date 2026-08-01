@@ -1,6 +1,6 @@
 # Laptop-CLI REST dispatch — operator setup
 
-> **Scope**: setup notes for `aidp-fusion-bundle run --mode seed` (no `--inline`) — the laptop-terminal path that dispatches the orchestrator notebook to a live AIDP cluster over signed REST.
+> **Scope**: setup notes for `aidp-fusion-autopilot run --mode seed` (no `--inline`) — the laptop-terminal path that dispatches the orchestrator notebook to a live AIDP cluster over signed REST.
 >
 > For in-notebook execution (the `--inline` path), no OCI setup is needed — the AIDP runtime injects `spark`, `aidputils`, and credentials as globals.
 
@@ -9,7 +9,7 @@
 ```
 laptop terminal                          AIDP cluster
 ┌─────────────────────────────┐          ┌──────────────────────────┐
-│  aidp-fusion-bundle run     │          │  Spark + orchestrator    │
+│  aidp-fusion-autopilot run     │          │  Spark + orchestrator    │
 │    --mode seed --env dev    │   REST   │  (bronze → silver → gold)│
 │                             │   ───→   │                          │
 │  ├─ load bundle.yaml        │          │  emits AIDP_LIVE_TEST_   │
@@ -41,7 +41,7 @@ This opens a browser SSO flow. The CLI drops the token + key under `~/.oci/sessi
 oci session refresh --profile AIDP_SESSION
 ```
 
-`aidp-fusion-bundle`'s preflight runs `oci session validate --profile <name>` and surfaces a copy-paste `oci session refresh` hint if the token is expired.
+`aidp-fusion-autopilot`'s preflight runs `oci session validate --profile <name>` and surfaces a copy-paste `oci session refresh` hint if the token is expired.
 
 #### (b) API-key profile (for unattended / CI usage)
 
@@ -85,7 +85,7 @@ environments:
     # Dispatch coords (P1.5ε)
     aiDataPlatformId: ocid1.datalake.oc1.iad.<tenancy-specific>
     clusterKey: <cluster-uuid>
-    clusterName: fusion_bundle_dev
+    clusterName: fusion_autopilot_dev
     biccSecretName: fusion_bicc_password   # optional; defaults to "fusion_bicc_password"
     biccSecretKey: password                # optional; defaults to "password"
 ```
@@ -118,7 +118,7 @@ The notebook's creds-cell calls `aidputils.secrets.get(name=<biccSecretName>, ke
 ## First run
 
 ```bash
-$ aidp-fusion-bundle run --mode seed --env dev
+$ aidp-fusion-autopilot run --mode seed --env dev
 [preflight] PASS bundle.yaml: loaded bundle.yaml
 [preflight] PASS aidp.config.yaml dispatch coords: all dispatch coords present for env='dev'
 [preflight] PASS OCI profile: session-token profile 'AIDP_SESSION' valid
@@ -126,7 +126,7 @@ $ aidp-fusion-bundle run --mode seed --env dev
 [preflight] PASS BICC credential: credential 'fusion_bicc_password' present in AIDP store
 [preflight] PASS cluster state: cluster '...' ACTIVE
 [dispatch] wheel cache hit
-[dispatch] notebook uploaded to /Workspace/Shared/aidp-fusion-bundle-<project>/run.ipynb
+[dispatch] notebook uploaded to /Workspace/Shared/aidp-fusion-autopilot-<project>/run.ipynb
 [dispatch] jobKey=...
 [dispatch] jobRunKey=...
 [dispatch] status=PENDING
@@ -148,10 +148,10 @@ Test the wiring without burning a full cluster cold-start + extract:
 
 ```bash
 # Preflight + plan resolution; no wheel build, no upload, no dispatch.
-aidp-fusion-bundle run --mode seed --env dev --dry-run
+aidp-fusion-autopilot run --mode seed --env dev --dry-run
 
 # Validate the bundle without touching AIDP at all.
-aidp-fusion-bundle validate
+aidp-fusion-autopilot validate
 ```
 
 Sample `--dry-run` output (P1.5ε-fix9 lands the laptop-side plan rendering — pre-fix9 the REST path returned `Empty plan` even for non-empty bundles):

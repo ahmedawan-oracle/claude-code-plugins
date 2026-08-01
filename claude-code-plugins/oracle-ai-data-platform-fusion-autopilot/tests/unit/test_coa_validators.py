@@ -9,8 +9,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack import load_pack
-from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack_validators import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack import load_pack
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack_validators import (
     AIDPF_2014_COA_ROLE_AS_EXISTENCE_ALIAS,
     AIDPF_2015_COA_BINDING_OUT_OF_CONTRACT,
     validate_coa_semantic_roles,
@@ -19,7 +19,7 @@ from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack_validators 
 PACK_ROOT = (
     Path(__file__).resolve().parents[2]
     / "scripts"
-    / "oracle_ai_data_platform_fusion_bundle"
+    / "oracle_ai_data_platform_fusion_autopilot"
     / "content_packs"
     / "fusion-finance-starter"
 )

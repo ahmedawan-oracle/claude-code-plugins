@@ -3,12 +3,12 @@
 
 Cross-references the two truth sources into one honest per-node health view:
 
-  * **state rows** — ``fusion_bundle_state`` (latest per dataset): what the
+  * **state rows** — ``fusion_autopilot_state`` (latest per dataset): what the
     orchestrator *recorded* (last_run_at, status, row_count, skip_reason);
   * **live tables** — what is *actually materialized* in the catalog (exists,
     row_count), from a cluster probe.
 
-Why both: ``fusion_bundle_state`` is run metadata, NOT the physical tables — a
+Why both: ``fusion_autopilot_state`` is run metadata, NOT the physical tables — a
 ``success`` row can sit next to a dropped/empty mart, and a table can exist
 with no state row. Health keys off **the live table as evidence**, with the
 state row as the run-history overlay — same discipline the seed guard and the
@@ -42,7 +42,7 @@ import sys
 
 # Audit/probe tables that are never real marts — excluded from UNTRACKED noise.
 _NON_MART = frozenset({
-    "fusion_bundle_state", "fusion_bundle_state_latest", "fusion_bundle_state_test",
+    "fusion_autopilot_state", "fusion_autopilot_state_latest", "fusion_autopilot_state_test",
 })
 # Classes that need an operator's attention.
 _ATTENTION = frozenset({"STALE", "FAILED", "UNTRACKED", "NEVER_RUN"})

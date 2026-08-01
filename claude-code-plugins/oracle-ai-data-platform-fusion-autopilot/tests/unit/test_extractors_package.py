@@ -20,11 +20,11 @@ import sys
 
 def test_extractors_submodules_importable_without_mocks() -> None:
     code = (
-        "from oracle_ai_data_platform_fusion_bundle import extractors\n"
+        "from oracle_ai_data_platform_fusion_autopilot import extractors\n"
         "assert hasattr(extractors, 'bicc'), 'extractors.bicc not auto-imported'\n"
         "assert hasattr(extractors, 'rest'), 'extractors.rest not auto-imported'\n"
         "assert hasattr(extractors, 'saas_batch_rest'), 'extractors.saas_batch_rest not auto-imported'\n"
-        "from oracle_ai_data_platform_fusion_bundle.extractors import bicc\n"
+        "from oracle_ai_data_platform_fusion_autopilot.extractors import bicc\n"
         "assert callable(bicc.extract_pvo), 'bicc.extract_pvo not callable'\n"
     )
     result = subprocess.run(

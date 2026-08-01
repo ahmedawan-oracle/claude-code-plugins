@@ -14,11 +14,11 @@ from __future__ import annotations
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.orchestrator import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator import (
     _natural_key_join_sql as v1_natural_key,
     _payload_diff_predicate_sql as v1_payload_diff,
 )
-from oracle_ai_data_platform_fusion_bundle.orchestrator import merge_helpers
+from oracle_ai_data_platform_fusion_autopilot.orchestrator import merge_helpers
 
 
 # ---------------------------------------------------------------------------
@@ -34,7 +34,7 @@ class TestReExports:
         assert merge_helpers._payload_diff_predicate_sql is v1_payload_diff
 
     def test_ensure_target_schema_for_merge_re_exported(self) -> None:
-        from oracle_ai_data_platform_fusion_bundle.orchestrator import state as state_mod
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator import state as state_mod
         assert (
             merge_helpers._ensure_target_schema_for_merge
             is state_mod._ensure_target_schema_for_merge
@@ -84,7 +84,7 @@ class TestPublicWrappers:
         assert pred == "target.payload_col IS DISTINCT FROM src.payload_col"
 
     def test_build_payload_diff_predicate_all_audit_returns_none(self) -> None:
-        from oracle_ai_data_platform_fusion_bundle.orchestrator import (
+        from oracle_ai_data_platform_fusion_autopilot.orchestrator import (
             BRONZE_AUDIT_COLUMNS,
         )
         assert (

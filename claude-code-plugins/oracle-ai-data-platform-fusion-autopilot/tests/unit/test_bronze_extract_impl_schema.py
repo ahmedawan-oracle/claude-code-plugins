@@ -10,7 +10,7 @@ import logging
 import pytest
 from pydantic import ValidationError
 
-from oracle_ai_data_platform_fusion_bundle.schema.medallion_pack import (
+from oracle_ai_data_platform_fusion_autopilot.schema.medallion_pack import (
     AIDPF_2020_MERGE_NO_NATURAL_KEY,
     AIDPF_2050_MERGE_NO_WATERMARK,
     AIDPF_2080_BRONZE_EXTRACT_PVO_NOT_IN_CATALOG,

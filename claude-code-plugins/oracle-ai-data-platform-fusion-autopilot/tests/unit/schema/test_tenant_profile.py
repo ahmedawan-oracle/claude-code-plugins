@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.schema.tenant_profile import (
+from oracle_ai_data_platform_fusion_autopilot.schema.tenant_profile import (
     AIDPF_1050_TENANT_PROFILE_SCHEMA_MISMATCH,
     AIDPF_1051_TENANT_PROFILE_UNSUPPORTED_VERSION,
     TenantProfile,

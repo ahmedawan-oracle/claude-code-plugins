@@ -8,7 +8,7 @@ it as SKILL.md prose — the safety logic is load-bearing, so it must be pinned 
 a regression test (see ``tests/unit/test_seed_skill_guard.py``).
 
 The decision keys off **physical target-table facts**, never
-``fusion_bundle_state`` rows. Two fail-open traps this closes:
+``fusion_autopilot_state`` rows. Two fail-open traps this closes:
 
   1. **State ≠ tables.** ``status`` reads run metadata, not the marts. Empty /
      stale state must never read as "empty" while a populated table exists.

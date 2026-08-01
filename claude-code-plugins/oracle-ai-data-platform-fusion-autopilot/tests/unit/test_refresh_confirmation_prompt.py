@@ -26,19 +26,19 @@ from unittest.mock import MagicMock
 import pytest
 import yaml
 
-from oracle_ai_data_platform_fusion_bundle.commands.variation_phase import (
+from oracle_ai_data_platform_fusion_autopilot.commands.variation_phase import (
     RefreshRequiresConfirmation,
     VariationPhaseOptions,
     run_variation_phase,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.bundle import Bundle
+from oracle_ai_data_platform_fusion_autopilot.schema.bundle import Bundle
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PACK_ROOT = (
     REPO_ROOT
     / "scripts"
-    / "oracle_ai_data_platform_fusion_bundle"
+    / "oracle_ai_data_platform_fusion_autopilot"
     / "content_packs"
     / "fusion-finance-starter"
 )
@@ -70,7 +70,7 @@ def bundle_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     bundle_yaml.write_text(
         yaml.safe_dump(
             {
-                "apiVersion": "aidp-fusion-bundle/v1",
+                "apiVersion": "aidp-fusion-autopilot/v1",
                 "version": "0.2.0",
                 "project": "test",
                 "fusion": {
@@ -331,7 +331,7 @@ class TestRefreshScriptedAcceptance:
         )
 
         bundle = _load_bundle(bundle_dir / "bundle.yaml")
-        from oracle_ai_data_platform_fusion_bundle.schema.resolutions_input import (
+        from oracle_ai_data_platform_fusion_autopilot.schema.resolutions_input import (
             ResolutionsFileBadCandidate,
         )
         with pytest.raises(ResolutionsFileBadCandidate):

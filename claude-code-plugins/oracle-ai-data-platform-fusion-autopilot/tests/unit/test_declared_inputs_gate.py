@@ -15,14 +15,14 @@ from unittest.mock import MagicMock
 
 import yaml
 
-from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack import load_pack
-from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack_validators import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack import load_pack
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack_validators import (
     AIDPF_2084_UNDECLARED_INPUT,
     AIDPF_2085_UNQUALIFIED_UPSTREAM_COLUMN,
     collect_declared_input_warnings,
     validate_declared_inputs,
 )
-from oracle_ai_data_platform_fusion_bundle.orchestrator.sql_references import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.sql_references import (
     extract_upstream_reads,
 )
 
@@ -389,10 +389,10 @@ def test_semantic_symbol_resolves_into_live_required_column_union():
     # candidate's column, so it flows into the live required-column union that
     # bronze_readiness/fusion_pvo_drift assert — i.e. the read is no longer
     # invisible to the live gates.
-    from oracle_ai_data_platform_fusion_bundle.commands.content_pack import (
+    from oracle_ai_data_platform_fusion_autopilot.commands.content_pack import (
         _load_full_chain, resolve_pack_path,
     )
-    from oracle_ai_data_platform_fusion_bundle.orchestrator.required_column_resolver import (
+    from oracle_ai_data_platform_fusion_autopilot.orchestrator.required_column_resolver import (
         resolve_required_column_entries,
     )
     pack = _load_full_chain(resolve_pack_path("fusion-finance-starter"))
@@ -413,10 +413,10 @@ def test_semantic_variant_contract_holds_per_resolved_arm():
     # `cancelled_flag`-resolving profile correctly surfaces AIDPF-2045 for the
     # unbacked `ApInvoicesCancelledFlag` (the honest "extend the contract via a
     # bronze overlay" signal — not a silent gap).
-    from oracle_ai_data_platform_fusion_bundle.commands.content_pack import (
+    from oracle_ai_data_platform_fusion_autopilot.commands.content_pack import (
         _load_full_chain, resolve_pack_path,
     )
-    from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack_validators import (
+    from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack_validators import (
         AIDPF_2045_COLUMN_CONTRACT_MISMATCH, validate_column_contracts,
     )
     pack = _load_full_chain(resolve_pack_path("fusion-finance-starter"))
@@ -440,7 +440,7 @@ def test_semantic_variant_contract_holds_per_resolved_arm():
 
 
 def test_starter_pack_declared_inputs_clean():
-    from oracle_ai_data_platform_fusion_bundle.commands.content_pack import (
+    from oracle_ai_data_platform_fusion_autopilot.commands.content_pack import (
         _load_full_chain, resolve_pack_path,
     )
     pack = _load_full_chain(resolve_pack_path("fusion-finance-starter"))

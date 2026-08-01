@@ -111,7 +111,7 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--cluster-name", dest="cluster_name", default=None)
     p.add_argument(
         "--workspace-dir", dest="workspace_dir",
-        default="/Workspace/Shared/fusion-bundle-phase4-seed",
+        default="/Workspace/Shared/fusion-autopilot-phase4-seed",
         help="Server-side notebook upload root.",
     )
     p.add_argument(
@@ -266,7 +266,7 @@ def build_notebook(
 
     run_cell = (
         f'import time, json, traceback\n'
-        f'from oracle_ai_data_platform_fusion_bundle import orchestrator\n'
+        f'from oracle_ai_data_platform_fusion_autopilot import orchestrator\n'
         f'def _fmt_step(s):\n'
         f'    rc = s.row_count if s.row_count is not None else "-"\n'
         f'    em = (s.error_message or "")[:120]\n'
@@ -278,9 +278,9 @@ def build_notebook(
         f'payload = {{"backend": {backend!r}, "mode": {mode!r}}}\n'
         f'try:\n'
         f'    if {backend!r} == "content-pack":\n'
-        f'        from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack import load_full_chain\n'
-        f'        from oracle_ai_data_platform_fusion_bundle.schema.bundle import load_bundle, resolve_content_pack_root\n'
-        f'        from oracle_ai_data_platform_fusion_bundle.schema.tenant_profile import load_tenant_profile\n'
+        f'        from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack import load_full_chain\n'
+        f'        from oracle_ai_data_platform_fusion_autopilot.schema.bundle import load_bundle, resolve_content_pack_root\n'
+        f'        from oracle_ai_data_platform_fusion_autopilot.schema.tenant_profile import load_tenant_profile\n'
         f'        bundle_obj, _paths = load_bundle(BUNDLE_PATH)\n'
         f'        pack_root = resolve_content_pack_root(BUNDLE_PATH, bundle_obj.content_pack)\n'
         f'        resolved_pack = load_full_chain(pack_root)\n'
@@ -453,7 +453,7 @@ def _assert_ab_bundle_isolation(v1: Path, v2: Path) -> None:
     if v1_b == v2_b:
         issues.append(
             f"aidp.bronzeSchema identical ({v1_b!r}) — both backends "
-            "would write to the same fusion_bundle_state table and "
+            "would write to the same fusion_autopilot_state table and "
             "contaminate each other's state rows"
         )
     if v1_s == v2_s:

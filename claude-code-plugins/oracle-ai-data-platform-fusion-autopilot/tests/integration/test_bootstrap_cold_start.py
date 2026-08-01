@@ -35,7 +35,7 @@ def _invoke(home: Path):
     }
     env.pop("AIDP_FUSION_NO_AUTOINSTALL", None)
     return subprocess.run(
-        [sys.executable, "-m", "oracle_ai_data_platform_fusion_bundle", "--version"],
+        [sys.executable, "-m", "oracle_ai_data_platform_fusion_autopilot", "--version"],
         env=env, capture_output=True, text=True,
     )
 

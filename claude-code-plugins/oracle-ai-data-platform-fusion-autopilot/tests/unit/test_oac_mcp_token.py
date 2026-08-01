@@ -12,8 +12,8 @@ import stat
 from pathlib import Path
 
 import pytest
-from oracle_ai_data_platform_fusion_bundle.oac import mcp_token as mcp_token_mod
-from oracle_ai_data_platform_fusion_bundle.oac.mcp_token import (
+from oracle_ai_data_platform_fusion_autopilot.oac import mcp_token as mcp_token_mod
+from oracle_ai_data_platform_fusion_autopilot.oac.mcp_token import (
     PORTABLE_CONNECTOR_ARG,
     build_basic_auth_mcp_config,
     build_connector_config,
@@ -28,7 +28,7 @@ from oracle_ai_data_platform_fusion_bundle.oac.mcp_token import (
     write_connector_config_file,
     write_connector_token_file,
 )
-from oracle_ai_data_platform_fusion_bundle.oac.rest.oauth import TokenBundle
+from oracle_ai_data_platform_fusion_autopilot.oac.rest.oauth import TokenBundle
 
 
 class TestBundleToConnectorPayload:

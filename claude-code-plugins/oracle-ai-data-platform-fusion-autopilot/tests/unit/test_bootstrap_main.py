@@ -16,7 +16,7 @@ import threading
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle import __main__ as boot
+from oracle_ai_data_platform_fusion_autopilot import __main__ as boot
 
 
 @pytest.fixture
@@ -283,9 +283,9 @@ def _inject_fake_cli(monkeypatch):
     import types
 
     called = {}
-    fake = types.ModuleType("oracle_ai_data_platform_fusion_bundle.cli")
+    fake = types.ModuleType("oracle_ai_data_platform_fusion_autopilot.cli")
     fake.main = lambda **kw: called.update(kw) or called.setdefault("_ran", True)
-    monkeypatch.setitem(sys.modules, "oracle_ai_data_platform_fusion_bundle.cli", fake)
+    monkeypatch.setitem(sys.modules, "oracle_ai_data_platform_fusion_autopilot.cli", fake)
     return called
 
 
@@ -306,7 +306,7 @@ def test_main_bypasses_bootstrap_in_wheel_mode(monkeypatch, tmp_path):
     boot.main()
 
     assert called.get("_ran") is True
-    assert called.get("prog_name") == "aidp-fusion-bundle"
+    assert called.get("prog_name") == "aidp-fusion-autopilot"
 
 
 def test_main_bootstraps_in_source_mode(monkeypatch, tmp_path):

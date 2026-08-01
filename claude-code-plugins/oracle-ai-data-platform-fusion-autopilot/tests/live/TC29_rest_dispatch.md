@@ -4,11 +4,11 @@
 **Date**: 2026-06-03
 **Branch**: `oussama-dev-p1.5e` @ `fe41107` + cumulative dispatch fixes
 **Operator**: redacted
-**Cluster**: `fusion_bundle_dev` (UUID redacted)
+**Cluster**: `fusion_autopilot_dev` (UUID redacted)
 
 ## Scope
 
-End-to-end laptop-terminal dispatch via `aidp-fusion-bundle run --mode seed --env dev --datasets erp_suppliers` against the live `playground` workspace. Validates the P1.5ε dispatch layer (Steps 2–7) on real OCI signing, real AIDP control plane, real cluster auto-start, real wheel build + upload + job submit + poll. Marker-parse + RunSummary deserialization deferred — covered separately by `tests/unit/dispatch/test_dispatch_via_rest.py::test_full_round_trip_returns_run_summary` (in-process round-trip with synthetic marker payload).
+End-to-end laptop-terminal dispatch via `aidp-fusion-autopilot run --mode seed --env dev --datasets erp_suppliers` against the live `playground` workspace. Validates the P1.5ε dispatch layer (Steps 2–7) on real OCI signing, real AIDP control plane, real cluster auto-start, real wheel build + upload + job submit + poll. Marker-parse + RunSummary deserialization deferred — covered separately by `tests/unit/dispatch/test_dispatch_via_rest.py::test_full_round_trip_returns_run_summary` (in-process round-trip with synthetic marker payload).
 
 ## Pre-conditions
 
@@ -16,7 +16,7 @@ End-to-end laptop-terminal dispatch via `aidp-fusion-bundle run --mode seed --en
 - `aidp.config.yaml` populated with the five P1.5ε dispatch fields (`aiDataPlatformId`, `clusterKey`, `clusterName`, `biccSecretName`, `biccSecretKey`) under `environments.dev`. Operator's actual values held outside the repo at `/tmp/aidp.config.p15e.yaml`.
 - `bundle.yaml` narrow-scope projection (one bronze dataset `erp_suppliers`, no silver/gold) held outside the repo at `/tmp/bundle.p15e.yaml`. Real Fusion `serviceUrl`, BICC `username`, `externalStorage` profile name (operator-supplied per tenant), `password: ${env:FUSION_BICC_PASSWORD}` marker preserved literally through `load_bundle` and resolved cluster-side by the notebook's creds-cell via `aidputils.secrets.get(name="fusion_bicc_password", key="password")`.
 - AIDP credential-store entry `fusion_bicc_password` provisioned in the `playground` workspace.
-- `fusion_bundle_dev` cluster initially STOPPED — used to validate Phase B auto-start path.
+- `fusion_autopilot_dev` cluster initially STOPPED — used to validate Phase B auto-start path.
 
 ## Probe 1 — Phase A + B preflight + cluster auto-start (`--dry-run`)
 
@@ -49,7 +49,7 @@ First full-dispatch attempt aborted at `create_notebook_job` with HTTP 400:
 body={"code":"InvalidParameter","message":"Invalid resource name. Must start with letter and no special characters are allowed except for underscore, slash."}
 ```
 
-Root cause: dispatch entry point generated job name `aidp-fusion-bundle-<project>-<env>-<epoch>` with hyphens; AIDP's job-name grammar permits only letters, digits, underscores, slashes. Fixed `dispatch/__init__.py` to sanitize tokens with `[^a-zA-Z0-9] → _` and switched task key `orchestrator-run` → `orchestrator_run`. Test fixtures in `tests/unit/dispatch/test_dispatch_via_rest.py` updated to match; the dispatch suite stayed green (91 / 91).
+Root cause: dispatch entry point generated job name `aidp-fusion-autopilot-<project>-<env>-<epoch>` with hyphens; AIDP's job-name grammar permits only letters, digits, underscores, slashes. Fixed `dispatch/__init__.py` to sanitize tokens with `[^a-zA-Z0-9] → _` and switched task key `orchestrator-run` → `orchestrator_run`. Test fixtures in `tests/unit/dispatch/test_dispatch_via_rest.py` updated to match; the dispatch suite stayed green (91 / 91).
 
 **Empirical contract added to `AidpRestClient` operator notes**: job + task identifiers must match `^[A-Za-z][A-Za-z0-9_/]*$`. Skill consumers using `tc26_<scope>_<stamp>` (`fusion-tc26-run/dispatch.py:336`) were already compliant by accident.
 
@@ -64,9 +64,9 @@ PASS OCI profile: API-key profile 'DEFAULT' loaded
 PASS AIDP control plane: reachable; 8 cluster(s) visible
 PASS cluster state: cluster '<REDACTED-CLUSTER-UUID>' ACTIVE
 wheel cache miss (hash=cf813f08328b9891); running `python -m build`
-wheel cached: oracle_ai_data_platform_fusion_bundle-cf813f08328b9891.whl
-notebook_uploaded path=Workspace/Shared/aidp-fusion-bundle-p15e-smoke/run.ipynb
-notebook uploaded to /Workspace/Shared/aidp-fusion-bundle-p15e-smoke/run.ipynb
+wheel cached: oracle_ai_data_platform_fusion_autopilot-cf813f08328b9891.whl
+notebook_uploaded path=Workspace/Shared/aidp-fusion-autopilot-p15e-smoke/run.ipynb
+notebook uploaded to /Workspace/Shared/aidp-fusion-autopilot-p15e-smoke/run.ipynb
 job_created jobKey=<REDACTED-JOB-UUID>
 jobRun_submitted jobRunKey=<REDACTED-RUN-UUID>
 poll status=RUNNING
@@ -81,10 +81,10 @@ Cluster-side cell-output probe (via `AidpRestClient.fetch_output` + `extract_cel
 ```text
 cell 1 (install) — pip rc=1
   STDERR: ERROR: Invalid wheel filename (wrong number of parts):
-    "oracle_ai_data_platform_fusion_bundle-cf813f08328b9891"
+    "oracle_ai_data_platform_fusion_autopilot-cf813f08328b9891"
 ```
 
-Root cause: `dispatch/wheel_builder.py` cached the wheel under `<package>-<hash>.whl`, which violates PEP 427 (`name-version-pytag-abi-platform.whl`). Cluster-side `pip install --target` correctly refused. Fixed: namespace cache by hash subdirectory, preserve the original wheel filename (e.g. `~/.aidp/wheels/<hash>/oracle_ai_data_platform_fusion_bundle-0.1.0a0-py3-none-any.whl`). Unit test `test_first_build_invokes_subprocess_and_caches` updated; dispatch suite stayed green.
+Root cause: `dispatch/wheel_builder.py` cached the wheel under `<package>-<hash>.whl`, which violates PEP 427 (`name-version-pytag-abi-platform.whl`). Cluster-side `pip install --target` correctly refused. Fixed: namespace cache by hash subdirectory, preserve the original wheel filename (e.g. `~/.aidp/wheels/<hash>/oracle_ai_data_platform_fusion_autopilot-0.1.0a0-py3-none-any.whl`). Unit test `test_first_build_invokes_subprocess_and_caches` updated; dispatch suite stayed green.
 
 Validates (despite the cluster-side failure):
 
@@ -106,9 +106,9 @@ PASS OCI profile: API-key profile 'DEFAULT' loaded
 PASS AIDP control plane: reachable; 8 cluster(s) visible
 PASS cluster state: cluster '<REDACTED-CLUSTER-UUID>' ACTIVE
 wheel cache miss (hash=c42fd59957666b37); running `python -m build`
-wheel cached: c42fd59957666b37/oracle_ai_data_platform_fusion_bundle-0.1.0a0-py3-none-any.whl
-notebook_uploaded path=Workspace/Shared/aidp-fusion-bundle-p15e-smoke/run.ipynb
-notebook uploaded to /Workspace/Shared/aidp-fusion-bundle-p15e-smoke/run.ipynb
+wheel cached: c42fd59957666b37/oracle_ai_data_platform_fusion_autopilot-0.1.0a0-py3-none-any.whl
+notebook_uploaded path=Workspace/Shared/aidp-fusion-autopilot-p15e-smoke/run.ipynb
+notebook uploaded to /Workspace/Shared/aidp-fusion-autopilot-p15e-smoke/run.ipynb
 job_created jobKey=<REDACTED-JOB-UUID>
 jobRun_submitted jobRunKey=<REDACTED-RUN-UUID>
 poll status=RUNNING
@@ -117,14 +117,14 @@ WALL: 1833.1s
 EXIT_CODE: 2
 ```
 
-Wheel cache layout post-fix: `~/.aidp/wheels/c42fd59957666b37/oracle_ai_data_platform_fusion_bundle-0.1.0a0-py3-none-any.whl` — pip-compliant filename preserved inside a hash-namespaced subdirectory.
+Wheel cache layout post-fix: `~/.aidp/wheels/c42fd59957666b37/oracle_ai_data_platform_fusion_autopilot-0.1.0a0-py3-none-any.whl` — pip-compliant filename preserved inside a hash-namespaced subdirectory.
 
 Cluster-side cell-output probe at laptop-side timeout (job still RUNNING on AIDP):
 
 ```text
 execution_info: {'total_cells': 5, 'current_cell': 4}
 cell 1 (install) — pip rc=0 ✅
-  output: "pip rc=0\nplugin installed to /tmp/aidp_fusion_bundle_<...>/site-packages"
+  output: "pip rc=0\nplugin installed to /tmp/aidp_fusion_autopilot_<...>/site-packages"
 cell 2 (creds) — ✅
   output: "FUSION_BICC_PASSWORD loaded (length=8)\norchestrator loaded"
 cell 3 (run) — IN PROGRESS (no flushed outputs, AIDP-side current_cell=4)
@@ -133,8 +133,8 @@ cell 4 (verify) — not reached
 
 Validates:
 
-- **Wheel-filename fix landed**: cluster-side `pip install --target` succeeded (`pip rc=0`), wheel installed to ephemeral `/tmp/aidp_fusion_bundle_<...>/site-packages` and prepended to `sys.path`.
-- **Cluster-side creds + bundle write**: `aidputils.secrets.get(name="fusion_bicc_password", key="password")` returned a non-empty value (length=8); `BUNDLE_PATH.write_text(...)` succeeded; `from oracle_ai_data_platform_fusion_bundle import orchestrator` succeeded.
+- **Wheel-filename fix landed**: cluster-side `pip install --target` succeeded (`pip rc=0`), wheel installed to ephemeral `/tmp/aidp_fusion_autopilot_<...>/site-packages` and prepended to `sys.path`.
+- **Cluster-side creds + bundle write**: `aidputils.secrets.get(name="fusion_bicc_password", key="password")` returned a non-empty value (length=8); `BUNDLE_PATH.write_text(...)` succeeded; `from oracle_ai_data_platform_fusion_autopilot import orchestrator` succeeded.
 - **`DISPATCH_TIMEOUT` boundary contract**: `poll_run`'s default `timeout_s=1800` deadline fired correctly; `AidpRestError("poll_run(...): deadline exceeded")` was message-classified by `dispatch_via_rest` and re-raised as `DispatchPollTimeoutError` with the right `DISPATCH_TIMEOUT` code. Exit 2, no traceback.
 
 ## Probe 6 — BICC credential preflight fast-fail (P1.5ε-fix1, 2026-06-03)
@@ -232,7 +232,7 @@ Validates the laptop-side plan-resolution that closes the original P1.5ε §Step
 ### Probe 7-A — Narrow bundle (single bronze, no marts)
 
 ```text
-$ aidp-fusion-bundle --bundle /tmp/bundle.p15e.yaml \
+$ aidp-fusion-autopilot --bundle /tmp/bundle.p15e.yaml \
     --config /tmp/aidp.config.p15e.yaml --env dev \
     run --mode seed --dry-run
 
@@ -261,7 +261,7 @@ Pre-fix9 the REST path returned `RunSummary.empty()` with `plan=None`, so this t
 ### Probe 7-B — Full bundle (4 bronze + 3 silver + 3 gold), all layers in scope
 
 ```text
-$ aidp-fusion-bundle --bundle /tmp/bundle.p15e-fix9.yaml \
+$ aidp-fusion-autopilot --bundle /tmp/bundle.p15e-fix9.yaml \
     --config /tmp/aidp.config.p15e.yaml --env dev \
     run --mode seed --dry-run
 
@@ -296,7 +296,7 @@ Plan is topo-sorted: every bronze precedes its silver consumer (`erp_suppliers` 
 ### Probe 7-C — `--layers gold` surfaces the "Extra-plan prerequisites" table
 
 ```text
-$ aidp-fusion-bundle --bundle /tmp/bundle.p15e-fix9.yaml \
+$ aidp-fusion-autopilot --bundle /tmp/bundle.p15e-fix9.yaml \
     --config /tmp/aidp.config.p15e.yaml --env dev \
     run --mode seed --dry-run --layers gold
 
@@ -349,7 +349,7 @@ The dispatch package's `tests/unit/dispatch/test_imports.py` ran clean on every 
 
 ## Redaction note
 
-All identifiers (AIDP host, `aiDataPlatformId`, workspace key, cluster key, job/run/task UUIDs, BICC username, Fusion pod URL, external-storage profile name) redacted per the workspace memory rule on sensitive identifiers. The non-redacted strings in this file (`fusion_bundle_dev`, `saasfademo1`, `playground`, hash prefixes, `oracle_ai_data_platform_fusion_bundle-0.1.0a0-py3-none-any.whl`) appear in prior public TC* evidence + plugin source docstrings.
+All identifiers (AIDP host, `aiDataPlatformId`, workspace key, cluster key, job/run/task UUIDs, BICC username, Fusion pod URL, external-storage profile name) redacted per the workspace memory rule on sensitive identifiers. The non-redacted strings in this file (`fusion_autopilot_dev`, `saasfademo1`, `playground`, hash prefixes, `oracle_ai_data_platform_fusion_autopilot-0.1.0a0-py3-none-any.whl`) appear in prior public TC* evidence + plugin source docstrings.
 
 ## Closes
 

@@ -1,6 +1,6 @@
 # TC8b — `silver.dim_supplier` module re-validation (2026-05-07)
 
-> **Status**: ✅ **PASS (full live verification)** — silver `dim_supplier` materialized end-to-end on the dedicated `fusion_bundle_dev` cluster against live `bronze.erp_suppliers` (eseb-test pod). All design contracts hold: dedupe, NULL ID handling, COALESCE name chain, audit lineage. See "Live verification" section below.
+> **Status**: ✅ **PASS (full live verification)** — silver `dim_supplier` materialized end-to-end on the dedicated `fusion_autopilot_dev` cluster against live `bronze.erp_suppliers` (eseb-test pod). All design contracts hold: dedupe, NULL ID handling, COALESCE name chain, audit lineage. See "Live verification" section below.
 >
 > **Why this exists**: P1.1 (`dimensions/dim_supplier.py`) productizes TC8's inline silver step. While preparing the implementation plan, we discovered two errors in TC8's findings that materially affect the SQL builder. This document captures the re-validation that surfaced them.
 
@@ -98,7 +98,7 @@ The BACKLOG entry for P3.7 should be marked accordingly when next touched.
 
 ## Live bootstrap on dedicated cluster (2026-05-07 evening)
 
-A dedicated cluster `fusion_bundle_dev` (id `<CLUSTER_KEY>`) was provisioned in workspace `<WORKSPACE_KEY>`. The tpcds workspace from TC1 is gone. Bootstrap notebook:
+A dedicated cluster `fusion_autopilot_dev` (id `<CLUSTER_KEY>`) was provisioned in workspace `<WORKSPACE_KEY>`. The tpcds workspace from TC1 is gone. Bootstrap notebook:
 1. Created `fusion_catalog` (INTERNAL) + `bronze`/`silver`/`gold` schemas
 2. Resolved BICC password via `aidputils.secrets.get(name="fusion_bicc_password", key="password")` — AIDP's documented Credential Store API ([Oracle AIDP Workbench docs — Credential Store](https://docs.oracle.com/pls/topic/lookup?ctx=en/cloud/paas/ai-data-platform/aidwn&id=AIDUG-GUID-2EB8F6D9-702E-4427-96B7-288DC4C19C3C)).
 3. Pivoted from etap-dev5 → eseb-test pod after Casey.Brown creds rotated; used `natalie.salesrep` instead. Required a different External Storage profile name (`fusion_bicc_external_storage_natalie`).
@@ -149,7 +149,7 @@ A surprise — `bronze.erp_suppliers` and `bronze.ap_invoices` use **different c
 
 ## Live verification of `silver.dim_supplier` (2026-05-07 11:53 UTC)
 
-The committed SQL from `dimensions/dim_supplier.py` was inlined into a notebook cell (the module isn't yet installed on the AIDP cluster — that's P1.5's job) and executed against `bronze.erp_suppliers` on `fusion_bundle_dev`.
+The committed SQL from `dimensions/dim_supplier.py` was inlined into a notebook cell (the module isn't yet installed on the AIDP cluster — that's P1.5's job) and executed against `bronze.erp_suppliers` on `fusion_autopilot_dev`.
 
 ### Counts
 
@@ -269,4 +269,4 @@ silver_built_at         timestamp     # per-build audit
 ## References
 - Original TC8 results (the document being corrected): [`TC8_supplier_spend_results.md`](TC8_supplier_spend_results.md)
 - TC1 / TC7 BICC bronze evidence: [`TC1_TC7_results.md`](TC1_TC7_results.md)
-- Catalog entry under correction: [`schema/fusion_catalog.py:67-78`](../../scripts/oracle_ai_data_platform_fusion_bundle/schema/fusion_catalog.py#L67) (no change required — bronze table name is unaffected)
+- Catalog entry under correction: [`schema/fusion_catalog.py:67-78`](../../scripts/oracle_ai_data_platform_fusion_autopilot/schema/fusion_catalog.py#L67) (no change required — bronze table name is unaffected)

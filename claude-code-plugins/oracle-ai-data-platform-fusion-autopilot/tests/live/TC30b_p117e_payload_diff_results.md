@@ -1,7 +1,7 @@
 # TC30b — P1.17e bronze MERGE payload-diff predicate (live evidence)
 
 **Test case ID**: TC30b
-**Status**: ✅ **PARTIAL EXECUTED 2026-06-02** on `fusion_bundle_dev` cluster / `playground` workspace via OCI-signed REST dispatch. Coordinates redacted per the TC26/TC30a convention; full identifiers held by the dispatching operator. Two-run probe (Run A seed → Run B incremental no-change) on a 5-node DAG isolating the `incremental_capable=False` propagation chain. **Run B's `bronze.gl_coa` MERGE shows `numTargetRowsUpdated=0` against `numSourceRows=63,464` — definitive proof that the P1.17e payload-diff predicate fired correctly on a real Delta engine.** Run B's `bronze.gl_period_balances` failed mid-extract with an unrelated BICC-side `Py4JJavaError` (same class of failure documented in TC26's 2026-05-21 evidence for `po_receipts` — not a P1.17e correctness concern); the cascade-skip propagated through silver/gold, so those layers' explicit DESCRIBE-HISTORY assertions are deferred to a follow-up run.
+**Status**: ✅ **PARTIAL EXECUTED 2026-06-02** on `fusion_autopilot_dev` cluster / `playground` workspace via OCI-signed REST dispatch. Coordinates redacted per the TC26/TC30a convention; full identifiers held by the dispatching operator. Two-run probe (Run A seed → Run B incremental no-change) on a 5-node DAG isolating the `incremental_capable=False` propagation chain. **Run B's `bronze.gl_coa` MERGE shows `numTargetRowsUpdated=0` against `numSourceRows=63,464` — definitive proof that the P1.17e payload-diff predicate fired correctly on a real Delta engine.** Run B's `bronze.gl_period_balances` failed mid-extract with an unrelated BICC-side `Py4JJavaError` (same class of failure documented in TC26's 2026-05-21 evidence for `po_receipts` — not a P1.17e correctness concern); the cascade-skip propagated through silver/gold, so those layers' explicit DESCRIBE-HISTORY assertions are deferred to a follow-up run.
 **Tracks**: `BACKLOG.md` §P1.17e acceptance + `LIMITS.md` §P1.17-L7 resolution.
 
 ## What this verifies
@@ -35,8 +35,8 @@ All three layers are required; none replaces the other.
 - `docs/features/p1.17e-bronze-merge-payload-diff/idea.md` — problem statement + topology.
 - `docs/features/p1.17e-bronze-merge-payload-diff/plan.md` — implementation plan + per-layer assertions.
 - `tests/live/TC30a_p117_incremental_merge_proof.md` — sibling baseline (V1 MERGE behavior).
-- `scripts/oracle_ai_data_platform_fusion_bundle/orchestrator/__init__.py` — `_payload_diff_predicate_sql` helper + bronze MERGE renderer.
-- `scripts/oracle_ai_data_platform_fusion_bundle/orchestrator/runtime.py` — `BRONZE_AUDIT_COLUMNS` canonical set.
+- `scripts/oracle_ai_data_platform_fusion_autopilot/orchestrator/__init__.py` — `_payload_diff_predicate_sql` helper + bronze MERGE renderer.
+- `scripts/oracle_ai_data_platform_fusion_autopilot/orchestrator/runtime.py` — `BRONZE_AUDIT_COLUMNS` canonical set.
 
 ---
 
@@ -50,7 +50,7 @@ All three layers are required; none replaces the other.
 - Wall time: **1465.7s reported (~24.4 min)**
 - Dispatched via `.claude/skills/fusion-tc26-run/dispatch.py --scope custom --bundle-path dev/bundle.tc30b.yaml`
 
-**Purpose**: establish initial bronze + silver + gold cursors in `fusion_bundle_state`. Captures baseline row counts for Run B's assertions. Must run before Run B because Run B is incremental and P1.17 + P1.17c preflight would otherwise raise `IncrementalCursorMissingError` / `IncrementalTargetMissingError` against a fresh state table.
+**Purpose**: establish initial bronze + silver + gold cursors in `fusion_autopilot_state`. Captures baseline row counts for Run B's assertions. Must run before Run B because Run B is incremental and P1.17 + P1.17c preflight would otherwise raise `IncrementalCursorMissingError` / `IncrementalTargetMissingError` against a fresh state table.
 
 ### Per-step table (Run A)
 

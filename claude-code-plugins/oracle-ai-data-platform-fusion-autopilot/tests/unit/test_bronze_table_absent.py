@@ -12,7 +12,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
-from oracle_ai_data_platform_fusion_bundle.commands.bronze_probe import (
+from oracle_ai_data_platform_fusion_autopilot.commands.bronze_probe import (
     UnsafeIdentifierError,
     _is_table_or_view_not_found,
     bronze_table_absent,

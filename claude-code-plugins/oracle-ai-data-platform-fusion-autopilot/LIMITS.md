@@ -1,4 +1,4 @@
-# Limits — `oracle-ai-data-platform-fusion-bundle`
+# Limits — `oracle-ai-data-platform-fusion-autopilot`
 
 > **Purpose**: register every known limitation of this plugin that is **still
 > live today** — the constraints we've decided to live with and the ones we're
@@ -153,9 +153,9 @@ pods must never be used from CI. The real fix is AIDP-side infrastructure.
 
 ---
 
-### §L-Resume — `fusion_bundle_state` is multi-row-per-`(run_id, dataset_id)` on resumed runs
+### §L-Resume — `fusion_autopilot_state` is multi-row-per-`(run_id, dataset_id)` on resumed runs
 
-**What**: `aidp-fusion-bundle run --resume <run_id>` (content-pack backend). On a
+**What**: `aidp-fusion-autopilot run --resume <run_id>` (content-pack backend). On a
 resumed run the state table is append-only and may carry multiple rows per
 `(run_id, dataset_id)` — e.g. a `failed` row from the original attempt + a
 `resumed_skipped` carry-forward + an eventual `success` can coexist under one
@@ -167,11 +167,11 @@ not split across resume attempts).
 `WHERE status='failed'` surfaces stale rows that since succeeded;
 `COUNT(*) WHERE run_id=…` overcounts when the run was resumed.
 
-**Mitigation**: a Delta VIEW `fusion_bundle_state_latest` projects one row per
+**Mitigation**: a Delta VIEW `fusion_autopilot_state_latest` projects one row per
 `(run_id, dataset_id)` via `ROW_NUMBER() OVER (PARTITION BY run_id, dataset_id
 ORDER BY last_run_at DESC)`. Consumers SHOULD read the VIEW unless they
 explicitly need append-only history. The operator-facing
-`aidp-fusion-bundle status` is a different aggregation (latest per `dataset_id`
+`aidp-fusion-autopilot status` is a different aggregation (latest per `dataset_id`
 regardless of `run_id`) and stays inline.
 
 **Status**: tracked-by-design — the multi-row shape is load-bearing for audit
@@ -243,7 +243,7 @@ full-recompute + DELETE for grain-moves) is a post-v0.3 follow-up (PLAN §10.8).
 ### P1.17-L8 — `gl_period_balances` composite natural key has a NULL component
 
 **What it is**: `gl_period_balances`'s composite natural key includes
-`BalanceTranslatedFlag`, which is NULL on `fusion_bundle_dev`. Standard SQL `=`
+`BalanceTranslatedFlag`, which is NULL on `fusion_autopilot_dev`. Standard SQL `=`
 does not match `NULL=NULL`; only NULL-safe `<=>` does. The v2 bronze MERGE
 template uses `<=>` on every key column for exactly this reason, so the NULL-NULL
 match works correctly today. The residual limit is documentation: a tenant where
@@ -356,7 +356,7 @@ profile was hand-authored / copied from a fixture, run incrementals without the
 drift safety net — a bronze schema change goes undetected by the gate, surfacing
 later as a MERGE-time failure or a silent semantic regression.
 
-**Mitigation**: run `aidp-fusion-bundle bootstrap --refresh` once to write a real
+**Mitigation**: run `aidp-fusion-autopilot bootstrap --refresh` once to write a real
 `sha256:<64-hex>` fingerprint; subsequent incrementals fire the gate normally.
 
 **Status**: tracked-by-design. A future `AIDP_REQUIRE_PINNED_FINGERPRINT=1` env
@@ -476,7 +476,7 @@ Worked examples: `overlays/fix-supplier-id-types-block/` and
 died at cluster-side state-table init (notebook cell 4) — first with
 `InvalidObjectException: There is no database <catalog>.bronze`, then, once the
 schema existed, with `DELTA_CREATE_TABLE_WITH_NON_EMPTY_LOCATION` on
-`fusion_catalog.bronze.fusion_bundle_state`.
+`fusion_catalog.bronze.fusion_autopilot_state`.
 
 **Root cause:** nothing in the shipped bundle provisioned the inside-the-catalog
 prerequisites. The original dev catalog only worked because
@@ -498,8 +498,8 @@ prerequisites at run start, idempotently:
 **Boundary preserved:** the **catalog** itself remains the operator's one manual
 prerequisite (it needs storage/governance config); everything inside it is now
 provisioned by seed. Pattern: *missing → create, present → use, orphaned →
-adopt.* Verified live on `fusion_bundle_dev` (2026-06-17): the orphaned
-`fusion_bundle_state` location was a valid empty Delta table and was adopted
+adopt.* Verified live on `fusion_autopilot_dev` (2026-06-17): the orphaned
+`fusion_autopilot_state` location was a valid empty Delta table and was adopted
 cleanly.
 
 ---

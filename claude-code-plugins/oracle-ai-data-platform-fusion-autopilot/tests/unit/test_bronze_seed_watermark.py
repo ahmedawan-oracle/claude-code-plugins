@@ -24,14 +24,14 @@ import datetime as _dt
 import pathlib
 from unittest.mock import MagicMock
 
-from oracle_ai_data_platform_fusion_bundle.orchestrator import runtime
-from oracle_ai_data_platform_fusion_bundle.orchestrator.builtins import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator import runtime
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.builtins import (
     bronze_extract_adapter,
 )
-from oracle_ai_data_platform_fusion_bundle.extractors import bicc as bicc_extractor
-from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack import load_pack
-from oracle_ai_data_platform_fusion_bundle.orchestrator.sql_renderer import RunContext
-from oracle_ai_data_platform_fusion_bundle.schema.tenant_profile import (
+from oracle_ai_data_platform_fusion_autopilot.extractors import bicc as bicc_extractor
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack import load_pack
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.sql_renderer import RunContext
+from oracle_ai_data_platform_fusion_autopilot.schema.tenant_profile import (
     load_tenant_profile_from_string,
 )
 

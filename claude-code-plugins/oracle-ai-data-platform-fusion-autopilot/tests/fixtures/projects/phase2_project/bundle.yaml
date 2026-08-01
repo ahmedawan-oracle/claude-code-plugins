@@ -1,4 +1,4 @@
-apiVersion: aidp-fusion-bundle/v1
+apiVersion: aidp-fusion-autopilot/v1
 project: phase2-test
 fusion:
   serviceUrl: https://example.com

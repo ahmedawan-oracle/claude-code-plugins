@@ -1,7 +1,7 @@
 # TC28 — Orchestrator incremental-mode state-contract infrastructure (P1.5β.1)
 
 **Test case ID**: TC28
-**Status**: ✅ **EXECUTED 2026-06-01** on `fusion_bundle_dev` cluster / `playground` workspace via the AIDP REST dispatch surface. Two consecutive narrow seed runs (`erp_suppliers` + `ap_invoices` + `dim_supplier` + `dim_calendar` + `supplier_spend` — 5 plan nodes, full bronze→silver→gold cascade) confirm every β.1 invariant on a live tenant: bronze `last_watermark` advances run-over-run, silver/gold rows carry `last_watermark=NULL` (Invariant 6), `_extract_ts` is a single deterministic literal per run (not a per-row `current_timestamp()`), the gap invariant holds exactly (`_extract_ts − last_watermark == WATERMARK_SAFETY_WINDOW == 3600s`), and `orchestrator.run(mode="incremental")` raises `NotImplementedError` on the live cluster (D7 gate preserved). An earlier partial-evidence dispatch had been blocked by `CONNECTOR_0248 — No storage found in BICC` for an outdated external-storage profile name in `bundle.fusion.externalStorage` (operator-redacted); the diagnostic probe walked the Py4J cause chain to surface the BIACM-side root cause, and the operator's corrected profile name unblocked the run.
+**Status**: ✅ **EXECUTED 2026-06-01** on `fusion_autopilot_dev` cluster / `playground` workspace via the AIDP REST dispatch surface. Two consecutive narrow seed runs (`erp_suppliers` + `ap_invoices` + `dim_supplier` + `dim_calendar` + `supplier_spend` — 5 plan nodes, full bronze→silver→gold cascade) confirm every β.1 invariant on a live tenant: bronze `last_watermark` advances run-over-run, silver/gold rows carry `last_watermark=NULL` (Invariant 6), `_extract_ts` is a single deterministic literal per run (not a per-row `current_timestamp()`), the gap invariant holds exactly (`_extract_ts − last_watermark == WATERMARK_SAFETY_WINDOW == 3600s`), and `orchestrator.run(mode="incremental")` raises `NotImplementedError` on the live cluster (D7 gate preserved). An earlier partial-evidence dispatch had been blocked by `CONNECTOR_0248 — No storage found in BICC` for an outdated external-storage profile name in `bundle.fusion.externalStorage` (operator-redacted); the diagnostic probe walked the Py4J cause chain to surface the BIACM-side root cause, and the operator's corrected profile name unblocked the run.
 **Tracks**: P1.5β.1 Stage E1 acceptance criterion from `docs/features/p1.5b-orchestrator-incremental/plan.md`.
 
 ## What this verifies
@@ -44,7 +44,7 @@ These four gaps are explicit β.1 scope boundaries (not failures of TC28). The u
 
 Run A wall: 172.4s. Run B wall: 154.3s. Both runs exercise the **same code path** the user-facing CLI hits — only the underlying mode flag (`seed`) is gated below `--mode incremental` for now.
 
-### `fusion_bundle_state` — last_watermark per `(dataset_id, layer)` for both runs
+### `fusion_autopilot_state` — last_watermark per `(dataset_id, layer)` for both runs
 
 ```
 +------------+--------------+------+----+-------+---------+--------------------------+--------------------------+---+
@@ -129,23 +129,23 @@ The message is byte-identical to the source string at `orchestrator/__init__.py:
 The wheel built and uploaded in this dispatch ships every new β.1 public symbol importable on the live AIDP cluster's Python runtime:
 
 ```python
-from oracle_ai_data_platform_fusion_bundle.orchestrator import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator import (
     WatermarkMonotonicityError, MultipleUpstreamWatermarkError, OrchestratorRuntimeError,
 )
-from oracle_ai_data_platform_fusion_bundle.orchestrator.registry import _resolve_watermark_source
-from oracle_ai_data_platform_fusion_bundle.orchestrator.runtime import WATERMARK_SAFETY_WINDOW
-from oracle_ai_data_platform_fusion_bundle.orchestrator.state import WATERMARK_READ_SOFT_FAILED_MARKER
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.registry import _resolve_watermark_source
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.runtime import WATERMARK_SAFETY_WINDOW
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.state import WATERMARK_READ_SOFT_FAILED_MARKER
 ```
 
 All resolve; `WATERMARK_SAFETY_WINDOW` evaluates to `1:00:00`; the soft-fail marker string is `"watermark_read_soft_failed"`.
 
 ## Probe sequence
 
-1. **Cluster start** — `fusion_bundle_dev` was STOPPED at the start of the session; `POST .../actions/start` accepted, cluster transitioned to ACTIVE in ~5 min.
+1. **Cluster start** — `fusion_autopilot_dev` was STOPPED at the start of the session; `POST .../actions/start` accepted, cluster transitioned to ACTIVE in ~5 min.
 2. **Run #1 (bypass)** — `dispatch.py --scope custom --bundle-path <tc28-dim-calendar-only>.yaml`. Result: `SUCCESS`, run_id `<A>`, dim_calendar built 4018 rows in 9.79s (25.4s wall including wheel install + Spark warmup).
 3. **Run #2 (bypass)** — same dispatch, fresh run. Result: `SUCCESS`, run_id `<B>`, 4018 rows in 22.5s (39.5s wall).
 4. **BICC narrow attempt (deferred)** — `dispatch.py --scope narrow` (real bronze extracts on `erp_suppliers`, `ap_invoices`). Both BICC users tried (operator-redacted) authenticated successfully after the operator refreshed the AIDP credential store entry `fusion_bicc_password`, but both runs failed at the BICC reader's `.load()` step with `Py4JJavaError: An error occurred while calling o322.load.` / `o332.load.` (`uncategorized BICC reader failure`). Root cause is BICC-side (catalog access / external-storage ACL); diagnosis is out of β.1 scope.
-5. **Inspector dispatch** — custom one-cell notebook installed the same wheel, imported every new β.1 public symbol, invoked the gate, queried raw `fusion_bundle_state`, captured the table above. Result: `SUCCESS`, executed notebook saved at `/tmp/tc28_inspect_executed.ipynb`.
+5. **Inspector dispatch** — custom one-cell notebook installed the same wheel, imported every new β.1 public symbol, invoked the gate, queried raw `fusion_autopilot_state`, captured the table above. Result: `SUCCESS`, executed notebook saved at `/tmp/tc28_inspect_executed.ipynb`.
 
 All identifiers (AIDP host, aiDataPlatformId, workspace key, cluster key, job/run/task UUIDs, BICC username, Fusion pod URL, external-storage profile name) redacted per the workspace memory rule on sensitive identifiers. The orchestrator `run_id`s in the state-table screenshot are pseudonymized to `<run-id-A>` / `<run-id-B>` / `<run-id-prior>` — the actual UUIDs are internal correlation tokens and could be quoted, but redacting them keeps the evidence file safe to reference from a public PR without later audit.
 
@@ -190,7 +190,7 @@ The script (built ad-hoc during this evidence capture; copy from the diff if you
 
 1. Picks the most recent locally-built wheel.
 2. Generates a one-cell inspection notebook (β.1 imports + gate check + raw state-table query + resolver smoke + AIDP_LIVE_TEST_RESULT marker).
-3. Uploads to `/Workspace/Shared/fusion-bundle-tc28/run_tc28_inspect.ipynb`.
+3. Uploads to `/Workspace/Shared/fusion-autopilot-tc28/run_tc28_inspect.ipynb`.
 4. Creates a single-task job (unique name with timestamp suffix to avoid 409 `NotAuthorizedOrResourceAlreadyExists`).
 5. Submits + polls to terminal status.
 6. Fetches the executed notebook from `taskRunKey/actions/fetchOutput` (`outputKey=""`).
@@ -203,13 +203,13 @@ The script (built ad-hoc during this evidence capture; copy from the diff if you
   --scope custom \
   --bundle-path /tmp/tc28_bypass_bundle.yaml \
   --aidp-id <AIDP_ID> --workspace-key <WS_KEY> \
-  --cluster-key <CL_KEY> --cluster-name fusion_bundle_dev \
+  --cluster-key <CL_KEY> --cluster-name fusion_autopilot_dev \
   --region us-ashburn-1 \
   --secret-name fusion_bicc_password \
-  --workspace-dir /Workspace/Shared/fusion-bundle-tc28
+  --workspace-dir /Workspace/Shared/fusion-autopilot-tc28
 ```
 
-Each run takes ~25s wall (no BICC roundtrip; just `dim_calendar` calendar generation + Spark warmup). The accumulated state rows are visible in `fusion_bundle_state` for any subsequent inspection.
+Each run takes ~25s wall (no BICC roundtrip; just `dim_calendar` calendar generation + Spark warmup). The accumulated state rows are visible in `fusion_autopilot_state` for any subsequent inspection.
 
 ## Acceptance — what β.1 acceptance requires vs what TC28 proves on live
 

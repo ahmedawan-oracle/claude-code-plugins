@@ -1,4 +1,4 @@
-apiVersion: aidp-fusion-bundle/v1
+apiVersion: aidp-fusion-autopilot/v1
 version: "0.2.0"
 project: my-fusion-lake
 

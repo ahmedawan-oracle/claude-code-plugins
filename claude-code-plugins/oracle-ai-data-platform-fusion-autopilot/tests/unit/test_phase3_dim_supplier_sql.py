@@ -12,18 +12,18 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack import load_pack
-from oracle_ai_data_platform_fusion_bundle.orchestrator.sql_renderer import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack import load_pack
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.sql_renderer import (
     RunContext,
     render_node_sql,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.tenant_profile import (
+from oracle_ai_data_platform_fusion_autopilot.schema.tenant_profile import (
     load_tenant_profile,
 )
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-PACK_ROOT = (REPO_ROOT / "scripts" / "oracle_ai_data_platform_fusion_bundle"
+PACK_ROOT = (REPO_ROOT / "scripts" / "oracle_ai_data_platform_fusion_autopilot"
              / "content_packs" / "fusion-finance-starter")
 PROFILE = REPO_ROOT / "examples" / "profiles" / "finance-default.yaml"
 

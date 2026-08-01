@@ -26,23 +26,23 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.orchestrator.builtins import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.builtins import (
     dim_calendar_adapter,
 )
-from oracle_ai_data_platform_fusion_bundle.orchestrator.content_pack import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack import (
     load_full_chain,
     load_pack,
 )
-from oracle_ai_data_platform_fusion_bundle.orchestrator.sql_renderer import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.sql_renderer import (
     RunContext,
     render_node_sql,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.bundle import (
+from oracle_ai_data_platform_fusion_autopilot.schema.bundle import (
     Bundle,
     load_bundle,
     resolve_content_pack_root,
 )
-from oracle_ai_data_platform_fusion_bundle.schema.tenant_profile import (
+from oracle_ai_data_platform_fusion_autopilot.schema.tenant_profile import (
     load_tenant_profile,
 )
 
@@ -132,7 +132,7 @@ class TestBuiltinDispatchSmoke:
     def test_dim_calendar_adapter_invokes_v1_builtin(self) -> None:
         """The adapter resolves calendar settings + builds the silver-table
         identifier from ctx, then calls dim_calendar.build."""
-        pack = load_pack(REPO_ROOT / "scripts" / "oracle_ai_data_platform_fusion_bundle"
+        pack = load_pack(REPO_ROOT / "scripts" / "oracle_ai_data_platform_fusion_autopilot"
                          / "content_packs" / "fusion-finance-starter")
         profile = load_tenant_profile(EXAMPLE_PROFILE)
         ctx = RunContext(
@@ -175,7 +175,7 @@ class TestBuiltinDispatchSmoke:
         """Step 3 widened dim_calendar.yaml from 6 cols → 16 cols to match
         the actual builtin emit. Pin the contract here so a future YAML
         regression fires fast."""
-        pack = load_pack(REPO_ROOT / "scripts" / "oracle_ai_data_platform_fusion_bundle"
+        pack = load_pack(REPO_ROOT / "scripts" / "oracle_ai_data_platform_fusion_autopilot"
                          / "content_packs" / "fusion-finance-starter")
         node = pack.silver["dim_calendar"]
         col_names = [c.name for c in node.output_schema.columns]
@@ -235,7 +235,7 @@ class TestRenderAllSmoke:
 
     def test_every_sql_node_renders(self) -> None:
         pack = load_full_chain(
-            REPO_ROOT / "scripts" / "oracle_ai_data_platform_fusion_bundle"
+            REPO_ROOT / "scripts" / "oracle_ai_data_platform_fusion_autopilot"
             / "content_packs" / "fusion-finance-starter",
         )
         profile = load_tenant_profile(EXAMPLE_PROFILE)
@@ -266,7 +266,7 @@ class TestRenderAllSmoke:
         """All migrated SQL nodes must carry the orchestrator's run-id
         through to their respective audit column."""
         pack = load_full_chain(
-            REPO_ROOT / "scripts" / "oracle_ai_data_platform_fusion_bundle"
+            REPO_ROOT / "scripts" / "oracle_ai_data_platform_fusion_autopilot"
             / "content_packs" / "fusion-finance-starter",
         )
         profile = load_tenant_profile(EXAMPLE_PROFILE)

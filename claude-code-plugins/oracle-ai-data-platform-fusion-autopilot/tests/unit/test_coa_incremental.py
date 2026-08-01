@@ -10,11 +10,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.orchestrator.coa_change import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.coa_change import (
     coa_projection_of,
     projection_to_coa_dict,
 )
-from oracle_ai_data_platform_fusion_bundle.orchestrator.coa_incremental import (
+from oracle_ai_data_platform_fusion_autopilot.orchestrator.coa_incremental import (
     CoaIncrementalContext,
     decide_coa_accept,
 )

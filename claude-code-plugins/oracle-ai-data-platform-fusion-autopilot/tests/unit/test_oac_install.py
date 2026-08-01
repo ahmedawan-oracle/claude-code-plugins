@@ -20,7 +20,7 @@ from unittest.mock import patch
 
 import pytest
 
-from oracle_ai_data_platform_fusion_bundle.oac.install import InstallParams, install
+from oracle_ai_data_platform_fusion_autopilot.oac.install import InstallParams, install
 
 
 def _params(tmp_path: Path, **overrides) -> InstallParams:
@@ -45,7 +45,7 @@ def _params(tmp_path: Path, **overrides) -> InstallParams:
         "bar_bucket": None,
         "bar_uri": None,
         "bar_password": None,
-        "snapshot_name": "aidp-fusion-bundle",
+        "snapshot_name": "aidp-fusion-autopilot",
         "print_only": False,
         "skip_workbooks": False,
         "overwrite_connection": False,
@@ -70,9 +70,9 @@ class TestPrintOnly:
     ) -> None:
         monkeypatch.chdir(tmp_path)
         with patch(
-            "oracle_ai_data_platform_fusion_bundle.oac.install.OacOauthFlow"
+            "oracle_ai_data_platform_fusion_autopilot.oac.install.OacOauthFlow"
         ) as oauth_cls, patch(
-            "oracle_ai_data_platform_fusion_bundle.oac.install.OacRestClient"
+            "oracle_ai_data_platform_fusion_autopilot.oac.install.OacRestClient"
         ) as client_cls:
             install(_params(tmp_path, print_only=True))
             oauth_cls.assert_not_called()
@@ -84,9 +84,9 @@ class TestRestInstall:
 
     def test_creates_connection_and_restores_snapshot(self, tmp_path: Path) -> None:
         with patch(
-            "oracle_ai_data_platform_fusion_bundle.oac.install.OacOauthFlow"
+            "oracle_ai_data_platform_fusion_autopilot.oac.install.OacOauthFlow"
         ) as oauth_cls, patch(
-            "oracle_ai_data_platform_fusion_bundle.oac.install.OacRestClient"
+            "oracle_ai_data_platform_fusion_autopilot.oac.install.OacRestClient"
         ) as client_cls:
             client_inst = client_cls.return_value
             client_inst.find_connection.return_value = None
@@ -119,9 +119,9 @@ class TestRestInstall:
 
     def test_skips_create_when_connection_already_present(self, tmp_path: Path) -> None:
         with patch(
-            "oracle_ai_data_platform_fusion_bundle.oac.install.OacOauthFlow"
+            "oracle_ai_data_platform_fusion_autopilot.oac.install.OacOauthFlow"
         ), patch(
-            "oracle_ai_data_platform_fusion_bundle.oac.install.OacRestClient"
+            "oracle_ai_data_platform_fusion_autopilot.oac.install.OacRestClient"
         ) as client_cls:
             client_inst = client_cls.return_value
             client_inst.find_connection.return_value = {"id": "existing-1"}
@@ -138,9 +138,9 @@ class TestRestInstall:
 
     def test_overwrite_connection_deletes_then_creates(self, tmp_path: Path) -> None:
         with patch(
-            "oracle_ai_data_platform_fusion_bundle.oac.install.OacOauthFlow"
+            "oracle_ai_data_platform_fusion_autopilot.oac.install.OacOauthFlow"
         ), patch(
-            "oracle_ai_data_platform_fusion_bundle.oac.install.OacRestClient"
+            "oracle_ai_data_platform_fusion_autopilot.oac.install.OacRestClient"
         ) as client_cls:
             client_inst = client_cls.return_value
             client_inst.find_connection.return_value = {"id": "old", "owner": "admin"}
@@ -164,9 +164,9 @@ class TestRestInstall:
 
     def test_skip_workbooks_skips_snapshot_phase(self, tmp_path: Path) -> None:
         with patch(
-            "oracle_ai_data_platform_fusion_bundle.oac.install.OacOauthFlow"
+            "oracle_ai_data_platform_fusion_autopilot.oac.install.OacOauthFlow"
         ), patch(
-            "oracle_ai_data_platform_fusion_bundle.oac.install.OacRestClient"
+            "oracle_ai_data_platform_fusion_autopilot.oac.install.OacRestClient"
         ) as client_cls:
             client_inst = client_cls.return_value
             client_inst.find_connection.return_value = None
@@ -187,9 +187,9 @@ class TestRestInstall:
     def test_no_bar_args_skips_snapshot_with_warning(self, tmp_path: Path) -> None:
         """If --bar-bucket/--bar-uri aren't set, we install the connection only."""
         with patch(
-            "oracle_ai_data_platform_fusion_bundle.oac.install.OacOauthFlow"
+            "oracle_ai_data_platform_fusion_autopilot.oac.install.OacOauthFlow"
         ), patch(
-            "oracle_ai_data_platform_fusion_bundle.oac.install.OacRestClient"
+            "oracle_ai_data_platform_fusion_autopilot.oac.install.OacRestClient"
         ) as client_cls:
             client_inst = client_cls.return_value
             client_inst.find_connection.return_value = None
@@ -207,9 +207,9 @@ class TestRestInstall:
 
     def test_failed_work_request_records_status(self, tmp_path: Path) -> None:
         with patch(
-            "oracle_ai_data_platform_fusion_bundle.oac.install.OacOauthFlow"
+            "oracle_ai_data_platform_fusion_autopilot.oac.install.OacOauthFlow"
         ), patch(
-            "oracle_ai_data_platform_fusion_bundle.oac.install.OacRestClient"
+            "oracle_ai_data_platform_fusion_autopilot.oac.install.OacRestClient"
         ) as client_cls:
             client_inst = client_cls.return_value
             client_inst.find_connection.return_value = None
