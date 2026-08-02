@@ -5,7 +5,7 @@
     },
     "metadata": {
         "version": "0.9.0",
-        "description": "Development mirror of oracle-samples for Claude Code plugins for Oracle AI Data Platform (AIDP) Workbench. Bundles the Engineer Agent (oracle-ai-data-platform-workbench-engineer-agent), the Spark connectors plugin (oracle-ai-data-platform-workbench-spark-connectors), the Databricks Migrator (oracle-ai-data-platform-workbench-databricks-migrator), and the Fusion bundle (oracle-ai-data-platform-fusion-bundle). Plugins live under claude-code-plugins/<plugin-name>/, mirroring the layout in oracle-samples/oracle-aidp-samples/ai/claude-code-plugins/."
+        "description": "Development mirror of oracle-samples for Claude Code plugins for Oracle AI Data Platform (AIDP) Workbench. Bundles the Engineer Agent (oracle-ai-data-platform-workbench-engineer-agent), the Spark connectors plugin (oracle-ai-data-platform-workbench-spark-connectors), the Databricks Migrator (oracle-ai-data-platform-workbench-databricks-migrator), and the Fusion Autopilot (oracle-ai-data-platform-fusion-autopilot). Plugins live under claude-code-plugins/<plugin-name>/, mirroring the layout in oracle-samples/oracle-aidp-samples/ai/claude-code-plugins/."
     },
     "plugins": [
         {
@@ -109,10 +109,10 @@
             ]
         },
         {
-            "name": "oracle-ai-data-platform-fusion-bundle",
+            "name": "oracle-ai-data-platform-fusion-autopilot",
             "description": "Productized Fusion \u2192 Oracle AI Data Platform pipeline as a Claude Code plugin. Curated BICC extracts for Fusion ERP/HCM/SCM, bronze/silver/gold medallion in Delta, conformed COA/calendar/org/supplier/item dimensions, ready-made AR-aging/AP-aging/GL-balance/PO-backlog/Supplier-spend gold marts, and Oracle Analytics Cloud (OAC) workbooks installable via OAC REST API (Authorization Code + PKCE + Refresh Token). End-user consumption via OAC MCP (Preview) chat. Same pattern shown in Oracle's BICC-into-AIDP blog, productized. Additive to and complementary with Oracle FDI/OAC/OTBI/BIP \u2014 never positioned as a replacement.",
             "version": "0.1.0-alpha",
-            "source": "./claude-code-plugins/oracle-ai-data-platform-fusion-bundle/",
+            "source": "./claude-code-plugins/oracle-ai-data-platform-fusion-autopilot/",
             "category": "data",
             "keywords": [
                 "oracle",
