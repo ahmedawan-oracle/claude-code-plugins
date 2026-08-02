@@ -1,0 +1,22 @@
+{
+  "name": "claude-to-codex-migrator",
+  "version": "0.3.0",
+  "description": "Convert Claude skills, plugins, commands, agents, and integration bundles into validated Codex Skills or plugins. Inventories every source file, chooses the simplest compatible Codex architecture, performs deterministic transformations (safety-hardened staging: ZIP traversal/symlink/size/entry-count limits, ownership-manifest output replacement, byte-level cleanup scanning), quarantines migrated hooks/MCP/app configuration for review, and produces decision, migration, cleanup, and validation reports. Skills-only plugin — no MCP server, connector, or external runtime service; migration runs locally against paths you explicitly provide.",
+  "author": {
+    "name": "Oussama Lakrafi",
+    "email": "oussama.lakrafi@oracle.com",
+    "url": "https://github.com/craxelfn"
+  },
+  "homepage": "https://github.com/craxelfn/claude-to-codex-migrator",
+  "repository": "https://github.com/craxelfn/claude-to-codex-migrator",
+  "license": "MIT",
+  "keywords": [
+    "codex",
+    "migration",
+    "plugins",
+    "skills",
+    "converter",
+    "validation",
+    "cleanup"
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "name": "workbench-bridge",
+  "version": "2.0.0",
+  "description": "Claude Code workflows backed by a local MCP server and lifecycle hook.",
+  "author": {
+    "name": "Example Integrations"
+  },
+  "keywords": ["claude", "workbench", "automation"]
+}

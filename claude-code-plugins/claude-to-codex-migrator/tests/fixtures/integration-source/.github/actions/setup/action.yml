@@ -1,0 +1,7 @@
+name: setup
+description: Install dependencies
+runs:
+  using: composite
+  steps:
+    - run: npm install
+      shell: bash

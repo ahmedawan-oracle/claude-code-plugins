@@ -135,6 +135,22 @@
                 "genai",
                 "ai-agents"
             ]
+        },
+        {
+            "name": "claude-to-codex-migrator",
+            "description": "Convert Claude skills, plugins, commands, agents, and integration bundles into validated Codex Skills or plugins. Inventories every source file, chooses the simplest compatible Codex architecture, performs deterministic transformations with safety-hardened staging (ZIP traversal/symlink/size/entry-count limits, ownership-manifest output replacement, byte-level cleanup scanning of binaries), quarantines migrated hooks/MCP/app configuration under reports/unresolved/ for review, and produces decision, migration, cleanup, and validation reports. Skills-only plugin — no MCP server, connector, or external runtime service; migration runs locally against paths you explicitly provide.",
+            "version": "0.3.0",
+            "source": "./claude-code-plugins/claude-to-codex-migrator/",
+            "category": "productivity",
+            "keywords": [
+                "codex",
+                "migration",
+                "plugins",
+                "skills",
+                "converter",
+                "validation",
+                "cleanup"
+            ]
         }
     ]
 }
