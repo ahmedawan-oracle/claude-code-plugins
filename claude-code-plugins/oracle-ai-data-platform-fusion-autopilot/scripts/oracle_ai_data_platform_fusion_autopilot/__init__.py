@@ -9,8 +9,6 @@ Productized Fusion ERP/HCM/SCM -> AIDP pipeline:
 - OAC dashboard install via REST API (`oac.*`); end users consume via OAC MCP (Preview)
 
 Public CLI: `aidp-fusion-autopilot` (see `cli.py`).
-
-Reference plan: C:/Users/anuma/.claude/plans/oracle-ai-data-platform-fusion-autopilot.md
 """
 
 from __future__ import annotations

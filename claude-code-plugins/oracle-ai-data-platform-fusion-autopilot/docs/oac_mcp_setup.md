@@ -169,7 +169,7 @@ The AI client should:
 3. Construct a Logical SQL query and call `oracle_analytics-execute_logical_sql`
 4. Return the answer with citations
 
-Live-tested 2026-04-30 in [TC9](../tests/live/TC9_genai_results.md): the agent identified the top vendor `300000047507499` at $892.7M with concentration math (26.18%) and anomaly detection (`vendor_id=-10016`, stale invoice `2018-12-21`).
+Live-tested 2026-04-30 in TC9: the agent identified the top vendor `300000047507499` at $892.7M with concentration math (26.18%) and anomaly detection (`vendor_id=-10016`, stale invoice `2018-12-21`).
 
 ---
 
@@ -238,4 +238,4 @@ End-user value: **non-technical analysts can ask natural-language questions agai
 - [OAC MCP Server (Preview) — overview](https://docs.oracle.com/en/cloud/paas/analytics-cloud/acsdv/access-oracle-analytics-cloud-mcp-server-preview.html)
 - [OAC MCP — Tools available](https://docs.oracle.com/en/cloud/paas/analytics-cloud/acsdv/tools-available-oracle-analytics-cloud-mcp-server-preview.html)
 - [OAC MCP — Add to AI client](https://docs.oracle.com/en/cloud/paas/analytics-cloud/acsdv/add-oracle-analytics-cloud-mcp-server-your-ai-client-preview.html)
-- [Bundle TC9 results](../tests/live/TC9_genai_results.md) — proof that Spark SQL `ai_generate()` works against the same gold mart (alternative path; Spark-native vs OAC-mediated)
+- Bundle TC9 results — proof that Spark SQL `ai_generate()` works against the same gold mart (alternative path; Spark-native vs OAC-mediated)

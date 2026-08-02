@@ -41,4 +41,4 @@ datasets:
 
 notifications:
   onFailure:
-    - ahmed.shahzad.awan@oracle.com
+    - you@example.com

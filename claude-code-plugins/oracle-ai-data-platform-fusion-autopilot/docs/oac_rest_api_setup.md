@@ -206,7 +206,7 @@ Pass `--auth-flow device` for OAuth Device Code Grant. Bundle prints a verificat
 
 ## Audience auto-discovery
 
-The bundle's IDCS audience prefix usually differs from the user-facing OAC URL (e.g. `https://akd5x4...analytics.ocp.oraclecloud.com` vs. `https://oacai.cealinfra.com`). The bundle auto-discovers it by probing `<oac-url>/ui/` for the IDCS authorize redirect's `idcs_app_name` query parameter.
+The bundle's IDCS audience prefix usually differs from the user-facing OAC URL (e.g. `https://akd5x4...analytics.ocp.oraclecloud.com` vs. `https://oac.example.com`). The bundle auto-discovers it by probing `<oac-url>/ui/` for the IDCS authorize redirect's `idcs_app_name` query parameter.
 
 If the probe fails (non-standard load balancer, CDN, etc.), pass `--oauth-scope` explicitly:
 
@@ -306,5 +306,5 @@ Copy the URL printed below "Opening browser..." and paste into any browser. Or s
 - [Options When You Take a Snapshot (Custom mode content-type filters)](https://docs.oracle.com/en/cloud/paas/analytics-cloud/acmgp/options-when-you-take-snapshot.html)
 - [Options When You Restore a Snapshot](https://docs.oracle.com/en/cloud/paas/analytics-cloud/acmgp/options-when-you-restore-snapshot.html)
 - [Predefined OAC Application Roles](https://docs.oracle.com/en/cloud/paas/analytics-cloud/acabi/predefined-application-roles.html)
-- [TC10 live test results](../tests/live/TC10_oac_integration_results.md) — full evidence trail TC10a–TC10h-4 (h-3: snapshot register/restore round-trip; h-4: end-to-end `dashboard install` SUCCESS on disposable OAC1)
+- TC10 live test results — full evidence trail TC10a–TC10h-4 (h-3: snapshot register/restore round-trip; h-4: end-to-end `dashboard install` SUCCESS on disposable OAC1)
 - [AIDP-from-OAC Quick Start blog](https://blogs.oracle.com/ai-data-platform/continuing-your-oracle-ai-data-platform-journey-quick-start-guide) — Oracle's documented UI flow for creating the AIDP connection in OAC

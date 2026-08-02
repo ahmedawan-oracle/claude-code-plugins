@@ -235,10 +235,9 @@ Atomic commits preferred — one P-id / TC-id per commit so backlog cross-refs a
 | [`docs/oac_rest_api_setup.md`](docs/oac_rest_api_setup.md) | One-time IDCS confidential-app setup |
 | [`docs/oac_mcp_setup.md`](docs/oac_mcp_setup.md) | Per-user OAC MCP setup |
 | [`scripts/oracle_ai_data_platform_fusion_autopilot/schema/fusion_catalog.py`](scripts/oracle_ai_data_platform_fusion_autopilot/schema/fusion_catalog.py) | Curated PVO catalog (source of truth for datastore paths) |
-| [`tests/live/`](tests/live/) | Live-evidence trail (TC1..TC24…) |
+| [`tests/live/`](tests/live/) | Live probe helpers (`aidp_catalog_probe_live.py`, `aidp_state_probe_live.py`) used by the skills |
 
 ## Cross-references
 
-- Workspace-level AIDP rules: `/Users/oussamalakrafi/Workspace/CLAUDE.md`
-- Plugin reference set: `/Users/oussamalakrafi/Workspace/Claude-Context/claude-code-plugins-ahmed/`
+- Workspace-level AIDP rules: `<your-workspace>/CLAUDE.md`
 - Sibling plugin (single-PVO connector skills): [`../oracle-ai-data-platform-workbench-spark-connectors`](../oracle-ai-data-platform-workbench-spark-connectors/)
