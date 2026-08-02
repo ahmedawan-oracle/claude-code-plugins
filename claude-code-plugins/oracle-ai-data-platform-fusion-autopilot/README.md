@@ -4,7 +4,7 @@
 >
 > Same pattern shown in the official Oracle blog [Bring Fusion Data into AIDP Workbench Using BICC](https://blogs.oracle.com/ai-data-platform/bring-fusion-data-into-oracle-ai-data-platform-workbench-using-bicc), productized.
 
-**Status**: alpha (`0.1.0a0`) — Tier-1 features complete and live-validated end-to-end against the saasfademo1 Fusion demo pod + multiple OAC instances (see [tests/live/](tests/live/)). The bundle now uses a single content-pack execution path. **1360 unit + 12 architectural + 5 integration tests pass, plus the conversational skill family's own unit suites.** **Live-validated 2026-06-15** on the `fusion_autopilot_dev` cluster: a `mart-author` overlay seeded `gold.ar_invoice_summary` (49 rows) end-to-end, and OAC workbooks were created via the OAC MCP `save_catalog_content` write tool.
+**Status**: alpha (`0.1.0a0`) — Tier-1 features complete and live-validated end-to-end against the saasfademo1 Fusion demo pod + multiple OAC instances. The bundle now uses a single content-pack execution path. **1360 unit + 12 architectural + 5 integration tests pass, plus the conversational skill family's own unit suites.** **Live-validated 2026-06-15** on the `fusion_autopilot_dev` cluster: a `mart-author` overlay seeded `gold.ar_invoice_summary` (49 rows) end-to-end, and OAC workbooks were created via the OAC MCP `save_catalog_content` write tool.
 
 Primary CLI commands wired: `init`, `init-config`, `use-pack`, `validate`,
 `bootstrap`, `catalog list/probe/probe-pvo`, `run`, `status`, `migrate-bundle`,
@@ -357,3 +357,14 @@ the tenant's live BICC console.
 ## License
 
 [MIT](LICENSE) © 2026 Ahmed Awan
+
+---
+
+## Credits
+
+Built by the Oracle Forward Deployed Engineering (FDE) team:
+
+- **Ahmed Awan** — Forward Deployed Engineer (FDE)
+- **Oussama Lakrafi** — Forward Deployed Engineer (FDE)
+
+Productized from the pattern in the official Oracle blog — [Bring Fusion Data into Oracle AI Data Platform Workbench Using BICC](https://blogs.oracle.com/ai-data-platform/bring-fusion-data-into-oracle-ai-data-platform-workbench-using-bicc).
