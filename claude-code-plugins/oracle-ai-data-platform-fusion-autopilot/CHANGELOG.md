@@ -4,6 +4,20 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+### Fixed — cluster-side runtime dependency gate (REST dispatch)
+- **REST dispatch now validates its runtime dependency closure on the cluster
+  before importing the orchestrator.** The generated dispatch notebook installs
+  the plugin wheel with `pip install --no-deps` (deterministic offline path), so
+  declared runtime deps (`pydantic`, `pyyaml`) were neither bundled nor checked;
+  on a clean AIDP runtime the creds cell's `import orchestrator` would die with a
+  raw `ImportError` **before** any pipeline or safety gate ran. The install cell
+  now gates on the import-critical closure, best-effort installs any missing deps
+  into the staged target (self-heals on clusters with a reachable index), and
+  otherwise fails closed with a `DISPATCH_RUNTIME_DEPS_MISSING` diagnostic +
+  remediation. New tests in `tests/unit/dispatch/test_notebook_builder.py`
+  (`TestRuntimeDepPreflight`) cover clean-runtime fail-closed, self-heal, and
+  present-runtime no-op paths.
+
 ### Added — COA semantic-role resolution (feature `coa-role-segment-resolution`)
 - **COA role segments now resolve from explicit config, not column existence.**
   `coa_balancing_segment` / `coa_cost_center_segment` / `coa_natural_account_segment`
