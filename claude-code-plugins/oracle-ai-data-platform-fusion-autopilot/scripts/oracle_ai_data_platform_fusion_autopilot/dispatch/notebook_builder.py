@@ -33,6 +33,17 @@ MARKER_BEGIN = "AIDP_LIVE_TEST_RESULT_BEGIN"
 MARKER_END = "AIDP_LIVE_TEST_RESULT_END"
 _SENSITIVE_ENV_KEY_PARTS = ("PASSWORD", "SECRET", "TOKEN")
 
+# Import-critical runtime dependency closure for the CLUSTER-SIDE orchestrator
+# import (creds cell → ``import orchestrator`` → ``schema.bundle`` →
+# ``import yaml`` + ``from pydantic import ...``). Mapping is
+# ``import name → pip requirement`` so the notebook can best-effort install
+# any that a clean AIDP runtime lacks. Keep in sync with the corresponding
+# ``[project].dependencies`` entries in pyproject.toml.
+_CLUSTER_RUNTIME_IMPORTS: dict[str, str] = {
+    "pydantic": "pydantic>=2.0",
+    "yaml": "pyyaml>=6.0",
+}
+
 
 def _code_cell(source: str) -> dict:
     return {
@@ -75,6 +86,64 @@ def _build_install_cell(wheel_path: Path) -> str:
         f'    raise RuntimeError("plugin wheel install failed")\n'
         f"sys.path.insert(0, str(_target))\n"
         f'print(f"plugin installed to {{_target}}")\n'
+    ) + _build_runtime_dep_preflight()
+
+
+def _build_runtime_dep_preflight() -> str:
+    """Cluster-side runtime-dependency gate, appended to the install cell.
+
+    The wheel installs with ``--no-deps`` to keep the offline staging path
+    deterministic, so its declared runtime deps (pydantic, pyyaml) are NOT
+    pulled in. On a clean AIDP cluster runtime those may be absent, and the
+    next cell's ``from oracle_ai_data_platform_fusion_autopilot import
+    orchestrator`` would die with a raw ``ImportError`` *before* any pipeline
+    or safety gate runs.
+
+    This gate validates the import-critical closure, best-effort installs it
+    into the staged ``--target`` dir (so the run self-heals on any cluster
+    with a reachable package index), then fail-closes with a stable
+    ``DISPATCH_RUNTIME_DEPS_MISSING`` diagnostic + remediation if the runtime
+    still can't satisfy the imports. It must stay self-contained (only
+    stdlib + the ``subprocess``/``sys`` names bound in the install cell) — it
+    runs *before* the wheel's own modules are proven importable.
+    """
+    return (
+        f"import importlib\n"
+        f"_REQUIRED_IMPORTS = {_CLUSTER_RUNTIME_IMPORTS!r}\n"
+        f"def _missing_runtime_deps():\n"
+        f"    _m = []\n"
+        f"    for _mod in _REQUIRED_IMPORTS:\n"
+        f"        try:\n"
+        f"            importlib.import_module(_mod)\n"
+        f"        except Exception:\n"
+        f"            _m.append(_mod)\n"
+        f"    return _m\n"
+        f"_missing = _missing_runtime_deps()\n"
+        f"if _missing:\n"
+        f"    _specs = sorted({{_REQUIRED_IMPORTS[_m] for _m in _missing}})\n"
+        f'    print(f"runtime deps missing {{_missing}}; installing closure {{_specs}}")\n'
+        f"    _dep_res = subprocess.run(\n"
+        f'        [sys.executable, "-m", "pip", "install", "--quiet",\n'
+        f'         "--target", str(_target), *_specs],\n'
+        f"        capture_output=True, text=True, timeout=300,\n"
+        f"    )\n"
+        f'    print(f"dep install rc={{_dep_res.returncode}}")\n'
+        f"    if _dep_res.returncode != 0:\n"
+        f'        print("STDOUT:", _dep_res.stdout[-2000:])\n'
+        f'        print("STDERR:", _dep_res.stderr[-2000:])\n'
+        f"    importlib.invalidate_caches()\n"
+        f"    _missing = _missing_runtime_deps()\n"
+        f"if _missing:\n"
+        f"    raise RuntimeError(\n"
+        f'        "[DISPATCH_RUNTIME_DEPS_MISSING] AIDP cluster runtime is missing "\n'
+        f'        f"required plugin dependencies: {{_missing}}. The plugin wheel "\n'
+        f'        "installs with --no-deps for a deterministic offline path, so these "\n'
+        f'        "declared runtime deps must already be present on the cluster image "\n'
+        f'        "or installable from a package index reachable by the cluster. "\n'
+        f'        "Remediation: add them as cluster libraries (see pyproject.toml "\n'
+        f'        "[project].dependencies), or bake them into the AIDP cluster image."\n'
+        f"    )\n"
+        f'print("runtime deps ok")\n'
     )
 
 
@@ -132,12 +201,12 @@ def _build_run_cell(
     if execution_backend == "content-pack":
         # 8-space indent — sits inside `try:` block + inside `orchestrator.run(` call.
         backend_kwargs = (
-            f'        execution_backend="content-pack",\n'
-            f"        resolved_pack=_resolved_pack,  # noqa: F821 — bootstrap cell\n"
-            f"        tenant_profile=_tenant_profile,  # noqa: F821 — bootstrap cell\n"
+            '        execution_backend="content-pack",\n'
+            "        resolved_pack=_resolved_pack,  # noqa: F821 — bootstrap cell\n"
+            "        tenant_profile=_tenant_profile,  # noqa: F821 — bootstrap cell\n"
         )
     else:
-        backend_kwargs = f'        execution_backend="legacy-python",\n'
+        backend_kwargs = '        execution_backend="legacy-python",\n'
 
     return (
         f"import json, time\n"

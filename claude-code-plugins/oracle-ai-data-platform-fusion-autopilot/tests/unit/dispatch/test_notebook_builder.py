@@ -10,13 +10,17 @@ regression where someone hand-rolls a subset dict and silently drops
 from __future__ import annotations
 
 import base64
+import sys
 from pathlib import Path
+from subprocess import CompletedProcess
+from unittest import mock
 
 import pytest
-
 from oracle_ai_data_platform_fusion_autopilot.dispatch.notebook_builder import (
+    _CLUSTER_RUNTIME_IMPORTS,
     MARKER_BEGIN,
     MARKER_END,
+    _build_runtime_dep_preflight,
     build_notebook,
 )
 
@@ -419,3 +423,87 @@ class TestVerifyCell:
         )
         verify = "".join(nb["cells"][4]["source"])
         assert "schema.bundle import load_bundle" in verify
+
+
+class TestRuntimeDepPreflight:
+    """Cluster-side runtime-dependency gate — the wheel installs with
+    ``--no-deps`` so the generated notebook must validate pydantic/pyyaml are
+    importable BEFORE the creds cell's ``import orchestrator``, else a clean
+    AIDP runtime dies with a raw ImportError before any safety gate runs."""
+
+    def test_install_cell_gates_before_orchestrator_import(
+        self, wheel: Path
+    ) -> None:
+        nb = build_notebook(
+            wheel_path=wheel,
+            bundle_yaml="",
+            mode="seed",
+            datasets=None,
+            layers=None,
+        )
+        install = "".join(nb["cells"][1]["source"])
+        creds = "".join(nb["cells"][2]["source"])
+        # The gate lives in the install cell (index 1) and validates every
+        # import-critical dep; the orchestrator import is in the creds cell
+        # (index 2) — so validation strictly precedes the fragile import.
+        for import_name in _CLUSTER_RUNTIME_IMPORTS:
+            assert repr(import_name) in install
+        assert "DISPATCH_RUNTIME_DEPS_MISSING" in install
+        assert "import oracle_ai_data_platform_fusion_autopilot" in creds or (
+            "from oracle_ai_data_platform_fusion_autopilot import orchestrator"
+            in creds
+        )
+
+    def test_gate_source_compiles(self) -> None:
+        compile(_build_runtime_dep_preflight(), "<preflight>", "exec")
+
+    @staticmethod
+    def _exec_ns(run_result: CompletedProcess, tmp_path: Path):
+        """Exec namespace with a fake ``subprocess`` (so we don't mock-patch
+        the real one — that would collide with ``importlib.import_module``
+        patching during target resolution) and a stubbed ``sys``."""
+        run_mock = mock.Mock(return_value=run_result)
+        fake_subprocess = mock.Mock()
+        fake_subprocess.run = run_mock
+        ns = {"subprocess": fake_subprocess, "sys": sys, "_target": tmp_path}
+        return ns, run_mock
+
+    def test_clean_runtime_fails_closed(self, tmp_path: Path) -> None:
+        """Simulate a clean runtime (imports fail) with no reachable index
+        (install fails) → the gate must raise the coded diagnostic, NOT let a
+        later raw ImportError leak."""
+        snippet = _build_runtime_dep_preflight()
+        ns, _ = self._exec_ns(
+            CompletedProcess([], 1, "", "no matching distribution"), tmp_path
+        )
+        with mock.patch("importlib.import_module", side_effect=ImportError("boom")):
+            with pytest.raises(RuntimeError, match="DISPATCH_RUNTIME_DEPS_MISSING"):
+                exec(snippet, ns)
+
+    def test_present_runtime_passes(self, tmp_path: Path) -> None:
+        """When every required dep imports, the gate is a no-op (no install
+        attempt, no raise)."""
+        snippet = _build_runtime_dep_preflight()
+        ns, run_mock = self._exec_ns(CompletedProcess([], 0, "", ""), tmp_path)
+        with mock.patch("importlib.import_module", return_value=object()):
+            exec(snippet, ns)  # must not raise
+        run_mock.assert_not_called()
+
+    def test_self_heal_install_recovers(self, tmp_path: Path) -> None:
+        """Deps missing initially but installable → gate installs the closure,
+        re-validates green, and does not raise."""
+        snippet = _build_runtime_dep_preflight()
+        ns, run_mock = self._exec_ns(CompletedProcess([], 0, "", ""), tmp_path)
+        calls = {"n": 0}
+
+        def _flaky_import(_name):
+            # First sweep (len(_CLUSTER_RUNTIME_IMPORTS) calls) fails; after
+            # the install, the re-sweep succeeds.
+            if calls["n"] < len(_CLUSTER_RUNTIME_IMPORTS):
+                calls["n"] += 1
+                raise ImportError("not yet")
+            return object()
+
+        with mock.patch("importlib.import_module", side_effect=_flaky_import):
+            exec(snippet, ns)  # must not raise
+        run_mock.assert_called_once()
