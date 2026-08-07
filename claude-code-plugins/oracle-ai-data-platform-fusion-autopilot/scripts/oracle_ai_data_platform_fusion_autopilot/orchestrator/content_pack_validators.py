@@ -67,6 +67,11 @@ the runtime AIDPF-4070/4071 gates compare the contract against live Fusion; this
 compares declared consumer-demand against the declared upstream contract."""
 AIDPF_5002_UNKNOWN_TEMPLATE_VAR = "AIDPF-5002"
 AIDPF_5003_UNDECLARED_VARIATION_POINT = "AIDPF-5003"
+AIDPF_5010_POST_RENDER_REJECTED = "AIDPF-5010"
+"""Design-time surface of the renderer's post-render rejection: a TEMPLATE
+containing a comment marker (``--`` / ``/*``) or ``;`` would fail every
+render with AIDPF-5010 cluster-side — surface it offline instead
+(live-observed render_failed on an overlay template, 2026-08-06)."""
 AIDPF_7001_DASHBOARD_MISSING_NODE = "AIDPF-7001"
 AIDPF_7003_DASHBOARD_TYPE_MISMATCH = "AIDPF-7003"
 AIDPF_7004_DASHBOARD_PACK_INCOMPATIBLE = "AIDPF-7004"
@@ -90,10 +95,10 @@ AIDPF_2019_COA_SEGMENT_OUT_OF_RANGE = "AIDPF-2019"
 column before the contract check."""
 
 # Fusion GL key-flexfield supports up to 30 segments. A COA role may only bind
-# CodeCombinationSegment1..CodeCombinationSegment30.
-_COA_SEGMENT_RE = re.compile(
-    r"^CodeCombinationSegment([1-9]|[12][0-9]|30)$", re.IGNORECASE
-)
+# CodeCombinationSegment1..CodeCombinationSegment30. Canonical definition now
+# lives in the neutral schema layer (shared with the metadata-arm derivation);
+# re-exported here under the module-private name this file already uses.
+from ..schema.coa_roles import COA_SEGMENT_RE as _COA_SEGMENT_RE  # noqa: E402
 
 # Pack alias names conventionally used for COA roles -- a single-candidate
 # existence alias on one of these without `resolution: semanticRole` is the
@@ -299,6 +304,52 @@ def validate_template_variables(pack: ResolvedPack) -> list[ValidationError]:
                             f"`{qualified}` references unknown "
                             f"template variable `{{{{ {token} }}}}`. "
                             f"Allowed: {sorted(_BASE_TEMPLATE_VARS) + ['profile.<key>', 'column.<name>', 'semantic.<name>']}."
+                        ),
+                        location=qualified,
+                    )
+                )
+    return errors
+
+
+# ---------------------------------------------------------------------------
+# validate_sql_template_hygiene (AIDPF-5010, design-time twin)
+# ---------------------------------------------------------------------------
+
+
+def validate_sql_template_hygiene(pack: ResolvedPack) -> list[ValidationError]:
+    """Reject templates that can NEVER render: the renderer's post-render
+    check (``sql_renderer._check_post_render``) rejects any rendered SQL
+    containing a comment marker or ``;`` (comment-smuggling / multi-statement
+    defense, AIDPF-5010). A marker present in the TEMPLATE itself therefore
+    fails every render, but only cluster-side at run time — surface it here,
+    offline, with the authoring remedy. Single-sourced from the renderer's
+    ``_DISALLOWED_AFTER_RENDER`` list."""
+    from .sql_renderer import _DISALLOWED_AFTER_RENDER
+
+    forbidden = tuple(_DISALLOWED_AFTER_RENDER) + (";",)
+    errors: list[ValidationError] = []
+    for layer_name, nodes in (("silver", pack.silver), ("gold", pack.gold)):
+        for node_id, node in nodes.items():
+            if node.implementation.type != "sql":
+                continue
+            qualified = f"{layer_name}/{node_id}"
+            sql_path = pack.root_for(qualified) / node.implementation.sql
+            if not sql_path.exists():
+                # validate_sql_paths surfaces AIDPF-2003; avoid duplicates.
+                continue
+            content = sql_path.read_text(encoding="utf-8")
+            hits = [m for m in forbidden if m in content]
+            if hits:
+                errors.append(
+                    ValidationError(
+                        code=AIDPF_5010_POST_RENDER_REJECTED,
+                        message=(
+                            f"{AIDPF_5010_POST_RENDER_REJECTED}: SQL template for "
+                            f"node `{qualified}` contains {hits!r} — the renderer "
+                            f"rejects comment markers and `;` in RENDERED SQL "
+                            f"(comment-smuggling / multi-statement defense), so "
+                            f"this template can never render. Templates must be "
+                            f"comment-free; put commentary in the node YAML."
                         ),
                         location=qualified,
                     )
@@ -1183,6 +1234,7 @@ def validate_pack_full(
     report.merge_errors(validate_reserved_node_ids(pack))
     report.merge_errors(validate_sql_paths(pack))
     report.merge_errors(validate_template_variables(pack))
+    report.merge_errors(validate_sql_template_hygiene(pack))
     report.merge_errors(validate_dag(pack))
     report.merge_errors(validate_column_contracts(pack, profile=profile))
     report.merge_errors(validate_declared_inputs(pack, profile=profile))

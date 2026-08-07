@@ -112,10 +112,17 @@ def stage_pack_files(
     files_by_relpath: dict[str, str] = {}
     chain_layers_meta: list[dict[str, Any]] = []
 
-    # Pass 1: YAML manifests via globs (per layer).
+    # Pass 1: YAML manifests via globs (per layer), plus each layer's OWN
+    # silver/gold SQL files. The per-layer SQL glob is load-bearing for
+    # guarded ``replaceNode`` overlays: the cluster-side chain re-merge
+    # re-verifies ``forkedFrom`` by recomputing the BASE fingerprints, which
+    # reads the base layer's shadowed ``<id>.sql`` — a file the merged-view
+    # pass (2) never stages because ``root_for`` points at the overlay
+    # (live-observed FileNotFoundError in the run cell, 2026-08-06).
     for index, layer_root in enumerate(chain_roots):
         layer_subdir = f"__layer_{index}__"
         _stage_yaml_manifests(layer_root, layer_subdir, files_by_relpath)
+        _stage_layer_sql_files(layer_root, layer_subdir, files_by_relpath)
         # Track layer identity for the manifest.
         pack_yaml_path = layer_root / "pack.yaml"
         pack_id = _read_pack_id(pack_yaml_path)
@@ -123,7 +130,8 @@ def stage_pack_files(
             {"index": index, "subdir": layer_subdir, "pack_id": pack_id}
         )
 
-    # Pass 2: SQL templates driven by the merged ResolvedPack.
+    # Pass 2: SQL templates driven by the merged ResolvedPack (covers
+    # non-conventional declared paths outside silver/ and gold/).
     _stage_sql_templates(resolved_pack, chain_roots, files_by_relpath)
 
     manifest = {
@@ -254,6 +262,30 @@ def _stage_yaml_manifests(
         for p in sorted(d.glob("*.yaml")):
             relpath = f"{layer_subdir}/{subdir}/{p.name}"
             files_by_relpath[relpath] = p.read_text(encoding="utf-8")
+
+
+def _stage_layer_sql_files(
+    layer_root: Path,
+    layer_subdir: str,
+    files_by_relpath: dict[str, str],
+) -> None:
+    """Stage every ``silver/**/*.sql`` and ``gold/**/*.sql`` the layer itself
+    ships, so each staged layer is self-contained for cluster-side
+    ``load_pack`` / replaceNode fork re-verification (which reads the BASE
+    layer's shadowed SQL). Contents found here are byte-identical to what the
+    merged-view pass would stage for the same key, so plain assignment is
+    safe either way."""
+    for sub in ("silver", "gold"):
+        base = layer_root / sub
+        if not base.is_dir():
+            continue
+        for sql_file in sorted(base.rglob("*.sql")):
+            if not sql_file.is_file():
+                continue
+            rel = sql_file.relative_to(layer_root).as_posix()
+            files_by_relpath.setdefault(
+                f"{layer_subdir}/{rel}", sql_file.read_text(encoding="utf-8")
+            )
 
 
 def _stage_sql_templates(

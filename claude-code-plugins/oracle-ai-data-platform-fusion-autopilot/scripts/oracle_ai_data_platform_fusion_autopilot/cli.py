@@ -274,6 +274,20 @@ def validate(ctx: click.Context) -> None:
     ),
 )
 @click.pass_context
+@click.option("--resolve-coa-from-metadata", is_flag=True,
+              help="Derive chartOfAccounts.byChart from Fusion key-flexfield "
+                   "segment qualifiers (BICC KFF PVOs, cluster dispatch only), "
+                   "verify each arm with the Tier-B probe against landed gl_coa, "
+                   "and persist ONLY verified arms (mechanism metadata_resolved). "
+                   "Additive: existing arms are preserved. Off by default.")
+@click.option("--repin-coa-from-metadata", is_flag=True,
+              help="With --resolve-coa-from-metadata: also OVERWRITE an "
+                   "existing byChart arm that disagrees with verified "
+                   "metadata. Requires per-chart interactive confirmation; "
+                   "--non-interactive without one refuses. Provenance records "
+                   "the prior column in repinnedFrom. A repin is a MUTATING "
+                   "COA change — the resume drift gate will refuse --resume "
+                   "and a fresh seed is required. Use deliberately.")
 def bootstrap(
     ctx: click.Context,
     check_iam: bool,
@@ -282,6 +296,8 @@ def bootstrap(
     non_interactive: bool,
     accept_coa_convention: bool,
     accept_singleton_coa: bool,
+    resolve_coa_from_metadata: bool,
+    repin_coa_from_metadata: bool,
     resolutions_path: Path | None,
     skip_preonboarding_probes: bool,
     dispatch_mode: str,
@@ -302,6 +318,8 @@ def bootstrap(
         non_interactive=non_interactive,
         accept_coa_convention=accept_coa_convention,
         accept_singleton_coa=accept_singleton_coa,
+        resolve_coa_from_metadata=resolve_coa_from_metadata,
+        repin_coa_from_metadata=repin_coa_from_metadata,
         resolutions_path=resolutions_path,
         skip_preonboarding_probes=skip_preonboarding_probes,
         dispatch_mode=dispatch_mode,
@@ -484,13 +502,27 @@ def catalog_probe_pvo(
          "resumed run's manifest value; an explicit value that conflicts with "
          "the manifest raises AIDPF-1047.",
 )
+@click.option(
+    "--auto-remediate-coa", "auto_remediate_coa", is_flag=True, default=False,
+    help="On an AIDPF-2018/AIDPF-2017 abort, run the metadata resolution "
+         "(bootstrap --refresh --resolve-coa-from-metadata) and resume the "
+         "aborted run automatically instead of exiting for the operator. "
+         "OFF by default; at most ONE pass per run. Resumes ONLY when the "
+         "resolution phase exits 0 (all active in-scope charts resolved), "
+         "otherwise stops with the phase's diagnostic (AIDPF-2021/2023, "
+         "with AIDPF-2022 per-arm details). The internal resume never "
+         "passes --mode — it adopts the aborted run's recorded mode "
+         "(AIDPF-1046 protection), identically for seed and incremental "
+         "aborts.",
+)
 @click.pass_context
 def run(ctx: click.Context, mode: str | None, datasets: str | None, layers: str | None,
         inline: bool, resume_run_id: str | None, dry_run: bool,
         poll_timeout_s: int,
         force_fingerprint_skip: bool,
         repin_plan_hash: bool,
-        strict_scope: bool | None) -> None:
+        strict_scope: bool | None,
+        auto_remediate_coa: bool) -> None:
     """Invoke the orchestrator: extract -> bronze -> silver -> gold."""
     from .commands.run import run as run_impl
     sys.exit(run_impl(
@@ -507,6 +539,7 @@ def run(ctx: click.Context, mode: str | None, datasets: str | None, layers: str 
         force_fingerprint_skip=force_fingerprint_skip,
         repin_plan_hash=repin_plan_hash,
         strict_scope=strict_scope,
+        auto_remediate_coa=auto_remediate_coa,
         console=console,
     ))
 
@@ -1114,6 +1147,141 @@ def dashboard_mcp_setup(
             f"[dim]Skipped .mcp.json (--no-wire). Point the {DEFAULT_CONNECTOR_CONFIG_FILE.name} "
             f"connector at it with a single arg: {summary['connector_arg']}[/dim]"
         )
+
+
+# ---------------------------------------------------------------------------
+# coa — COA metadata tooling (read-only in P1)
+# ---------------------------------------------------------------------------
+
+
+@main.group()
+def coa() -> None:
+    """Chart-of-accounts metadata tooling."""
+
+
+@coa.command("metadata-probe")
+@click.option("--resource-path", default=None,
+              help="Override the (UNVERIFIED) segment-qualifier resource "
+                   "path. Validated as a relative Fusion path and "
+                   "origin-pinned before any request (NFR-9).")
+@click.option("--chart", default=None,
+              help="Limit the derived-arm report to one chart id.")
+@click.option("--limit", default=3, show_default=True,
+              help="Max charts to include in the derived-arm report.")
+@click.option("--budget-s", default=None, type=float,
+              help="Wall-clock budget for the metadata fetch (default 60).")
+@click.option("--json", "as_json", is_flag=True,
+              help="Emit the raw JSON report (for the FR-16 smoke record).")
+@click.pass_context
+def coa_metadata_probe(
+    ctx: click.Context,
+    resource_path: str | None,
+    chart: str | None,
+    limit: int,
+    budget_s: float | None,
+    as_json: bool,
+) -> None:
+    """READ-ONLY smoke for the Fusion segment-qualifier resource (FR-16).
+
+    Runs the candidate ladder + live shape assertion and derives candidate
+    ``byChart`` arms through the SAME shared core production uses — writes
+    no profile, no state, no diagnostics. The FR-16 ship gates: (a) exactly
+    one resource path pinned, (b) arms for the tenant's active charts,
+    (c) the known AIDPF-2017 offender charts derive a naturalAccountSegment
+    DIFFERENT from the bad singleton.
+    """
+    import json as _json
+
+    from rich.console import Console
+
+    from .commands.coa_metadata_resolution import (
+        METADATA_BUDGET_S,
+        run_metadata_probe,
+    )
+    from .schema.bundle import load_bundle
+
+    console = Console()
+    bundle_path: Path = ctx.obj["bundle_path"]
+    if not bundle_path.exists():
+        console.print(f"[red]bundle not found:[/red] {bundle_path}")
+        raise SystemExit(2)
+    bundle, _ = load_bundle(bundle_path)
+    fusion = getattr(bundle, "fusion", None)
+    service_url = getattr(fusion, "service_url", None)
+    if not service_url:
+        console.print("[red]bundle.fusion.serviceUrl is required[/red]")
+        raise SystemExit(2)
+
+    report = run_metadata_probe(
+        service_url=service_url,
+        coa_metadata=getattr(fusion, "coa_metadata", None),
+        cli_resource_path=resource_path,
+        chart=chart,
+        limit=limit,
+        budget_s=budget_s if budget_s is not None else METADATA_BUDGET_S,
+    )
+    if as_json:
+        click.echo(_json.dumps(report, indent=2))
+    else:
+        if not report["ok"]:
+            console.print(f"[yellow]{report.get('skipReason')}[/yellow]")
+        for cand in report.get("candidates", []):
+            console.print(f"[dim]{cand['path']} → {cand['outcome']}[/dim]")
+        if report.get("ok"):
+            console.print(
+                f"[green]shape asserted:[/green] {report['resourcePath']} "
+                f"(style={report['qualifier_style_detected']}, "
+                f"coverage={report['coverage']})"
+            )
+            console.print(
+                f"charts derived: {report['chartsDerived']}; rejected: "
+                f"{len(report['chartsRejected'])}"
+            )
+            console.print(report["byChartYamlFragment"])
+    raise SystemExit(0 if report["ok"] else 3)
+
+
+# ---------------------------------------------------------------------------
+# bronze — dataset-level diagnostics (feature bronze-extract-schema-patch)
+# ---------------------------------------------------------------------------
+
+
+@main.group()
+def bronze() -> None:
+    """Bronze-extract diagnostics."""
+
+
+@bronze.command("diagnose-encode")
+@click.option("--dataset", required=True,
+              help="Bundle dataset id (a bronze_extract node of the resolved "
+                   "pack) to diagnose.")
+@click.option("--max-probes", "max_probes", type=click.IntRange(3, 200),
+              default=30, show_default=True,
+              help="Probe budget for the column bisection (each probe is one "
+                   "pruned cache+count on the cluster).")
+@click.option("--poll-timeout", "poll_timeout_s",
+              type=click.IntRange(60, 14400), default=3600, show_default=True,
+              help="Seconds to wait for the diagnosis job.")
+@click.pass_context
+def bronze_diagnose_encode(ctx: click.Context, dataset: str, max_probes: int,
+                           poll_timeout_s: int) -> None:
+    """Bisect an AIDPF-2093 encode failure to the exact column(s).
+
+    Names which PVO column(s) the connector mis-types (value vs declared
+    schema), probes each culprit's RUNTIME type with a patched-read ladder,
+    and prints the ready-to-paste `schemaPatches` bundle entry. Read-only
+    against Fusion; runs on the cluster (the connector is cluster-only).
+    """
+    from .commands.bronze_diagnose import run_diagnose_encode
+    sys.exit(run_diagnose_encode(
+        ctx.obj["bundle_path"],
+        ctx.obj["config_path"],
+        ctx.obj["env_name"],
+        dataset=dataset,
+        max_probes=max_probes,
+        poll_timeout_s=poll_timeout_s,
+        console=console,
+    ))
 
 
 if __name__ == "__main__":

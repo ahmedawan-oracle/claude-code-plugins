@@ -245,27 +245,88 @@ aidp-fusion-autopilot run --mode seed <scope flags> --poll-timeout <N>
 - `--poll-timeout` default **3600** (1h). Recommend **14400** (4h) for a
   first-time full seed against a slow Fusion pod (cold-cache BICC extracts;
   `gl_period_balances` can be the long pole). Valid range 60–14400.
-- For a **resume**: `aidp-fusion-autopilot run --mode seed --resume <run_id>`
-  (omit `--datasets` / `--layers` unless narrowing). When the failed run wrote a
-  durable **run manifest**, `--resume` *replays the manifest* (canonical topology,
-  per-node fingerprints, mode, and identity) rather than re-deriving scope; a bare
-  `--resume` never silently flips seed↔incremental. Manifest-present drift guards
-  (topology `AIDPF-1044`, node/pack `AIDPF-1049`, identity/profile/COA-policy
-  `AIDPF-1048`, scope `AIDPF-1047`, mode `AIDPF-1046`) route to a fresh seed. A
-  pre-manifest run falls back to the legacy path (scope reconstructed from state
-  rows). A malformed/unreadable manifest fails closed with `AIDPF-4022` — start a
-  fresh seed.
+- For a **resume**: `aidp-fusion-autopilot run --resume <run_id>` with **NO
+  `--mode`** — the resume adopts the run's recorded mode from the manifest
+  (COA aborts fire on incremental runs too; pinning `seed` on an incremental
+  abort trips the `AIDPF-1046` resume-mode-conflict gate). Omit `--datasets` /
+  `--layers` unless narrowing. When the failed run wrote a durable **run
+  manifest**, `--resume` *replays the manifest* (canonical topology, per-node
+  fingerprints, mode, and identity) rather than re-deriving scope; a bare
+  `--resume` never silently flips seed↔incremental. Manifest-present drift
+  guards (topology `AIDPF-1044`, node/pack `AIDPF-1049`,
+  identity/profile/COA-policy `AIDPF-1048`, scope `AIDPF-1047`, mode
+  `AIDPF-1046`) route to a fresh seed. A pre-manifest run falls back to the
+  legacy path (scope reconstructed from state rows). A malformed/unreadable
+  manifest fails closed with `AIDPF-4022` — start a fresh seed.
 - **On non-terminal failure / interruption**: capture the printed `run_id` and
-  offer `aidp-fusion-autopilot run --mode seed --resume <run_id>`. The original
-  run_id is preserved end-to-end (medallion `_run_id` audit invariant).
+  offer `aidp-fusion-autopilot run --resume <run_id>` (no `--mode`). The
+  original run_id is preserved end-to-end (medallion `_run_id` audit
+  invariant).
+- **Uncoded failures — classify by the deepest cause, never by the
+  absence of an AIDPF code.** With a POSITIVE transient signature in the
+  cell/`Caused by:` chain (`HikariPool`/`MetaException`, connection or
+  read timeouts, connection refused/reset, executor lost): change
+  NOTHING — a mid-run node failure resumes with `run --resume <run_id>`;
+  a pre-run/cell failure retries the same command once; two consecutive
+  transient failures = cluster health, escalate instead of retrying.
+  WITHOUT such a signature (a Python `AttributeError`/`ValueError`/
+  `ModuleNotFoundError`, an assertion), do NOT retry and do NOT blame the
+  cluster: fetch the full cell exception from the executed notebook and
+  route it as a plugin/config bug via `/aidpf-error-triage`.
+
+### 4b — COA auto-remediation loop (bounded: at most ONE pass per run_id)
+
+When the `RUN VERDICT` names `AIDPF-2018` / `AIDPF-2017`:
+
+```text
+1. AIDPF-2018 / AIDPF-2017 in the verdict?
+2. aidp-fusion-autopilot bootstrap --refresh --resolve-coa-from-metadata
+3. Read the COA ledger: chartsAdded / chartsRejected / chartsUnverified.
+   Key on the resolution phase's EXIT CODE (FR-14a): non-zero → STOP and
+   hand the diagnostic to the operator (AIDPF-2021 unreachable, AIDPF-2023
+   unresolved charts — with AIDPF-2022 per-arm details). An AIDPF-2022
+   detail recorded for an INACTIVE chart coexists with exit 0 and does not
+   block the resume.
+4. Phase exited 0 (all active in-scope charts resolved) →
+   aidp-fusion-autopilot run --resume <run_id>   ← NO --mode: adopts the
+      run's recorded mode (COA aborts fire on incremental runs too;
+      pinning `seed` would trip the AIDPF-1046 resume-mode-conflict gate —
+      or worse, re-seed)
+5. Still AIDPF-2018/2017 after one remediation pass → STOP. Never loop
+   twice; route to /medallion-author.
+```
+
+Caveat: if the resume is rejected with plain `AIDPF-1048` (protected charts
+unreadable → `coa_verdict=None`, fail-closed), fall back to a fresh
+`--mode seed` — which re-triggers the destructive-seed confirmation of
+step 3, by design.
+
+Unattended alternative: `run --mode seed --auto-remediate-coa` performs the
+same loop internally (one pass; resumes only when the resolution phase exits
+0, otherwise stops with the 2021/2023 diagnostic). Never combine it with
+`--repin-coa-from-metadata` — repins are interactive-only.
 
 ### 5 — Present the result
 
-Summarize the CLI's per-step table: **dataset / layer / status / row_count /
-duration**, plus the `run_id` and success/failed/skipped counters. On failure,
-point the user at the diagnostic artifact the CLI wrote at
-`.aidp/diagnostics/<run_id>/` (e.g. the `AIDPF-*.json` for gate failures) and
-read it back to explain the AIDPF code + remediation.
+**The verdict is `reconcile_run_outcome`'s, never the job status.** A cluster
+job status of `SUCCESS` means "the notebook finished", not "the seed
+completed". Report the `RUN VERDICT` line. If it is `ABORTED` or `UNPROVEN`,
+the seed FAILED — say so, name the AIDPF codes it lists, and do not offer the
+dashboard hand-off.
+
+Then summarize the CLI's per-step table: **dataset / layer / status /
+row_count / duration**, plus the `run_id` and success/failed/skipped
+counters. On failure, point the user at the diagnostic artifact the CLI wrote
+at `.aidp/diagnostics/<run_id>/` (e.g. the `AIDPF-*.json` for gate failures)
+and read it back to explain the AIDPF code + remediation; for
+`AIDPF-2018`/`AIDPF-2017` run step 4b's loop first. A
+`bronze_extract_failed` whose first line carries `AIDPF-2093` is a
+connector value/type mismatch: route to
+`bronze diagnose-encode --dataset <id>` + a `schemaPatches` bundle entry
+(read-side repair, full width preserved) — never to excluding the dataset.
+A successful patched landing is visible in the run output
+(`bronze <id> landed with schemaPatches: …`) and in
+`.aidp/diagnostics/<run_id>/schema-patches__<run_id>.json`.
 
 ### 6 — Hand off the next step (on success)
 
@@ -319,3 +380,10 @@ reuse them without dragging in the orchestrator.
   route to `/aidp-fusion-config`.
 - **Never re-implement OCI signing** in the helpers — `preconditions.py` calls
   the existing `AidpRestClient` / loaders.
+- **Never report a seed as complete without a `completed` verdict** — the
+  `RUN VERDICT` block, not the AIDP job status, is the outcome (AIDPF-4023).
+- **Never remediate COA more than once per run_id** (step 4b is a single
+  bounded pass; a second AIDPF-2018/2017 stops for a human).
+- **Never pass `--repin-coa-from-metadata` unattended** — repins overwrite
+  pinned arms, need per-chart interactive confirmation, and force a fresh
+  seed.

@@ -291,11 +291,14 @@ class TestClusterMarkerFailures:
     def test_marker_version_2_raises_validation_failed(
         self, monkeypatch, tmp_path
     ) -> None:
-        # Future cluster emits markerVersion: 2 — Literal[1] rejects.
+        # Feature coa-mapping-auto-remediation made markerVersion 2 a VALID
+        # version (optional coaMetadata section) — this test keeps its
+        # original INTENT (an UNKNOWN future version must hard-fail on the
+        # laptop, never silently coerce) by pinning the next unknown one.
         bad_payload = {
             "ok": True,
             "marker": {
-                "markerVersion": 2,
+                "markerVersion": 3,
                 "tenant": "x",
                 "bronzeFingerprint": "sha256:y",
                 "observedSchema": {},

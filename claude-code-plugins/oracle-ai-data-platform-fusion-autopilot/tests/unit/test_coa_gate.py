@@ -17,6 +17,7 @@ from oracle_ai_data_platform_fusion_autopilot.orchestrator.coa_gate import (
     check_existence_union,
     check_multi_coa,
     check_natural_account,
+    check_role_domain,
 )
 
 
@@ -140,3 +141,77 @@ def test_single_active_chart_with_inactive_legacy_passes() -> None:
         {"100": 15000, "999": 0}, singleton_accepted=False, has_by_chart=False
     )
     assert errs == []
+
+
+# --- Tier A': contract-domain (check_role_domain) ----------------------------
+#
+# Live incident 2026-08-06 (chart 41627): bronze lands the FULL raw PVO, so an
+# out-of-domain segment (Segment9 vs a Segment1-6 contract) passes union
+# existence yet fails at silver render time (UNRESOLVED_COLUMN). The domain
+# check is the pure rule both the runtime checkpoint (step 1b) and the
+# metadata-arm verifier apply.
+
+_DOMAIN_16 = {
+    "coa.balancing": frozenset(
+        f"CodeCombinationSegment{i}" for i in range(1, 7)
+    ),
+    "coa.cost_center": frozenset(
+        f"CodeCombinationSegment{i}" for i in range(1, 7)
+    ),
+    "coa.natural_account": frozenset(
+        f"CodeCombinationSegment{i}" for i in range(1, 7)
+    ),
+}
+
+
+def test_role_domain_out_of_domain_arm_fails_2042() -> None:
+    errs = check_role_domain(
+        {"41627": {"coa.cost_center": "CodeCombinationSegment9"}}, _DOMAIN_16
+    )
+    assert _codes(errs) == {AIDPF_2042_REQUIRED_COLUMN_MISSING}
+    (msg,) = [m for _, m in errs]
+    assert "chart 41627" in msg
+    assert "CodeCombinationSegment9" in msg
+    assert "coa-deep-overlay" in msg  # remedy named
+
+
+def test_role_domain_default_arm_named_in_message() -> None:
+    errs = check_role_domain(
+        {"default": {"coa.balancing": "CodeCombinationSegment9"}}, _DOMAIN_16
+    )
+    (msg,) = [m for _, m in errs]
+    assert "the default arm" in msg
+
+
+def test_role_domain_in_domain_passes_case_insensitively() -> None:
+    errs = check_role_domain(
+        {"default": {"coa.balancing": "codecombinationsegment2"}}, _DOMAIN_16
+    )
+    assert errs == []
+
+
+def test_role_domain_none_or_missing_role_is_skipped() -> None:
+    # No pack context at all → no-op.
+    assert check_role_domain(
+        {"41627": {"coa.balancing": "CodeCombinationSegment9"}}, None
+    ) == []
+    # A role token the pack does not declare → that binding is not judged.
+    only_bal = {"coa.balancing": frozenset({"CodeCombinationSegment1"})}
+    assert check_role_domain(
+        {"41627": {"coa.cost_center": "CodeCombinationSegment9"}}, only_bal
+    ) == []
+
+
+def test_role_domain_flags_every_offending_binding() -> None:
+    errs = check_role_domain(
+        {
+            "default": {"coa.balancing": "CodeCombinationSegment1"},
+            "41627": {
+                "coa.balancing": "CodeCombinationSegment7",
+                "coa.cost_center": "CodeCombinationSegment9",
+            },
+        },
+        _DOMAIN_16,
+    )
+    assert len(errs) == 2
+    assert all(code == AIDPF_2042_REQUIRED_COLUMN_MISSING for code, _ in errs)

@@ -524,6 +524,9 @@ def _dispatch_content_pack_run(
             is_resume=True,
             manifest_mode=(manifest.get("mode") if manifest else None),
             historical_exec_modes=list(resume_context.historical_exec_modes),
+            reserved_row_modes=list(
+                getattr(resume_context, "reserved_row_modes", ()) or ()
+            ),
         )
         # Re-validate the RESOLVED resume mode before any dispatch. run()'s
         # pre-dispatch _VALID_MODES check ran with mode=None on a resume, so the
@@ -1406,6 +1409,104 @@ def _run_content_pack_backend(
     )
     plan = order_coa_source_first(plan, _coa_sources)
 
+    # ── Run-outcome finalization (design §9.2, D-9/D-10) ─────────────────
+    # The orchestrator-declared expected execution set: exactly the node ids
+    # this loop will execute or resume-skip. NOT the resolved lineage plan —
+    # a mart-only run deliberately leaves lineage bronze nodes step-less, so
+    # keying completeness on the raw plan would misreport valid `--layers`
+    # runs as unproven.
+    _expected_terminal_node_ids: tuple[str, ...] = tuple(
+        node.id for node in plan
+        if not (_mart_only and node.layer == "bronze")
+    )
+    # schemaPatches provenance accumulator (FR-9): filled by the node loop
+    # from EFFECTIVE adapter results only; stamped by _finalize.
+    applied_schema_patches: dict[str, tuple[str, ...]] = {}
+
+    def _finalize(summary: "RunSummary") -> "RunSummary":
+        """Stamp the expected set into the summary/marker (D-9) and write the
+        durable ``__run_outcome__`` row on EVERY exit path, gate-abort early
+        returns included (§9.2.2). The row's verdict comes from the SAME pure
+        completeness core the CLI reconciler uses (D-10) so the printed
+        verdict and the durable row cannot disagree; ``unproven`` stamps
+        AIDPF-4023 (FR-15.10). Records the run's ``mode`` in the state row
+        (FR-15.12). Best-effort: losing the audit row never fails the run."""
+        import dataclasses as _dc
+        import re as _re
+
+        stamped = (
+            _dc.replace(
+                summary,
+                expected_terminal_node_ids=_expected_terminal_node_ids,
+            )
+            if summary.expected_terminal_node_ids is None
+            else summary
+        )
+        # schemaPatches provenance (FR-9): stamp the EFFECTIVE per-dataset
+        # patch columns onto the summary/marker on every exit path.
+        if applied_schema_patches and stamped.applied_schema_patches is None:
+            stamped = _dc.replace(
+                stamped,
+                applied_schema_patches=dict(applied_schema_patches),
+            )
+        if dry_run:
+            return stamped
+        try:
+            from ..commands.run_reconcile import (
+                AIDPF_4023_RUN_RECONCILIATION,
+                StepView,
+                classify_run_completeness,
+            )
+            from .state_phase2 import write_state_rows_hard
+
+            views = [
+                StepView(
+                    dataset_id=s.dataset_id,
+                    layer=str(s.layer),
+                    status=s.status,
+                    skip_reason=s.skip_reason,
+                    error_message=s.error_message,
+                )
+                for s in stamped.steps
+            ]
+            verdict = classify_run_completeness(
+                views, frozenset(_expected_terminal_node_ids)
+            )
+            codes: list[str] = []
+            for view in views:
+                if view.status == "failed" or view.skip_reason == "aborted":
+                    for _code in _re.findall(
+                        r"AIDPF-\d{4}", view.error_message or ""
+                    ):
+                        if _code not in codes:
+                            codes.append(_code)
+            if (
+                verdict == "unproven"
+                and AIDPF_4023_RUN_RECONCILIATION not in codes
+            ):
+                codes.insert(0, AIDPF_4023_RUN_RECONCILIATION)
+            write_state_rows_hard(
+                spark, paths,
+                [{
+                    "run_id": stamped.run_id,
+                    "dataset_id": "__run_outcome__",
+                    "layer": "silver",
+                    "mode": mode,
+                    "status": (
+                        "success" if verdict == "completed" else "failed"
+                    ),
+                    "error_message": (
+                        None if verdict == "completed"
+                        else f"{verdict}: {', '.join(codes) or 'no codes'}"
+                    ),
+                    "last_run_at": _dt.now(_tz.utc),
+                    "duration_seconds": 0.0,
+                }],
+            )
+        except Exception:  # noqa: BLE001 — audit row is best-effort
+            pass
+        return stamped
+
     def _coa_gate_abort(
         result: "CoaCheckpointResult", prior_steps: "list[RunStep]"
     ) -> RunSummary:
@@ -1428,15 +1529,87 @@ def _run_content_pack_backend(
             aidpf_code=codes[0],
             error_message=detail,
         )
+        # Durable failure trace (best-effort, mirroring the cascade-skip
+        # writer): the abort must not be marker-only — `status`'s run banner
+        # and resume triage read these rows. Records the run's mode
+        # (FR-15.12).
+        if not dry_run:
+            try:
+                from .state_phase2 import write_state_rows_hard as _wsrh
+
+                _wsrh(
+                    spark, paths,
+                    [{
+                        "run_id": run_id,
+                        "dataset_id": "__coa_gate__",
+                        "layer": "silver",
+                        "mode": mode,
+                        "status": "failed",
+                        "error_message": detail[:4000],
+                        "last_run_at": _dt.now(_tz.utc),
+                        "duration_seconds": 0.0,
+                    }],
+                )
+            except Exception:  # noqa: BLE001 — audit row is best-effort
+                pass
+        # Structured, truthfully-coded diagnostic (FR-15.9 / design §9.3):
+        # keyed on the checkpoint's ACTUAL primary code — never a hard-coded
+        # 2018 (a 2013-only or 2074 abort must not trigger the wrong
+        # automated remediation). Chart fields stay absent on structural-only
+        # aborts: honesty over fabrication.
+        _diags: tuple[dict, ...] = ()
+        if result.diagnostic is not None:
+            _d = result.diagnostic
+            _payload: dict = {
+                "kind": "coa-gate",
+                "errorCode": _d.primary_code,
+                "codes": list(_d.codes),
+                "runId": run_id,
+                "mode": mode,
+                "messages": list(_d.messages),
+                "activeCharts": (
+                    list(_d.active_charts)
+                    if _d.active_charts is not None else None
+                ),
+                "activeChartCount": _d.active_chart_count,
+                "mappedCharts": (
+                    list(_d.mapped_charts)
+                    if _d.mapped_charts is not None else None
+                ),
+                "contradictedCharts": (
+                    list(_d.contradicted_charts)
+                    if _d.contradicted_charts is not None else None
+                ),
+                "singletonAccepted": _d.singleton_accepted,
+            }
+            if _d.primary_code in ("AIDPF-2018", "AIDPF-2017"):
+                # Remediation only where metadata resolution can actually
+                # help. Advertises only commands registered on the SHIPPED
+                # CLI (§9.3.4b, introspection-invariant-tested); P2
+                # registered --resolve-coa-from-metadata, so this is the
+                # executable loop. The resume never pins --mode (D-12).
+                _payload["remediation"] = {
+                    "resolve": (
+                        "bootstrap --refresh --resolve-coa-from-metadata"
+                    ),
+                    "verify": "coa metadata-probe --json",
+                    "resume": f"run --resume {run_id}",
+                    "fallback": (
+                        "author profile.chartOfAccounts.byChart via "
+                        "/medallion-author"
+                    ),
+                }
+            _diags = (_payload,)
         gate_now = _dt.now(_tz.utc)
-        return RunSummary(
+        return _finalize(RunSummary(
             run_id=run_id,
             started_at=gate_now,
             finished_at=gate_now,
             bundle_project=bundle_project,
             mode=mode,  # type: ignore[arg-type]
             steps=(*prior_steps, gate_step),
-        )
+            diagnostics=_diags,
+        ))
 
     if (enable_bronze_readiness_gate or _mart_only) and not dry_run:
         from .bronze_readiness import (
@@ -1481,14 +1654,67 @@ def _run_content_pack_backend(
                     error_message=str(gate_exc),
                 )
                 gate_now = _dt.now(_tz.utc)
-                return RunSummary(
+                return _finalize(RunSummary(
                     run_id=run_id,
                     started_at=gate_now,
                     finished_at=gate_now,
                     bundle_project=bundle_project,
                     mode=mode,  # type: ignore[arg-type]
                     steps=(gate_step,),
-                )
+                ))
+
+    # Durable pre-execution run manifest (gate-ordering row 0). Written ONCE
+    # on a FRESH run (never on resume — the manifest is immutable), AFTER the
+    # read-only pre-write gates and BEFORE the pre-loop COA checkpoint
+    # (§9.2.7 manifest-first ordering: manifest → __coa_gate__ →
+    # __run_outcome__ → diagnostic), so a manifest-commit failure aborts
+    # cleanly with nothing extracted (AIDPF-4022) and EVERY COA abort —
+    # pre-loop included — leaves a manifest-backed run that a bare
+    # `run --resume <run_id>` replays through the existing scope/topology/
+    # identity/profile drift guards (round-6, D-15).
+    if resume_run_id is None and not dry_run:
+        from .run_manifest import AIDPF_4022_MANIFEST_COMMIT_FAILED
+        try:
+            _manifest_json = _build_run_manifest_json(
+                plan=plan,
+                resolved_pack=resolved_pack,
+                bundle=bundle,
+                paths=paths,
+                profile_hash=profile_hash,
+                tenant_profile=tenant_profile,
+                mode=mode,
+                datasets=datasets,
+                layers=layers,
+                strict_scope=strict_scope,
+                allow_unprovable_coa=_allow_unprovable,
+            )
+            _write_run_manifest_row(
+                spark, paths, run_id=run_id, mode=mode,
+                manifest_json=_manifest_json,
+            )
+        except Exception as _manifest_exc:
+            _mnow = _dt.now(_tz.utc)
+            return _finalize(RunSummary(
+                run_id=run_id,
+                started_at=_mnow,
+                finished_at=_mnow,
+                bundle_project=bundle_project,
+                mode=mode,  # type: ignore[arg-type]
+                steps=(
+                    RunStep.gate_failed(
+                        run_id=run_id,
+                        mode=mode,
+                        layer="silver",
+                        gate_dataset_id="__run_manifest__",
+                        aidpf_code=AIDPF_4022_MANIFEST_COMMIT_FAILED,
+                        error_message=(
+                            f"run manifest commit failed before extraction: "
+                            f"{_manifest_exc}. Nothing was extracted; re-run "
+                            f"`--mode seed`."
+                        ),
+                    ),
+                ),
+            ))
 
     # COA checkpoint (feature: fail-fast-seed-validation). A COA source is
     # already MATERIALIZED at this point — so the in-loop data checkpoint (row
@@ -1622,60 +1848,16 @@ def _run_content_pack_backend(
                         error_message=None, watermark_used=None,
                         skip_reason="aborted",
                     ))
-            return RunSummary(
+            return _finalize(RunSummary(
                 run_id=run_id, started_at=_gnow, finished_at=_gnow,
                 bundle_project=bundle_project, mode=mode,
                 steps=tuple(_gsteps),
                 diagnostics=tuple(f["diagnostic"] for f in _src_failures),
-            )
+            ))
 
-    # Durable pre-execution run manifest (gate-ordering row 0). Written ONCE on
-    # a FRESH run (never on resume — the manifest is immutable), AFTER the
-    # read-only pre-write gates and BEFORE the first node dispatch, so a
-    # manifest-commit failure aborts cleanly with nothing extracted (AIDPF-4022).
-    if resume_run_id is None and not dry_run:
-        from .run_manifest import AIDPF_4022_MANIFEST_COMMIT_FAILED
-        try:
-            _manifest_json = _build_run_manifest_json(
-                plan=plan,
-                resolved_pack=resolved_pack,
-                bundle=bundle,
-                paths=paths,
-                profile_hash=profile_hash,
-                tenant_profile=tenant_profile,
-                mode=mode,
-                datasets=datasets,
-                layers=layers,
-                strict_scope=strict_scope,
-                allow_unprovable_coa=_allow_unprovable,
-            )
-            _write_run_manifest_row(
-                spark, paths, run_id=run_id, mode=mode,
-                manifest_json=_manifest_json,
-            )
-        except Exception as _manifest_exc:
-            _mnow = _dt.now(_tz.utc)
-            return RunSummary(
-                run_id=run_id,
-                started_at=_mnow,
-                finished_at=_mnow,
-                bundle_project=bundle_project,
-                mode=mode,  # type: ignore[arg-type]
-                steps=(
-                    RunStep.gate_failed(
-                        run_id=run_id,
-                        mode=mode,
-                        layer="silver",
-                        gate_dataset_id="__run_manifest__",
-                        aidpf_code=AIDPF_4022_MANIFEST_COMMIT_FAILED,
-                        error_message=(
-                            f"run manifest commit failed before extraction: "
-                            f"{_manifest_exc}. Nothing was extracted; re-run "
-                            f"`--mode seed`."
-                        ),
-                    ),
-                ),
-            )
+    # (The durable pre-execution run manifest is written EARLIER — ahead of
+    # the pre-loop COA checkpoint, design §9.2.7 manifest-first ordering —
+    # so every COA abort, pre-loop included, is manifest-backed for resume.)
 
     # Deferred ``--force-fingerprint-skip`` audit row — written AFTER the
     # manifest (Finding 3) so the manifest is the first hard write. Uses the
@@ -1839,6 +2021,10 @@ def _run_content_pack_backend(
         # skill consumption. Rides RunSummary.diagnostics → the marker.
         if getattr(result, "diagnostic", None):
             diagnostics.append(result.diagnostic)
+        # schemaPatches provenance (FR-9): only EFFECTIVELY applied patches,
+        # only from SUCCEEDED nodes — failed/no-op landings report nothing.
+        if status == "success" and getattr(result, "applied_schema_patches", None):
+            applied_schema_patches[node.id] = tuple(result.applied_schema_patches)
         steps.append(
             RunStep(
                 run_id=run_id,
@@ -1871,7 +2057,7 @@ def _run_content_pack_backend(
                     "extracts (COA unproven).",
                     node.id,
                 )
-                return RunSummary(
+                return _finalize(RunSummary(
                     run_id=run_id,
                     started_at=started_at,
                     finished_at=_dt.now(_tz.utc),
@@ -1879,7 +2065,7 @@ def _run_content_pack_backend(
                     mode=mode,
                     steps=tuple(steps),
                     diagnostics=tuple(diagnostics),
-                )
+                ))
             # 4b — gl_coa landed: run the data-probe checkpoint against it before
             # the next bronze node dispatches.
             _ckpt = evaluate_coa_checkpoint(
@@ -1902,7 +2088,7 @@ def _run_content_pack_backend(
                 coa_inc.coa_checkpoint_passed = True
 
     finished_at = _dt.now(_tz.utc)
-    return RunSummary(
+    return _finalize(RunSummary(
         run_id=run_id,
         started_at=started_at,
         finished_at=finished_at,
@@ -1910,7 +2096,7 @@ def _run_content_pack_backend(
         mode=mode,
         steps=tuple(steps),
         diagnostics=tuple(diagnostics),
-    )
+    ))
 
 
 def _compute_sem_by_id(

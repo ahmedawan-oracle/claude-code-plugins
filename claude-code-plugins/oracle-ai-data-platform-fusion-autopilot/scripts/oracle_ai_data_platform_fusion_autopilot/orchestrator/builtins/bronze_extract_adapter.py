@@ -7,7 +7,8 @@ reconciliation, and write strategy in one bronze-owned surface.
 The adapter exposes two surfaces:
 
 * :func:`run` — execute a single bronze node end-to-end and return
-  ``(target_df, bronze_output_watermark)``. The dispatcher
+  a :class:`BronzeAdapterResult` (target df, bronze output watermark,
+  effective schemaPatches columns). The dispatcher
   (``_execute_bronze_extract_node`` in ``sql_runner``) threads the
   output watermark into the state row directly, replacing
   ``_compute_output_watermark`` (which is source-row-max semantics —
@@ -39,7 +40,7 @@ Algorithm:
 9. Write via strategy (replace for seed / first-incremental;
    payload-diff-gated MERGE for incremental).
 10. Empty-delta preserves prior cursor.
-11. Return ``(target_df, output_watermark)``.
+11. Return :class:`BronzeAdapterResult`.
 
 Error codes registered here:
 
@@ -51,6 +52,7 @@ Error codes registered here:
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Iterable
 
@@ -84,6 +86,18 @@ class BronzeCursorTargetDesyncError(Exception):
     state corruption; do not silently degrade."""
 
     code = AIDPF_2092_BRONZE_CURSOR_TARGET_DESYNC
+
+
+@dataclass(frozen=True)
+class BronzeAdapterResult:
+    """`run()`'s result. ``applied_patch_columns`` is the EFFECTIVE
+    schemaPatches cast-back plan (no-op patches already dropped) — the
+    provenance source for ``RunSummary.applied_schema_patches``; reporting
+    the configured map instead would over-report (FR-9)."""
+
+    df: "DataFrame"
+    output_watermark: "datetime | None"
+    applied_patch_columns: tuple[str, ...] = ()
 
 
 # ---------------------------------------------------------------------------
@@ -131,6 +145,48 @@ def _table_exists(spark: "SparkSession", target: str) -> bool:
 def _to_bicc_iso(wm: datetime) -> str:
     """ISO-8601 UTC string for the BICC ``fusion.initial.extract-date`` option."""
     return wm.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _spark_type_for_patch(ddl: str):
+    """Map an allowlisted schemaPatches type string to a Spark DataType —
+    a pure mapping over the small validated domain (no DDL parser, no
+    session dependency; ``_parse_datatype_string`` is session-bound)."""
+    from pyspark.sql import types as T
+
+    norm = ddl.strip().lower()
+    simple = {
+        "bigint": T.LongType,
+        "long": T.LongType,
+        "int": T.IntegerType,
+        "integer": T.IntegerType,
+        "double": T.DoubleType,
+        "float": T.FloatType,
+        "string": T.StringType,
+        "boolean": T.BooleanType,
+        "date": T.DateType,
+        "timestamp": T.TimestampType,
+    }
+    if norm in simple:
+        return simple[norm]()
+    if norm.startswith("decimal(") and norm.endswith(")"):
+        precision, scale = norm[len("decimal("):-1].split(",")
+        return T.DecimalType(int(precision), int(scale.strip()))
+    raise ValueError(f"unsupported schemaPatches type {ddl!r}")
+
+
+def _patches_for(node_id: str, bundle: "Bundle") -> dict[str, str]:
+    """The dataset's ``schemaPatches`` map from the bundle entry (already
+    validated fail-closed at bundle load); ``{}`` when absent."""
+    datasets = getattr(bundle, "datasets", None)
+    if not isinstance(datasets, (list, tuple)):
+        # Fake/mock bundles in tests (and defensive posture generally):
+        # no iterable datasets → no patches.
+        return {}
+    for ds in datasets:
+        if getattr(ds, "id", None) == node_id:
+            patches = getattr(ds, "schema_patches", None)
+            return dict(patches) if isinstance(patches, dict) else {}
+    return {}
 
 
 # ---------------------------------------------------------------------------
@@ -228,7 +284,7 @@ def run(
     ctx: "RunContext",
     paths: "TablePaths",
     mode: str,
-) -> "tuple[DataFrame, datetime | None]":
+) -> "BronzeAdapterResult":
     """Execute a single bronze_extract node end-to-end.
 
     Implements the bronze algorithm:
@@ -352,20 +408,103 @@ def run(
     extract_started_at = datetime.now(timezone.utc)
     next_persisted_cursor = extract_started_at - safety_window
 
-    # Step 5: invoke BICC.
+    # Step 5: invoke BICC — with an optional READ-side schema patch
+    # (feature bronze-extract-schema-patch): a PVO column whose
+    # connector-produced values mismatch the connector's own declared type
+    # (AIDPF-2093 class) is read as its RUNTIME type and cast back to the
+    # declared type below, integrity-guarded (AIDPF-2094).
     from ...extractors import bicc as bicc_extractor
+    from ...schema.bronze_schema_patch import (
+        FieldDescriptor,
+        apply_schema_patches,
+        collision_free_temp_names,
+    )
 
     resolved_password_obj = _resolve_password(bundle.fusion.password)
-    df = bicc_extractor.extract_pvo(
-        spark,
-        descriptor,
+    _conn_kwargs = dict(
         fusion_service_url=bundle.fusion.service_url,
         username=bundle.fusion.username,
         password=resolved_password_obj.get_secret_value(),
         fusion_external_storage=bundle.fusion.external_storage,
         schema=effective_schema,
-        watermark=bicc_watermark,
     )
+
+    patches = _patches_for(node.id, bundle)
+    user_schema = None
+    cast_back: list = []
+    base_field_order: list[str] = []
+    if patches:
+        from pyspark.sql.types import StructField, StructType  # cluster-side
+
+        # Metadata-only schema roundtrip (same mechanism the PVO drift
+        # probe uses) — ONLY when patches exist (NFR-1).
+        base_schema = bicc_extractor.extract_pvo(
+            spark, descriptor, **_conn_kwargs
+        ).schema
+        descriptors = [
+            FieldDescriptor(
+                name=f.name,
+                ddl_type=f.dataType.simpleString(),
+                nullable=f.nullable,
+                metadata=dict(f.metadata or {}),
+            )
+            for f in base_schema.fields
+        ]
+        base_field_order = [f.name for f in base_schema.fields]
+        _patched_fields, cast_back = apply_schema_patches(descriptors, patches)
+        if cast_back:
+            # Reuse the base StructFields VERBATIM (name casing, nullable,
+            # metadata all preserved); swap ONLY the patched fields'
+            # dataType via the pure allowlist mapping — no DDL parsing, no
+            # session dependency.
+            patch_type_by_col = {
+                e.column.casefold(): e.patch_type for e in cast_back
+            }
+            user_schema = StructType([
+                (
+                    StructField(
+                        f.name,
+                        _spark_type_for_patch(
+                            patch_type_by_col[f.name.casefold()]
+                        ),
+                        f.nullable,
+                        dict(f.metadata or {}),
+                    )
+                    if f.name.casefold() in patch_type_by_col
+                    else f
+                )
+                for f in base_schema.fields
+            ])
+            _LOG.warning(
+                "bronze %s: applying schemaPatches %s (read-side; declared "
+                "types restored + integrity-guarded before landing)",
+                node.id,
+                sorted(e.column for e in cast_back),
+            )
+
+    df = bicc_extractor.extract_pvo(
+        spark,
+        descriptor,
+        **_conn_kwargs,
+        watermark=bicc_watermark,
+        user_schema=user_schema,
+    )
+
+    # Cast back to declared types, keeping RAW patched values under
+    # GENERATED temp names (collision-checked case-insensitively against
+    # the live schema) until the integrity guard has run.
+    raw_names: list[str] = []
+    if cast_back:
+        from pyspark.sql import functions as F
+
+        raw_names = collision_free_temp_names(
+            [f.name for f in df.schema.fields], len(cast_back)
+        )
+        for entry, raw in zip(cast_back, raw_names):
+            df = df.withColumnRenamed(entry.column, raw)
+            df = df.withColumn(
+                entry.column, F.col(raw).cast(entry.declared_type)
+            )
 
     # Step 8 (audit cols): _extract_ts as deterministic literal,
     # _source_pvo, _run_id, _watermark_used (NULL on seed-shape /
@@ -380,8 +519,73 @@ def run(
     )
 
     df.cache()
+    _cached_handle = df
     try:
-        source_delta_count = df.count()
+        if cast_back:
+            # §5a cast-integrity guard: ONE aggregate on the cached df
+            # computes the row count PLUS, per patched column,
+            # null-preservation and null-safe round-trip counters — a
+            # wrong-but-scannable patch type (overflow → NULL, fractional
+            # rounding, malformed → NULL; live-verified permissive casts)
+            # must fail BEFORE the write, never land silently.
+            from pyspark.sql import functions as F
+
+            from ...schema.bronze_schema_patch import (
+                AIDPF_2094_CAST_INTEGRITY,
+                CastIntegrityError,
+            )
+
+            aggs = [F.count(F.lit(1)).alias("__n")]
+            for entry, raw in zip(cast_back, raw_names):
+                aggs.append(
+                    F.sum(
+                        F.when(
+                            F.col(raw).isNotNull()
+                            & F.col(entry.column).isNull(),
+                            1,
+                        ).otherwise(0)
+                    ).alias(f"__nulled_{raw}")
+                )
+                aggs.append(
+                    F.sum(
+                        F.when(
+                            ~F.col(entry.column)
+                            .cast(entry.patch_type)
+                            .eqNullSafe(F.col(raw)),
+                            1,
+                        ).otherwise(0)
+                    ).alias(f"__rt_{raw}")
+                )
+            guard_row = df.agg(*aggs).collect()[0]
+            source_delta_count = guard_row["__n"]
+            for entry, raw in zip(cast_back, raw_names):
+                nulled = guard_row[f"__nulled_{raw}"] or 0
+                mismatched = guard_row[f"__rt_{raw}"] or 0
+                if nulled or mismatched:
+                    raise CastIntegrityError(
+                        f"{AIDPF_2094_CAST_INTEGRITY}: schemaPatches "
+                        f"cast-integrity violation on {node.id}."
+                        f"{entry.column}: nulled={nulled}, "
+                        f"roundtrip_mismatch={mismatched} — the patch type "
+                        f"{entry.patch_type!r} is wrong for this column's "
+                        f"values; re-run `bronze diagnose-encode --dataset "
+                        f"{node.id}` and fix the patch. Nothing was written."
+                    )
+            # Guard clean → drop temps, restore field metadata in-flight
+            # (live-verified to survive the atomic overwrite), and restore
+            # the connector's column ORDER (withColumn appended the
+            # cast-back columns at the end).
+            df = df.drop(*raw_names)
+            for entry in cast_back:
+                if entry.metadata:
+                    df = df.withMetadata(entry.column, dict(entry.metadata))
+            base_set = set(base_field_order)
+            ordered = [n for n in base_field_order if n in set(df.columns)] + [
+                c for c in df.columns if c not in base_set
+            ]
+            df = df.select(*ordered)
+        else:
+            source_delta_count = df.count()
 
         if use_seed_shape:
             # Step 9 (seed-shape replace): overwriteSchema=true
@@ -404,7 +608,11 @@ def run(
                 if source_delta_count > 0
                 else prior_watermark
             )
-            return materialized_df, output_watermark
+            return BronzeAdapterResult(
+                df=materialized_df,
+                output_watermark=output_watermark,
+                applied_patch_columns=tuple(e.column for e in cast_back),
+            )
 
         # Incremental MERGE branch. target exists (we asserted above
         # via the prior-cursor invariant).
@@ -416,7 +624,11 @@ def run(
         if source_delta_count == 0:
             # Step 10: empty-delta cursor preservation.
             materialized_df = spark.table(target)
-            return materialized_df, prior_watermark
+            return BronzeAdapterResult(
+                df=materialized_df,
+                output_watermark=prior_watermark,
+                applied_patch_columns=tuple(e.column for e in cast_back),
+            )
 
         df.createOrReplaceTempView("_p117_bronze_src")
 
@@ -485,14 +697,19 @@ def run(
             """
         )
         materialized_df = spark.table(target)
-        return materialized_df, next_persisted_cursor
+        return BronzeAdapterResult(
+            df=materialized_df,
+            output_watermark=next_persisted_cursor,
+            applied_patch_columns=tuple(e.column for e in cast_back),
+        )
     finally:
-        df.unpersist()
+        _cached_handle.unpersist()
 
 
 __all__ = [
     "VERSION",
     "AIDPF_2092_BRONZE_CURSOR_TARGET_DESYNC",
+    "BronzeAdapterResult",
     "BronzeCursorTargetDesyncError",
     "probe_bronze_schemas",
     "run",

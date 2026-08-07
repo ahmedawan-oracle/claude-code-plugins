@@ -27,9 +27,13 @@ from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
 
-from ..schema.coa_roles import SUPPORTED_COA_ROLES, coa_role_aliases
+from ..schema.coa_roles import (
+    SUPPORTED_COA_ROLES,
+    coa_role_aliases,
+    coa_role_domains,
+)
 from ..schema.medallion_pack import ChartOfAccountsProfile, NodeYaml
-from . import coa_gate
+from . import coa_gate, coa_probe
 from .required_column_resolver import coa_role_union
 
 _log = logging.getLogger(__name__)
@@ -43,7 +47,7 @@ Mirrors ``sql_renderer._check_identifier`` so a bad/hand-edited
 ``profile.chartOfAccounts`` value is blocked BEFORE it reaches probe SQL."""
 
 # Same allowlist as orchestrator.sql_renderer._IDENTIFIER_RE.
-_COA_IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,62}$")
+_COA_IDENT_RE = coa_gate.COA_IDENT_RE  # single-sourced (5001 + domain skip rule)
 
 if TYPE_CHECKING:
     from pyspark.sql import SparkSession
@@ -513,9 +517,12 @@ def _check_partition_columns(
     return []
 
 
-_COA_DISCRIMINANT = "CodeCombinationChartOfAccountsId"
-_COA_ACCOUNT_TYPE = "CodeCombinationAccountType"
-_COA_ENABLED_FLAG = "CodeCombinationEnabledFlag"
+# Physical gl_coa column names now live in ``coa_probe`` (the ONE Tier-B
+# probe definition, shared with the bootstrap-time metadata-arm verifier).
+# Re-exported under the module-private names this file's gate already uses.
+_COA_DISCRIMINANT = coa_probe.COA_DISCRIMINANT
+_COA_ACCOUNT_TYPE = coa_probe.COA_ACCOUNT_TYPE
+_COA_ENABLED_FLAG = coa_probe.COA_ENABLED_FLAG
 
 
 # The COA role filter now lives in the neutral schema layer
@@ -537,6 +544,45 @@ def _node_consumes_source(node: NodeYaml, source_id: str) -> bool:
     return False
 
 
+_COA_CODE_PRIORITY = (
+    "AIDPF-2018", "AIDPF-2017", "AIDPF-2013", "AIDPF-2016",
+    "AIDPF-2042", "AIDPF-5001", "AIDPF-2074",
+)
+"""Primary-code selection for the gate diagnostic (design §9.3.2): when
+several codes fire together the remediation-relevant one wins. Codes outside
+this list rank last, in first-seen order."""
+
+
+def select_primary_coa_code(codes: "list[str] | tuple[str, ...]") -> str:
+    """The single code the gate-abort diagnostic is keyed on — NEVER a
+    hard-coded 2018 (a 2013-only or 2074 abort must not trigger the wrong
+    automated remediation)."""
+    for candidate in _COA_CODE_PRIORITY:
+        if candidate in codes:
+            return candidate
+    return codes[0]
+
+
+@dataclass(frozen=True)
+class CoaGateDiagnostic:
+    """Structured checkpoint evidence for the gate-abort artifact (FR-15.9).
+
+    Populated WHERE THE PROBES EXECUTE — never reconstructed by parsing
+    human-readable messages, never by re-running probes. Chart fields are
+    ``None``/empty on structural-only aborts (2013, pre-probe): honesty over
+    fabrication.
+    """
+
+    primary_code: str
+    codes: tuple[str, ...]
+    messages: tuple[str, ...]
+    active_charts: tuple[str, ...] | None = None
+    active_chart_count: int | None = None
+    mapped_charts: tuple[str, ...] | None = None
+    contradicted_charts: tuple[str, ...] | None = None
+    singleton_accepted: bool | None = None
+
+
 @dataclass(frozen=True)
 class CoaEvalResult:
     """Structured outcome of :func:`_evaluate_coa`.
@@ -550,6 +596,12 @@ class CoaEvalResult:
 
     violations: list[PreflightError] = field(default_factory=list)
     probe_failures: list[str] = field(default_factory=list)
+    # Structured evidence for the gate diagnostic (FR-15.9) — filled by the
+    # probes themselves; ``None`` when the corresponding probe never ran.
+    chart_active: dict[str, int] | None = None
+    mapped_charts: tuple[str, ...] | None = None
+    singleton_accepted: bool | None = None
+    contradicted_charts: tuple[str, ...] = ()
 
     @property
     def ok(self) -> bool:
@@ -668,6 +720,19 @@ def _check_coa_gate(
             errors.extend(structural)
             continue
 
+        # Contract-domain gate (Tier A', pure) — same rule as the checkpoint's
+        # step 1b; the backstop must not let an out-of-domain binding reach the
+        # renderer either.
+        domain_errors = [
+            PreflightError(code=code, source=source_id, message=msg)
+            for code, msg in coa_gate.check_role_domain(
+                _coa_arms(coa_raw), coa_role_domains(pack)
+            )
+        ]
+        if domain_errors:
+            errors.extend(domain_errors)
+            continue
+
         table = ctx.bronze_table_for_source.get(source_id)
         if table is None:
             continue
@@ -708,15 +773,11 @@ def _coa_arms(coa_raw: dict) -> dict[str, dict[str, str]]:
 
 
 def _coa_chart_active(spark: "SparkSession", table: str) -> dict[str, int]:
-    """Active (enabled) gl_coa row count per chart_of_accounts_id."""
-    rows = spark.sql(
-        f"SELECT CAST({_COA_DISCRIMINANT} AS STRING) AS chart_id, COUNT(*) AS n "
-        f"FROM {table} "
-        f"WHERE {_COA_DISCRIMINANT} IS NOT NULL "
-        f"AND COALESCE({_COA_ENABLED_FLAG}, 'Y') <> 'N' "
-        f"GROUP BY CAST({_COA_DISCRIMINANT} AS STRING)"
-    ).collect()
-    return {str(r[0]): int(r[1]) for r in rows if r[0] is not None}
+    """Active (enabled) gl_coa row count per chart_of_accounts_id.
+
+    Thin delegate — the query lives in :mod:`coa_probe` (the ONE probe
+    definition, shared with the metadata-arm verifier)."""
+    return coa_probe.coa_chart_active(spark, table)
 
 
 def _evaluate_coa(
@@ -795,13 +856,18 @@ def _evaluate_coa(
     # 4. AIDPF-2018 — multi-COA + completeness (own try; retained even if a later
     # Tier-B probe raises).
     chart_active: dict[str, int] | None = None
+    _mapped_charts: tuple[str, ...] | None = None
+    _singleton_accepted: bool | None = None
+    _contradicted: list[str] = []
     try:
         chart_active = _coa_chart_active(spark, table)
         by_chart = coa_raw.get("byChart") or {}
         has_by_chart = bool(by_chart)
+        _mapped_charts = tuple(sorted(str(k) for k in by_chart))
         # Strict-bool consumption (never `bool("false")`): the structural gate
         # guarantees a native bool, so anything other than True is False.
         singleton_accepted = coa_raw.get("singletonAccepted") is True
+        _singleton_accepted = singleton_accepted
         for code, msg in coa_gate.check_multi_coa(
             chart_active,
             singleton_accepted=singleton_accepted,
@@ -845,42 +911,38 @@ def _evaluate_coa(
             if not na_col:
                 continue
             try:
-                agg = spark.sql(
-                    f"SELECT "
-                    f"COUNT(*) AS total, "
-                    f"SUM(CASE WHEN t > 1 THEN 1 ELSE 0 END) AS ambiguous "
-                    f"FROM (SELECT {na_col} AS na, "
-                    f"COUNT(DISTINCT {_COA_ACCOUNT_TYPE}) AS t "
-                    f"FROM {table} "
-                    f"WHERE CAST({_COA_DISCRIMINANT} AS STRING) = '{chart_id}' "
-                    f"AND {na_col} IS NOT NULL "
-                    f"AND COALESCE({_COA_ENABLED_FLAG}, 'Y') <> 'N' "
-                    f"GROUP BY {na_col})"
-                ).collect()
+                # The ONE Tier-B probe definition (shared with the
+                # metadata-arm verifier) — byte-identical SQL pinned by
+                # test_coa_probe_sql_identity.py.
+                probe = coa_probe.probe_chart(
+                    spark, table, chart_id=chart_id, na_col=na_col,
+                    active_rows=active_rows,
+                )
             except Exception as exc:  # pragma: no cover — constrained-session
                 probe_failures.append(
                     f"Tier-B natural-account probe on {table} chart {chart_id}: {exc}"
                 )
                 continue
-            if not agg:
+            if probe is None:
                 continue
-            total = int(agg[0][0] or 0)
-            ambiguous = int(agg[0][1] or 0)
-            probe = coa_gate.ChartProbe(
-                chart_id=chart_id,
-                active_row_count=active_rows,
-                natural_account_distinct=total,
-                natural_account_ambiguous=ambiguous,
-            )
             res = coa_gate.check_natural_account(probe)
             for code, msg in res.errors:
                 violations.append(
                     PreflightError(code=code, source=source_id, message=msg)
                 )
+                if code == coa_gate.AIDPF_2017_COA_NATURAL_ACCOUNT_CONTRADICTION:
+                    _contradicted.append(chart_id)
             for warning in res.warnings:
                 _log.warning("COA gate: %s", warning)
 
-    return CoaEvalResult(violations=violations, probe_failures=probe_failures)
+    return CoaEvalResult(
+        violations=violations,
+        probe_failures=probe_failures,
+        chart_active=chart_active,
+        mapped_charts=_mapped_charts,
+        singleton_accepted=_singleton_accepted,
+        contradicted_charts=tuple(sorted(_contradicted)),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -901,6 +963,9 @@ class CoaCheckpointResult:
 
     blocking: list[PreflightError] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    diagnostic: "CoaGateDiagnostic | None" = None
+    """Structured evidence for the gate-abort artifact (FR-15.9) — present
+    whenever ``blocking`` is non-empty, keyed on the ACTUAL primary code."""
 
     @property
     def ok(self) -> bool:
@@ -1002,6 +1067,10 @@ def evaluate_coa_checkpoint(
     coa_raw = (profile.profile or {}).get("chartOfAccounts")
     blocking: list[PreflightError] = []
     warnings: list[str] = []
+    # Probe-side evidence for the gate diagnostic — filled only where the
+    # data probes actually ran (structural-only aborts keep it None).
+    _evidence: CoaEvalResult | None = None
+    role_domains = coa_role_domains(pack)
 
     for source_id in sorted(coa_sources):
         roles_needed = _coa_roles_needed(pack, source_id)
@@ -1011,6 +1080,22 @@ def evaluate_coa_checkpoint(
         if structural:
             blocking.extend(structural)
             continue  # do not probe a malformed mapping
+
+        # 1b. Contract-domain gate (Tier A', pure — needs no landed data, so it
+        # ALSO runs pre-extraction / structural_only). A role bound outside the
+        # pack's semanticRole candidate domain resolves against the WIDE landed
+        # bronze (full raw PVO) yet explodes at silver render time, where
+        # projections carry only contract columns — existence (Tier A, step 3
+        # of the data gate) cannot see it. NEVER hatch-eligible.
+        domain_errors = [
+            PreflightError(code=code, source=source_id, message=msg)
+            for code, msg in coa_gate.check_role_domain(
+                _coa_arms(coa_raw), role_domains
+            )
+        ]
+        if domain_errors:
+            blocking.extend(domain_errors)
+            continue  # do not probe a mapping that cannot render
 
         if structural_only:
             continue
@@ -1034,6 +1119,7 @@ def evaluate_coa_checkpoint(
             continue
 
         result = _evaluate_coa(spark, table, source_id, coa_raw, roles_needed)
+        _evidence = result
         # Disposition step 1 — a retained VIOLATION blocks ALWAYS.
         if result.violations:
             blocking.extend(result.violations)
@@ -1062,7 +1148,39 @@ def evaluate_coa_checkpoint(
                     )
                 )
 
-    return CoaCheckpointResult(blocking=blocking, warnings=warnings)
+    diagnostic: CoaGateDiagnostic | None = None
+    if blocking:
+        codes: list[str] = []
+        for err in blocking:
+            if err.code not in codes:
+                codes.append(err.code)
+        diagnostic = CoaGateDiagnostic(
+            primary_code=select_primary_coa_code(codes),
+            codes=tuple(codes),
+            messages=tuple(e.message for e in blocking),
+            active_charts=(
+                tuple(sorted(_evidence.chart_active))
+                if _evidence is not None and _evidence.chart_active is not None
+                else None
+            ),
+            active_chart_count=(
+                len(_evidence.chart_active)
+                if _evidence is not None and _evidence.chart_active is not None
+                else None
+            ),
+            mapped_charts=(
+                _evidence.mapped_charts if _evidence is not None else None
+            ),
+            contradicted_charts=(
+                _evidence.contradicted_charts if _evidence is not None else None
+            ),
+            singleton_accepted=(
+                _evidence.singleton_accepted if _evidence is not None else None
+            ),
+        )
+    return CoaCheckpointResult(
+        blocking=blocking, warnings=warnings, diagnostic=diagnostic,
+    )
 
 
 def _describe_columns(spark: "SparkSession", table: str) -> set[str]:

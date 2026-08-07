@@ -233,7 +233,68 @@ def _build_bootstrap_staging_cell(
     )
 
 
-def _build_probe_cell(*, tenant: str) -> str:
+def _build_coa_metadata_block() -> str:
+    """The generated COA-metadata section of the probe cell (v2 only).
+
+    Kept out of the v1 cell entirely so existing snapshot/substring
+    assertions on the v1 cell stay byte-stable. Fail-soft by
+    construction: a KFF fetch failure becomes coverage='skipped' +
+    skipReason (AIDPF-2021 on the laptop); gl_coa unavailable (FR-14a
+    S5) becomes probeNote with zero probes — never a probe abort.
+    """
+    return (
+        f"    _coa_meta = None\n"
+        f"    if True:\n"
+        f"        from oracle_ai_data_platform_fusion_autopilot.commands.coa_metadata_resolution "
+        f"import BICC_ROW_CANDIDATE, arms_probe_map, cluster_fetch_kff_rows, derive_arms\n"
+        f"        from oracle_ai_data_platform_fusion_autopilot.orchestrator import coa_probe\n"
+        f"        from oracle_ai_data_platform_fusion_autopilot.schema.cluster_probe_marker "
+        f"import CoaMetadataMarker, CoaCandidateArmMarker, CoaArmRejectMarker, CoaChartProbeMarker\n"
+        f"        try:\n"
+        f"            _kff_rows = cluster_fetch_kff_rows(\n"
+        f"                spark, service_url=bundle.fusion.service_url,\n"
+        f"                username=bundle.fusion.username,\n"
+        f"                password=_resolved_password,\n"
+        f"                external_storage=bundle.fusion.external_storage,\n"
+        f"            )\n"
+        f"            _arms, _rejects = derive_arms(_kff_rows, candidate=BICC_ROW_CANDIDATE)\n"
+        f"            _probes, _active, _probe_note = {{}}, {{}}, None\n"
+        f"            try:\n"
+        f"                _gl_table = f'{{catalog}}.{{bronze_schema}}.gl_coa'\n"
+        f"                _active = coa_probe.coa_chart_active(spark, _gl_table)\n"
+        f"                _probes = coa_probe.probe_charts(\n"
+        f"                    spark, _gl_table, arms_probe_map(_arms), _active,\n"
+        f"                )\n"
+        f"            except Exception as _pexc:  # gl_coa not landed (S5) / probe issue\n"
+        f"                _probe_note = f'gl_coa probe unavailable: {{type(_pexc).__name__}}'\n"
+        f"            _coa_meta = CoaMetadataMarker(\n"
+        f"                source='bicc-pvo', coverage='complete',\n"
+        f"                probeNote=_probe_note,\n"
+        f"                candidates=[CoaCandidateArmMarker(\n"
+        f"                    chartId=a.chart_id,\n"
+        f"                    balancingSegment=a.balancing_segment,\n"
+        f"                    costCenterSegment=a.cost_center_segment,\n"
+        f"                    naturalAccountSegment=a.natural_account_segment,\n"
+        f"                ) for a in _arms.values()],\n"
+        f"                rejects=[CoaArmRejectMarker(\n"
+        f"                    chart=r.chart_id, reason=r.reason, detail=r.detail,\n"
+        f"                ) for r in _rejects],\n"
+        f"                probes=[CoaChartProbeMarker(\n"
+        f"                    chartId=pr.chart_id, activeRows=pr.active_row_count,\n"
+        f"                    naDistinct=pr.natural_account_distinct,\n"
+        f"                    naAmbiguous=pr.natural_account_ambiguous,\n"
+        f"                ) for pr in _probes.values()],\n"
+        f"                activeCharts=dict(_active),\n"
+        f"            )\n"
+        f"        except Exception as _cexc:  # noqa: BLE001 — fail-soft to a labelled skip\n"
+        f"            _coa_meta = CoaMetadataMarker(\n"
+        f"                source='bicc-pvo', coverage='skipped',\n"
+        f"                skipReason=f'{{type(_cexc).__name__}}: {{str(_cexc)[:300]}}',\n"
+        f"            )\n"
+    )
+
+
+def _build_probe_cell(*, tenant: str, resolve_coa_metadata: bool = False) -> str:
     """Cluster-side cell #3: probe → walk → emit base64-wrapped marker.
 
     The try/except is INSIDE this cell — Jupyter cell N exceptions are
@@ -339,13 +400,20 @@ def _build_probe_cell(*, tenant: str) -> str:
         f"        ds: [ColumnInfoMarker.from_column_info(c) for c in cols]\n"
         f"        for ds, cols in observed.items()\n"
         f"    }}\n"
-        f"    marker = ClusterProbeMarker(\n"
-        f"        markerVersion=1,\n"
+        # COA metadata resolution block — emitted ONLY when requested, so a
+        # v1 probe cell stays byte-stable (feature coa-mapping-auto-
+        # remediation; transport pivot: BICC PVOs read cluster-side,
+        # fail-soft to coverage='skipped' → AIDPF-2021 on the laptop).
+        + (_build_coa_metadata_block() if resolve_coa_metadata
+           else f"    _coa_meta = None\n")
+        +        f"    marker = ClusterProbeMarker(\n"
+        f"        markerVersion=2 if _coa_meta is not None else 1,\n"
         f"        tenant={tenant!r},\n"
         f"        bronzeFingerprint=fingerprint,\n"
         f"        observedSchema=observed_schema,\n"
         f"        walkerResults=walker_results,\n"
         f"        dispatchedAt=datetime.now(timezone.utc),\n"
+        f"        coaMetadata=_coa_meta,\n"
         f"    )\n"
         f"    envelope = ClusterProbeEnvelope(ok=True, marker=marker)\n"
         f"    payload = envelope.model_dump_json(by_alias=True)\n"
@@ -372,6 +440,7 @@ def _build_notebook(
     bicc_secret_name: str,
     bicc_secret_key: str,
     runtime_env_vars: Mapping[str, str] | None = None,
+    resolve_coa_metadata: bool = False,
 ) -> dict:
     """Compose the 4-cell ipynb dict the cluster runs.
 
@@ -417,7 +486,9 @@ def _build_notebook(
                     pack_manifest=pack_manifest,
                 )
             ),
-            _code_cell(_build_probe_cell(tenant=tenant)),
+            _code_cell(_build_probe_cell(
+                tenant=tenant, resolve_coa_metadata=resolve_coa_metadata,
+            )),
         ],
         "metadata": {
             "kernelspec": {
@@ -449,6 +520,7 @@ def dispatch_cluster_probe(
     client_factory=None,
     console: "Console | None" = None,
     poll_timeout_s: int = 1800,
+    resolve_coa_metadata: bool = False,
 ) -> ClusterProbeMarker:
     """Dispatch the variation-phase bronze probe to the AIDP cluster.
 
@@ -532,6 +604,7 @@ def dispatch_cluster_probe(
         bicc_secret_name=env.bicc_secret_name,
         bicc_secret_key=env.bicc_secret_key,
         runtime_env_vars=_collect_runtime_env_passthrough(),
+        resolve_coa_metadata=resolve_coa_metadata,
     )
 
     # ---- Dispatch via the neutral helper ----

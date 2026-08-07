@@ -70,11 +70,19 @@ class TestColumnInfoMarker:
 
 class TestClusterProbeMarker:
     def test_marker_version_literal_rejects_future_version(self) -> None:
-        # The whole point of Literal[1] over `int = 1` — a future cluster
-        # emitting markerVersion: 2 must NOT silently coerce on the laptop.
+        # The whole point of the pinned Literal over `int` — a future
+        # cluster emitting an UNKNOWN markerVersion must NOT silently
+        # coerce on the laptop. Version 2 became VALID with the optional
+        # coaMetadata section (feature coa-mapping-auto-remediation), so
+        # the unknown-version property now pins at 3.
         with pytest.raises(ValidationError) as exc:
-            _marker(markerVersion=2)
+            _marker(markerVersion=3)
         assert "markerVersion" in str(exc.value) or "Literal" in str(exc.value)
+
+    def test_marker_version_2_is_valid_with_optional_coa_metadata(self) -> None:
+        marker = _marker(markerVersion=2)
+        assert marker.marker_version == 2
+        assert marker.coa_metadata is None  # v2 with the section absent is fine
 
     def test_marker_version_default_is_1(self) -> None:
         # Constructor-level default still works (used in tests + the

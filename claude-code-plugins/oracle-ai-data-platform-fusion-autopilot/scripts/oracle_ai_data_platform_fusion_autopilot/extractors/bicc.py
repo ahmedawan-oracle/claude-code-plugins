@@ -37,6 +37,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:  # pragma: no cover
     from pyspark.sql import DataFrame, SparkSession
+    from pyspark.sql.types import StructType
 
     from ..schema.fusion_catalog import PvoEntry
 
@@ -52,6 +53,7 @@ def extract_pvo(
     schema: str | None = None,
     watermark: str | None = None,
     extra_options: dict[str, str] | None = None,
+    user_schema: "StructType | None" = None,
 ) -> "DataFrame":
     """Extract one PVO via the ``aidataplatform`` Spark format with ``type=FUSION_BICC``.
 
@@ -109,6 +111,13 @@ def extract_pvo(
     if extra_options:
         for key, value in extra_options.items():
             reader = reader.option(key, value)
+
+    if user_schema is not None:
+        # The connector HONORS a user-supplied read schema (live-verified
+        # 2026-08-06 against ItemExtractPVO): a per-column type patch here
+        # is the repair for connector value/declared-type mismatches
+        # (feature bronze-extract-schema-patch, AIDPF-2093/2094).
+        reader = reader.schema(user_schema)
 
     return reader.load()
 

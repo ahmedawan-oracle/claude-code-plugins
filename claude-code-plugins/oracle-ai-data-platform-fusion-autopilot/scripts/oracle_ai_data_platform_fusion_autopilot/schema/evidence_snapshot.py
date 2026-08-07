@@ -90,7 +90,7 @@ The semantic-role values are used for COA role resolution and must never be
 * ``defaulted_convention`` -- pack conventional default, *explicitly accepted*.
 * ``legacy_unverified`` -- back-derived from a legacy silent pin on ``--refresh``;
   correctness NOT established (emits a remediation warning, never silently upgraded).
-* ``metadata_resolved`` -- reserved for Fusion flexfield-qualifier metadata (spike)."""
+* ``metadata_resolved`` -- Fusion flexfield-qualifier metadata, Tier-B-verified before persist (feature coa-mapping-auto-remediation)."""
 
 
 class ApprovedBy(BaseModel):

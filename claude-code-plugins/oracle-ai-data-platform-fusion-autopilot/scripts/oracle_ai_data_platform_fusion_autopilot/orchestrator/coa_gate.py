@@ -21,7 +21,14 @@ chart_of_accounts_id** using that chart's own role mapping:
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
+
+COA_IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,62}$")
+"""The COA identifier allowlist (AIDPF-5001's rule, single-sourced here —
+``node_preflight._COA_IDENT_RE`` aliases it). :func:`check_role_domain`
+skips allowlist-failing columns so the 5001 security gate, not a domain
+message, diagnoses a malicious identifier."""
 
 AIDPF_2042_REQUIRED_COLUMN_MISSING = "AIDPF-2042"
 AIDPF_2016_COA_DUP_ROLE_COLUMN = "AIDPF-2016"
@@ -67,6 +74,13 @@ class ChartProbe:
 class CoaGateResult:
     errors: list[tuple[str, str]] = field(default_factory=list)  # (code, message)
     warnings: list[str] = field(default_factory=list)
+    below_sample_floor: bool = False
+    """Explicit sample-sufficiency EVIDENCE (additive; never changes
+    pass/fail). Set by :func:`check_natural_account` from the ``SAMPLE_FLOOR_*``
+    constants so callers (the metadata-arm verifier) never re-derive the
+    thresholds. Load-bearing for the zero-ambiguity undersized sample, which
+    produces neither error nor warning and would otherwise be
+    indistinguishable from a strongly-verified chart through this result."""
 
     @property
     def ok(self) -> bool:
@@ -88,6 +102,60 @@ def check_existence_union(
                     f"COA-bound column {col!r} is not present in landed gl_coa. "
                     f"Extend the gl_coa bronze contract / re-seed bronze before "
                     f"binding this role.",
+                )
+            )
+    return errors
+
+
+def check_role_domain(
+    arms: dict[str, dict[str, str]],
+    role_domains: dict[str, frozenset[str]] | None,
+) -> list[tuple[str, str]]:
+    """Tier A' contract-domain: every role binding (default + byChart arms)
+    must name a column inside the pack's ``semanticRole`` candidate domain
+    (``schema.coa_roles.coa_role_domains``), case-insensitively.
+
+    Existence (:func:`check_existence_union`) cannot catch this: bronze lands
+    the FULL raw PVO, so an out-of-domain segment column (e.g.
+    ``CodeCombinationSegment9`` against a Segment1-6 contract) IS present in
+    landed ``gl_coa`` — but the COA-consuming silver SQL projects only
+    contract columns, so rendering the arm's CASE would fail with
+    ``UNRESOLVED_COLUMN`` mid-run (live-observed, chart 41627). The candidate
+    domain is what the contract + downstream projections actually guarantee.
+
+    ``arms`` maps arm-id -> {role_token: column} (``node_preflight._coa_arms``
+    shape). ``role_domains`` maps role token -> allowed columns; ``None`` or
+    a missing role token skips that check (caller had no pack context / the
+    pack does not declare that role).
+    """
+    if not role_domains:
+        return []
+    lowered = {role: {c.lower() for c in cols} for role, cols in role_domains.items()}
+    errors: list[tuple[str, str]] = []
+    for arm_id in sorted(arms):
+        for role, col in sorted(arms[arm_id].items()):
+            if not COA_IDENT_RE.match(col or ""):
+                continue  # 5001's jurisdiction — never mask the security gate
+            domain = lowered.get(role)
+            if domain is None or col.lower() in domain:
+                continue
+            arm_label = (
+                "the default arm" if arm_id == "default" else f"chart {arm_id}"
+            )
+            allowed = ", ".join(sorted(role_domains[role]))
+            errors.append(
+                (
+                    AIDPF_2042_REQUIRED_COLUMN_MISSING,
+                    f"COA role {role!r} for {arm_label} binds {col!r}, outside "
+                    f"the contract-backed segment domain ({allowed}). Landed "
+                    f"bronze gl_coa is wider than the contract (full raw PVO), "
+                    f"so this column exists in bronze but is NOT projected by "
+                    f"the COA-consuming silver SQL — rendering would fail with "
+                    f"UNRESOLVED_COLUMN. Extend the coa_* candidates, the "
+                    f"gl_coa outputSchema, and the dependent silver SQL "
+                    f"together via a deep-COA overlay (see "
+                    f"examples/coa-deep-overlay), or re-pin the arm to an "
+                    f"in-domain column.",
                 )
             )
     return errors
@@ -122,11 +190,16 @@ def check_natural_account(probe: ChartProbe) -> CoaGateResult:
     res = CoaGateResult()
     n = probe.natural_account_distinct
     if n == 0:
+        # Zero observed natural-account values: nothing to judge, and also
+        # nothing proven — flag the floor so callers can tell "clean" apart
+        # from "no evidence" (pass/fail semantics unchanged).
+        res.below_sample_floor = True
         return res
     ambiguous_fraction = probe.natural_account_ambiguous / n
     below_floor = (
         n < SAMPLE_FLOOR_DISTINCT or probe.active_row_count < SAMPLE_FLOOR_ROWS
     )
+    res.below_sample_floor = below_floor
     if ambiguous_fraction >= CONTRADICTION_FAIL_FRACTION and not below_floor:
         res.errors.append(
             (
@@ -187,4 +260,5 @@ __all__ = [
     "check_existence_union",
     "check_multi_coa",
     "check_natural_account",
+    "check_role_domain",
 ]

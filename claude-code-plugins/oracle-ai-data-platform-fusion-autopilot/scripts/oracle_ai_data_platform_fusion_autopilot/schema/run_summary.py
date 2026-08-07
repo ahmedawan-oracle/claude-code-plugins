@@ -243,6 +243,21 @@ class RunSummary:
     """Structured per-node failure payloads (JSON-able dicts) the laptop
     dispatcher persists under ``.aidp/diagnostics/<run_id>/`` for skill
     consumption — e.g. AIDPF-4071 source-column-missing diagnostics."""
+    expected_terminal_node_ids: tuple[str, ...] | None = None
+    """The orchestrator-declared execution set (design D-9): exactly the node
+    ids the run intended to execute or resume-skip — NOT the resolved lineage
+    plan (mart-only runs deliberately leave lineage bronze nodes step-less).
+    Run-outcome reconciliation keys completeness (rule R4) on this set.
+    Optional and marker-tolerant: v1 markers without it deserialize to
+    ``None`` (reconciliation then reports ``not_checked`` for scoped runs)."""
+
+    applied_schema_patches: dict[str, tuple[str, ...]] | None = None
+    """``{dataset_id: (patched columns…)}`` — the EFFECTIVE schemaPatches
+    the bronze adapter applied this run (feature bronze-extract-schema-patch,
+    FR-9). Sourced from ``NodeExecutionResult.applied_schema_patches``
+    (never bundle config: no-op patches are dropped and must not be
+    reported). Optional and marker-tolerant like
+    ``expected_terminal_node_ids``."""
 
     @property
     def succeeded(self) -> int:
@@ -315,6 +330,16 @@ class RunSummary:
             "recommendations": list(self.recommendations),
             "steps": [step.to_marker_dict() for step in self.steps],
             "diagnostics": [dict(d) for d in self.diagnostics],
+            "expected_terminal_node_ids": (
+                list(self.expected_terminal_node_ids)
+                if self.expected_terminal_node_ids is not None
+                else None
+            ),
+            "applied_schema_patches": (
+                {k: list(v) for k, v in self.applied_schema_patches.items()}
+                if self.applied_schema_patches is not None
+                else None
+            ),
         }
 
     @classmethod
@@ -349,6 +374,19 @@ class RunSummary:
             prereqs=None,
             recommendations=tuple(payload.get("recommendations", ())),
             diagnostics=tuple(payload.get("diagnostics", ())),
+            expected_terminal_node_ids=(
+                tuple(payload["expected_terminal_node_ids"])
+                if payload.get("expected_terminal_node_ids") is not None
+                else None
+            ),
+            applied_schema_patches=(
+                {
+                    k: tuple(v)
+                    for k, v in payload["applied_schema_patches"].items()
+                }
+                if payload.get("applied_schema_patches") is not None
+                else None
+            ),
         )
 
 

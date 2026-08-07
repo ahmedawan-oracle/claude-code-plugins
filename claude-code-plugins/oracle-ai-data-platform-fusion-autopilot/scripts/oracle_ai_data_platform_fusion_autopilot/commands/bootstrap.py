@@ -183,6 +183,8 @@ def bootstrap(
     non_interactive: bool = False,
     accept_coa_convention: bool = False,
     accept_singleton_coa: bool = False,
+    resolve_coa_from_metadata: bool = False,
+    repin_coa_from_metadata: bool = False,
     resolutions_path: Path | None = None,
     skip_preonboarding_probes: bool = False,
     spark_session=None,
@@ -326,12 +328,22 @@ def bootstrap(
             )
             return 1
 
+    if repin_coa_from_metadata and not resolve_coa_from_metadata:
+        console.print(
+            "[red]AIDPF-2047 (reason=conflicting_flags): "
+            "--repin-coa-from-metadata refines --resolve-coa-from-metadata "
+            "and cannot be used without it — pass both.[/red]"
+        )
+        return 1
+
     options = VariationPhaseOptions(
         refresh=refresh,
         operator=operator,
         non_interactive=non_interactive,
         accept_coa_convention=accept_coa_convention,
         accept_singleton_coa=accept_singleton_coa,
+        resolve_coa_from_metadata=resolve_coa_from_metadata,
+        repin_coa_from_metadata=repin_coa_from_metadata,
         resolutions_path=resolutions_path,
         spark_session=spark_session,
         dispatch_mode=dispatch_mode,

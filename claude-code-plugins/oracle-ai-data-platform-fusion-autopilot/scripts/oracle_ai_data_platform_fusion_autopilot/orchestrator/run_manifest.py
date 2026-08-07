@@ -436,6 +436,7 @@ def resolve_run_mode(
     is_resume: bool,
     manifest_mode: str | None = None,
     historical_exec_modes: list[str] | None = None,
+    reserved_row_modes: list[str] | None = None,
 ) -> str:
     """Resolve the effective run mode, enforcing the seed/incremental contract.
 
@@ -479,6 +480,32 @@ def resolve_run_mode(
             f"{AIDPF_1046_RESUME_MODE_CONFLICT}: --mode {explicit_mode!r} "
             f"conflicts with the resumed run's recorded mode {adopted!r}."
         )
+    # DEFENSE-IN-DEPTH rung (FR-15.12(b), design §9.2.6) — consulted ONLY
+    # when the manifest AND the execution-mode history are both absent.
+    # Post-D-15 every COA abort is manifest-backed, so this survives for
+    # pre-feature history and interrupted-write edges; the reserved rows
+    # (`__coa_gate__` / `__run_outcome__` / `__run_manifest__`) record the
+    # run's mode precisely so a bare resume never dead-ends here. Reserved
+    # rows still never feed succeeded-sets or scope reconstruction.
+    reserved = sorted(
+        {m for m in (reserved_row_modes or []) if m in EXECUTION_MODES}
+    )
+    if len(reserved) > 1:
+        raise ResumeModeConflictError(
+            f"{AIDPF_1046_RESUME_MODE_CONFLICT}: this run's reserved state "
+            f"rows carry INCONSISTENT modes {reserved!r} — the recorded run "
+            f"state is incoherent. Remediate with a fresh `--mode seed`."
+        )
+    if len(reserved) == 1:
+        adopted = reserved[0]
+        if explicit_mode is None or explicit_mode == adopted:
+            return adopted
+        raise ResumeModeConflictError(
+            f"{AIDPF_1046_RESUME_MODE_CONFLICT}: --mode {explicit_mode!r} "
+            f"conflicts with the mode {adopted!r} recorded on the resumed "
+            f"run's reserved state rows."
+        )
+
     # No execution row carries a mode.
     if explicit_mode is None:
         raise ResumeModeConflictError(

@@ -7,9 +7,17 @@ description: |
   up to CodeCombinationSegment30, for a tenant whose chart of accounts uses
   deeper segments (e.g. natural account at Segment10).
 
-  Two surfaces are extended TOGETHER so the binding is contract-backed:
-    1. the three coa_* semantic-role candidate lists (inherit + Segment7-10), and
-    2. the gl_coa bronze outputSchema (extendColumns Segment7-10).
+  THREE surfaces are extended TOGETHER so the binding is contract-backed AND
+  renderable:
+    1. the three coa_* semantic-role candidate lists (inherit + Segment7-10),
+    2. the gl_coa bronze outputSchema (extendColumns Segment7-10), and
+    3. the silver/dim_account node (guarded replaceNode: .yaml + .sql) — its
+       inner projection must carry Segment7-10 and requiredColumns must
+       declare them (AIDPF-2084), or a deep coa-role CASE fails at render
+       with UNRESOLVED_COLUMN even though bronze lands the column
+       (live-observed 2026-08-06, chart 41627 / cost center at Segment9).
+       The outer SELECT (the output contract) stays byte-identical to the
+       starter.
 
   The tenant then pins the actual role->column meaning in
   profiles/<tenant>.yaml `profile.chartOfAccounts` (see profile-fragment.yaml);
@@ -72,3 +80,19 @@ overrides:
         - { name: CodeCombinationSegment8, type: string, pii: none }
         - { name: CodeCombinationSegment9, type: string, pii: none }
         - { name: CodeCombinationSegment10, type: string, pii: none }
+  # Make the deep segments reach the coa-role render scope: dim_account's
+  # inner projection must carry Segment7-10 AND declare them in
+  # requiredColumns (AIDPF-2084) — a reads-more SQL change is a full node
+  # replacement, so this goes through the guarded replaceNode shape (the
+  # replacement .yaml + .sql live in this overlay; output contract unchanged).
+  silver/dim_account:
+    replaceNode:
+      reason: >-
+        Deep-COA render scope: the inner projection must carry
+        CodeCombinationSegment7-10 (and requiredColumns must declare them) so
+        a role bound beyond Segment6 can render; the starter's projection
+        stops at Segment6 (live-observed UNRESOLVED_COLUMN, 2026-08-06).
+      forkedFrom:
+        sqlSha256: d861cf911f1d17806a73f35be0055625d5d9631841c41ba04270a2608f2c2f20
+        contractSha256: c9c34c224a7564442fd2e99ed36c1ad8db0395f564d9d770fd46c0c2ae0f5ab0
+        packVersion: "0.1.0"
