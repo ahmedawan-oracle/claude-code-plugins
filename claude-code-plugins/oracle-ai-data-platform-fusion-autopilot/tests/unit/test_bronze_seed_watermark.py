@@ -154,7 +154,7 @@ def _drive_run(
         bundle=MagicMock(name="bundle"),
     )
 
-    _df, output_watermark = bronze_extract_adapter.run(
+    result = bronze_extract_adapter.run(
         spark,
         node=node,
         pack=pack,
@@ -163,7 +163,7 @@ def _drive_run(
         paths=_paths(),
         mode=mode,
     )
-    return output_watermark
+    return result.output_watermark
 
 
 def test_empty_seed_does_not_advance_watermark(tmp_path, monkeypatch) -> None:

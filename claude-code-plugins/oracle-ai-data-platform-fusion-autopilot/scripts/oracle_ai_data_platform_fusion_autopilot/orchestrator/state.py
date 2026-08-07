@@ -1506,6 +1506,12 @@ class CPResumeContext:
     # across this run's real node rows — used for legacy (no-manifest) mode
     # inference / mixed-mode rejection.
     historical_exec_modes: tuple[str, ...] = ()
+    # Distinct modes on this run's RESERVED (``__…__``) rows — the
+    # DEFENSE-IN-DEPTH input for ``resolve_run_mode``'s last-resort rung
+    # (FR-15.12(b)): consulted only when the manifest and the execution-mode
+    # history are both absent (pre-feature history / interrupted writes).
+    # Reserved rows stay excluded from succeeded-sets and scope.
+    reserved_row_modes: tuple[str, ...] = ()
 
 
 def read_content_pack_resumable_state(
@@ -1606,6 +1612,18 @@ def read_content_pack_resumable_state(
         f"AND dataset_id NOT LIKE '\\_\\_%\\_\\_'"
     ).collect()
     historical_exec_modes = tuple(sorted({r["mode"] for r in _mode_rows}))
+
+    # Reserved-row modes (FR-15.12(b)) — the last-resort mode-inference input
+    # for a run with no manifest AND no execution rows (e.g. a pre-feature
+    # pre-loop abort). Only ever read for mode inference, never for
+    # succeeded/scope.
+    _reserved_mode_rows = spark.sql(
+        f"SELECT DISTINCT mode FROM {table_path} "
+        f"WHERE run_id = '{escaped_run_id}' "
+        f"AND mode IN ('seed', 'incremental') "
+        f"AND dataset_id LIKE '\\_\\_%\\_\\_'"
+    ).collect()
+    reserved_row_modes = tuple(sorted({r["mode"] for r in _reserved_mode_rows}))
 
     # Durable run manifest ingestion — FAIL CLOSED, never fail open (Finding 1).
     #   * The ``run_manifest`` COLUMN being absent means a pre-feature table that
@@ -1745,6 +1763,7 @@ def read_content_pack_resumable_state(
         original_started_at=original_started_at,
         run_manifest_raw=run_manifest_raw,
         historical_exec_modes=historical_exec_modes,
+        reserved_row_modes=reserved_row_modes,
     )
 
 

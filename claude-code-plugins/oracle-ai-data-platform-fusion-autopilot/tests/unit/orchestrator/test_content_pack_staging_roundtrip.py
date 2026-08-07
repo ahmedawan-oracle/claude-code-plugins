@@ -171,3 +171,45 @@ class TestPathTraversalRejection:
         original = load_pack(pack_root)
         with pytest.raises(ContentPackPathTraversalError):
             stage_pack_files(original)
+
+
+class TestReplaceNodeChainRoundTrip:
+    """Live-observed 2026-08-06: a guarded ``replaceNode`` overlay staged for
+    cluster dispatch must include the BASE layer's shadowed ``<id>.sql`` —
+    the cluster-side re-merge re-verifies ``forkedFrom`` by recomputing the
+    base fingerprints, which reads that file. The merged-view SQL pass alone
+    stages only the overlay's replacement (root_for points at the overlay),
+    yielding FileNotFoundError in the run cell."""
+
+    REPO = Path(__file__).resolve().parents[3]
+    STARTER = (
+        REPO / "scripts" / "oracle_ai_data_platform_fusion_autopilot"
+        / "content_packs" / "fusion-finance-starter"
+    )
+    EXAMPLE_OVERLAY = REPO / "examples" / "coa-deep-overlay"
+
+    def _load_example_chain(self):
+        return load_full_chain(
+            self.EXAMPLE_OVERLAY,
+            base_resolver=lambda ref: self.STARTER,
+        )
+
+    def test_base_shadowed_sql_is_staged_per_layer(self):
+        merged = self._load_example_chain()
+        files, manifest = stage_pack_files(merged)
+        assert "__layer_0__/silver/dim_account.sql" in files  # base (shadowed)
+        assert "__layer_1__/silver/dim_account.sql" in files  # overlay
+        assert files["__layer_0__/silver/dim_account.sql"] != (
+            files["__layer_1__/silver/dim_account.sql"]
+        )
+
+    def test_cluster_style_materialize_and_remerge_succeeds(self):
+        """Exactly what the run notebook's staging cell does."""
+        merged = self._load_example_chain()
+        files, manifest = stage_pack_files(merged)
+        top_root, resolver = materialize_staged_pack(files, manifest)
+        restored = load_full_chain(top_root, base_resolver=resolver)
+        assert restored.pack.id == merged.pack.id
+        node = restored.silver["dim_account"]
+        sql = (restored.root_for("silver/dim_account") / node.implementation.sql).read_text()
+        assert "coa.CodeCombinationSegment9" in sql

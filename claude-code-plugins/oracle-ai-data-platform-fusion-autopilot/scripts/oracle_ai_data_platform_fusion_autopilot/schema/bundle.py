@@ -18,6 +18,7 @@ from pydantic import (
     Field,
     StrictBool,
     ValidationError,
+    field_validator,
     model_validator,
 )
 
@@ -157,6 +158,31 @@ class AidpConfig(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class CoaMetadataSpec(BaseModel):
+    """Optional ``fusion.coaMetadata`` block — pins the Fusion key-flexfield
+    segment-qualifier resource once the live smoke (`coa metadata-probe`)
+    verifies it. All fields optional; absent fields fall back to the built-in
+    (UNVERIFIED) candidate ladder / defaults. Every path is validated as a
+    relative Fusion path and origin-pinned before any request (NFR-9)."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    resource_path: str | None = Field(default=None, alias="resourcePath")
+    segments_child_path: str | None = Field(
+        default=None, alias="segmentsChildPath"
+    )
+    identity_attr: str | None = Field(default=None, alias="identityAttr")
+    qualifier_attr: str | None = Field(default=None, alias="qualifierAttr")
+    segment_column_attr: str | None = Field(
+        default=None, alias="segmentColumnAttr"
+    )
+    qualifier_values: dict[str, str] = Field(
+        default_factory=dict, alias="qualifierValues"
+    )
+    """Tenant/locale overrides for the qualifier tokens, keyed
+    ``balancing`` / ``costCenter`` / ``naturalAccount``."""
+
+
 class FusionConn(BaseModel):
     """Fusion connection block under ``fusion:`` in bundle.yaml."""
 
@@ -189,6 +215,12 @@ class FusionConn(BaseModel):
     already in bundle.yaml).
     """
 
+    coa_metadata: CoaMetadataSpec | None = Field(
+        default=None, alias="coaMetadata"
+    )
+    """Pinned Fusion segment-qualifier resource for COA metadata resolution
+    (design §6.2). Absent → the built-in candidate ladder governs."""
+
 
 class AidpRefs(BaseModel):
     """AIDP-side targets for bronze/silver/gold tables."""
@@ -215,6 +247,31 @@ class DatasetSpec(BaseModel):
     """Cron expression for AIDP-side scheduling. Optional."""
 
     enabled: bool = True
+
+    schema_patches: dict[str, str] = Field(
+        default_factory=dict, alias="schemaPatches"
+    )
+    """Per-column READ-side type patches for a PVO whose connector-produced
+    values mismatch the connector's own declared schema (feature
+    bronze-extract-schema-patch; live case: ItemExtractPVO's
+    ``ItemBasePEOMaterialCost`` decimal(38,0) vs java.lang.Long values).
+    ``{column: spark type}`` — the extract reads with the patched schema
+    and casts back to the declared type before landing (integrity-guarded,
+    AIDPF-2094). Tenant-runtime knowledge, hence bundle-side."""
+
+    @field_validator("schema_patches")
+    @classmethod
+    def _validate_schema_patches(cls, v: dict[str, str]) -> dict[str, str]:
+        """Fail-closed at bundle load: identifier-allowlisted keys, no
+        casefold-duplicate keys, allowlisted types with SEMANTIC decimal
+        bounds (1<=p<=38, 0<=s<=p) — ``decimal(99,99)`` must never reach
+        the cluster."""
+        from .bronze_schema_patch import SchemaPatchError, validate_schema_patches
+
+        try:
+            return validate_schema_patches(v)
+        except SchemaPatchError as exc:
+            raise ValueError(str(exc)) from exc
 
 
 class DimensionsSpec(BaseModel):

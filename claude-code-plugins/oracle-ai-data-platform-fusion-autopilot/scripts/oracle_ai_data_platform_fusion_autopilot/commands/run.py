@@ -45,6 +45,7 @@ def run(
     force_fingerprint_skip: bool = False,
     repin_plan_hash: bool = False,
     strict_scope: bool | None = None,
+    auto_remediate_coa: bool = False,
     console: Console | None = None,
 ) -> int:
     """Submit the bundle's pipeline to AIDP, or run inline if --inline.
@@ -53,6 +54,15 @@ def run(
     through to ``orchestrator.run``. Validation lives in the content-pack
     plan resolver, which raises ``MissingDependencyError`` for unknown
     layer names.
+
+    ``auto_remediate_coa`` (design §10.4, default OFF): on an
+    AIDPF-2018/AIDPF-2017 abort, run the metadata resolution
+    (``bootstrap --refresh --resolve-coa-from-metadata``) and resume the
+    aborted run — at most ONE pass (R9), resuming ONLY when the resolution
+    phase exits 0 (FR-14a S1); a non-zero phase stops with its diagnostic
+    (AIDPF-2021/2023, with AIDPF-2022 per-arm details). The internal resume
+    never passes ``--mode`` — it adopts the aborted run's recorded mode
+    (AIDPF-1046 protection, D-12), identically for seed and incremental.
     """
     console = console or Console()
 
@@ -99,35 +109,151 @@ def run(
     # run_id so the resumed run's state rows join with the prior failed
     # run's rows under one identifier.
 
+    # ``--auto-remediate-coa`` keys on the reconciled verdict's codes; the
+    # sink carries (RunOutcome, run_id, mode) up from `_reconcile_exit`
+    # without changing the backends' exit-code contract.
+    coa_abort_sink: list = []
+
     if inline:
         # Pass the PATH (not parsed dict): orchestrator.run re-reads
         # the file because `_render_env_vars` must run BEFORE Pydantic
         # validation, and that step needs the raw YAML text.
-        return _run_inline(
+        exit_code = _run_inline(
             bundle_path, mode, dataset_filter, layer_filter,
             resume_run_id, dry_run, console,
             force_fingerprint_skip=force_fingerprint_skip,
             repin_plan_hash=repin_plan_hash,
             strict_scope=strict_scope,
+            coa_abort_sink=coa_abort_sink,
         )
-    # REST-dispatch resume threads `resume_run_id` into the
-    # cluster-side `orchestrator.run(...)` call so the resumed run
-    # adopts the supplied id and joins state rows with the prior
-    # failed run. Banner gated on `not dry_run`: dispatch short-circuits
-    # before any resume work happens under --dry-run, so a "Resuming
-    # run X" banner there would mislead the operator.
-    if resume_run_id is not None and not dry_run:
+    else:
+        # REST-dispatch resume threads `resume_run_id` into the
+        # cluster-side `orchestrator.run(...)` call so the resumed run
+        # adopts the supplied id and joins state rows with the prior
+        # failed run. Banner gated on `not dry_run`: dispatch short-circuits
+        # before any resume work happens under --dry-run, so a "Resuming
+        # run X" banner there would mislead the operator.
+        if resume_run_id is not None and not dry_run:
+            console.print(
+                f"[bold cyan]Resuming run[/bold cyan] [dim]{resume_run_id}[/dim] — "
+                f"reading fusion_autopilot_state, computing reattempt plan…"
+            )
+        exit_code = _run_via_aidp_dispatch(
+            bundle_path, config_path, env_name, dataset_filter, layer_filter,
+            mode, dry_run, poll_timeout_s, console,
+            force_fingerprint_skip=force_fingerprint_skip,
+            repin_plan_hash=repin_plan_hash,
+            resume_run_id=resume_run_id,
+            strict_scope=strict_scope,
+            coa_abort_sink=coa_abort_sink,
+        )
+
+    if auto_remediate_coa and exit_code != 0:
+        return _maybe_auto_remediate_coa(
+            exit_code,
+            coa_abort_sink,
+            bundle_path=bundle_path,
+            config_path=config_path,
+            env_name=env_name,
+            datasets=datasets,
+            layers=layers,
+            inline=inline,
+            resume_run_id=resume_run_id,
+            dry_run=dry_run,
+            poll_timeout_s=poll_timeout_s,
+            console=console,
+        )
+    return exit_code
+
+
+def _maybe_auto_remediate_coa(
+    exit_code: int,
+    coa_abort_sink: list,
+    *,
+    bundle_path: Path,
+    config_path: Path,
+    env_name: str,
+    datasets: str | None,
+    layers: str | None,
+    inline: bool,
+    resume_run_id: str | None,
+    dry_run: bool,
+    poll_timeout_s: int,
+    console: Console,
+) -> int:
+    """One bounded ``--auto-remediate-coa`` pass (design §10.4, R9).
+
+    Preconditions checked here, ALL of which must hold or the original
+    exit code is returned untouched:
+
+    * the run executed for real (not ``--dry-run``) and was NOT itself a
+      resume (a user- or loop-issued ``--resume`` is already the second
+      act — never chain remediation passes);
+    * the reconciled verdict carries an AIDPF-2018/AIDPF-2017 code
+      (``run_reconcile._COA_REMEDIABLE_CODES`` — the same constant that
+      gates the verdict block's remediation hint) and a ``run_id``.
+
+    The resolution phase is the REAL ``bootstrap`` entry point with
+    ``refresh + resolve_coa_from_metadata + non_interactive`` — the
+    additive path needs no prompts (design §10.1) and its FR-14a exit code
+    IS the loop's stop/resume key: 0 → resume (adopting the recorded mode:
+    ``mode=None``); non-zero → stop, the phase already printed its
+    2021/2023 diagnostic. The resume re-enters :func:`run` with
+    ``auto_remediate_coa=False`` — the one-pass guard.
+    """
+    if dry_run or resume_run_id is not None or not coa_abort_sink:
+        return exit_code
+    from .run_reconcile import _COA_REMEDIABLE_CODES
+
+    outcome, run_id, run_mode = coa_abort_sink[-1]
+    coa_codes = [c for c in getattr(outcome, "codes", ()) if c in _COA_REMEDIABLE_CODES]
+    if not coa_codes or not run_id:
+        return exit_code
+
+    console.print()
+    console.print(
+        f"[bold cyan]--auto-remediate-coa[/bold cyan]: {', '.join(coa_codes)} "
+        f"abort on run [dim]{run_id}[/dim] (mode={run_mode}) — running the "
+        f"metadata resolution (one pass, R9)…"
+    )
+    from .bootstrap import bootstrap as bootstrap_impl
+
+    resolution_rc = bootstrap_impl(
+        bundle_path,
+        config_path,
+        env_name,
+        refresh=True,
+        resolve_coa_from_metadata=True,
+        non_interactive=True,
+        console=console,
+    )
+    if resolution_rc != 0:
         console.print(
-            f"[bold cyan]Resuming run[/bold cyan] [dim]{resume_run_id}[/dim] — "
-            f"reading fusion_autopilot_state, computing reattempt plan…"
+            f"[red]--auto-remediate-coa: the resolution phase exited "
+            f"{resolution_rc} — STOP (no resume). Act on its diagnostic "
+            f"(AIDPF-2021 unreachable / AIDPF-2023 unresolved charts, with "
+            f"AIDPF-2022 per-arm details), then `run --resume {run_id}` "
+            f"(no --mode).[/red]"
         )
-    return _run_via_aidp_dispatch(
-        bundle_path, config_path, env_name, dataset_filter, layer_filter, mode,
-        dry_run, poll_timeout_s, console,
-        force_fingerprint_skip=force_fingerprint_skip,
-        repin_plan_hash=repin_plan_hash,
-        resume_run_id=resume_run_id,
-        strict_scope=strict_scope,
+        return exit_code
+    console.print(
+        f"[bold cyan]--auto-remediate-coa[/bold cyan]: resolution phase "
+        f"exited 0 — resuming run [dim]{run_id}[/dim] (no --mode; adopts the "
+        f"run's recorded mode '{run_mode}')…"
+    )
+    return run(
+        bundle_path,
+        config_path,
+        env_name,
+        mode=None,
+        datasets=datasets,
+        layers=layers,
+        inline=inline,
+        resume_run_id=run_id,
+        dry_run=False,
+        poll_timeout_s=poll_timeout_s,
+        auto_remediate_coa=False,
+        console=console,
     )
 
 
@@ -143,6 +269,7 @@ def _run_inline(
     force_fingerprint_skip: bool = False,
     repin_plan_hash: bool = False,
     strict_scope: bool | None = None,
+    coa_abort_sink: list | None = None,
 ) -> int:
     """Run the orchestrator in-process.
 
@@ -276,8 +403,20 @@ def _run_inline(
         # CLI prints `str(exc)` directly without extra framing.
         console.print(f"[red]{exc}[/red]")
         return 2
+    # Diagnostics persistence parity (FR-15.13, D-14): the shared best-effort
+    # persister runs on the inline path too — the remediation loop's artifact
+    # must be reachable regardless of how the run executed.
+    from ..schema.diagnostic_artifact import persist_run_diagnostics
+
+    persist_run_diagnostics(bundle_path.resolve().parent, summary)
     _render_summary(console, summary)
-    return 0 if summary.failed == 0 else 1
+    # Inline path: no dispatch job exists, so job_status is None (neutral —
+    # it can neither add nor mask failure signal).
+    return _reconcile_exit(
+        console, summary, dry_run=dry_run, job_status=None,
+        scoped=(datasets is not None or layers is not None),
+        coa_abort_sink=coa_abort_sink,
+    )
 
 
 def _run_via_aidp_dispatch(
@@ -295,6 +434,7 @@ def _run_via_aidp_dispatch(
     repin_plan_hash: bool = False,
     resume_run_id: str | None = None,
     strict_scope: bool | None = None,
+    coa_abort_sink: list | None = None,
 ) -> int:
     """Submit the bundle to AIDP via the REST job API.
 
@@ -449,7 +589,87 @@ def _run_via_aidp_dispatch(
         return 2
 
     _render_summary(console, summary)
-    return 0 if summary.failed == 0 else 1
+    # A summary from dispatch means the job reached terminal SUCCESS and the
+    # marker parsed (DispatchRunFailedError / DispatchMarkerMissing/Degraded
+    # raised above otherwise, exiting 2) — which is exactly the state where
+    # "job SUCCESS" must never be mistaken for "run completed".
+    return _reconcile_exit(
+        console, summary, dry_run=dry_run, job_status="SUCCESS",
+        scoped=(datasets is not None or layers is not None),
+        coa_abort_sink=coa_abort_sink,
+    )
+
+
+def _reconcile_exit(
+    console: Console,
+    summary,
+    *,
+    dry_run: bool,
+    job_status: str | None,
+    scoped: bool,
+    coa_abort_sink: list | None = None,
+) -> int:
+    """Print the ``RUN VERDICT`` block and return the reconciled exit code.
+
+    The verdict is a pure function of the run's own evidence
+    (:mod:`..commands.run_reconcile` — one completeness definition shared
+    with the durable ``__run_outcome__`` row). Rules only ever turn a
+    previously-0 exit into non-zero on EXECUTED runs; dry-runs are pinned to
+    exit 0 (rule R0 — ``RunSummary.empty()`` is zero steps + populated plan).
+
+    ``coa_abort_sink`` (design §10.4): when provided, the reconciled
+    ``(outcome, run_id, mode)`` triple is appended so ``run()``'s
+    ``--auto-remediate-coa`` loop can key on the verdict's codes without
+    changing this function's exit-code contract.
+    """
+    from .run_reconcile import StepView, reconcile_run_outcome
+
+    steps = tuple(
+        StepView(
+            dataset_id=str(getattr(s, "dataset_id", "")),
+            layer=str(getattr(s, "layer", "") or ""),
+            status=str(getattr(s, "status", "") or ""),
+            skip_reason=getattr(s, "skip_reason", None),
+            error_message=getattr(s, "error_message", None),
+        )
+        for s in summary.steps
+    )
+    expected = getattr(summary, "expected_terminal_node_ids", None)
+    # D-9 fallback ladder for OLD markers only: an UNSCOPED run's plan IS its
+    # expected set (eligible nodes; the orchestrator executes all of them).
+    # A scoped run must NOT fall back to plan∩scope — those flags select
+    # ROOTS whose transitive dependencies the resolver auto-includes, so the
+    # intersection would silently pass a run missing upstream rows;
+    # completeness stays honestly `not_checked` there.
+    if expected is None and not scoped:
+        plan = getattr(summary, "plan", None)
+        if plan:
+            expected = tuple(
+                n.dataset_id for n in plan
+                if getattr(n, "status", "eligible") == "eligible"
+            )
+    outcome = reconcile_run_outcome(
+        job_status=job_status,
+        marker_present=True,
+        marker_degraded=False,
+        steps=steps,
+        mode=str(summary.mode),
+        expected_terminal_node_ids=(
+            frozenset(expected) if expected is not None else None
+        ),
+        dry_run=dry_run,
+        run_id=getattr(summary, "run_id", None),
+    )
+    if coa_abort_sink is not None:
+        coa_abort_sink.append(
+            (outcome, getattr(summary, "run_id", None), str(summary.mode))
+        )
+    if outcome.lines:
+        style = "red" if outcome.exit_code else "yellow"
+        console.print()
+        for line in outcome.lines:
+            console.print(f"[{style}]{line}[/{style}]")
+    return outcome.exit_code
 
 
 def _render_summary(console: Console, summary) -> None:
@@ -555,6 +775,17 @@ def _render_summary(console: Console, summary) -> None:
         + f" · total {summary.total_duration_seconds:.2f}s"
     )
 
+    # schemaPatches provenance (FR-9): a patched landing must be visible
+    # from the run output, sourced from the EFFECTIVE adapter plan.
+    applied_patches = getattr(summary, "applied_schema_patches", None)
+    if applied_patches:
+        for _ds, _cols in sorted(applied_patches.items()):
+            console.print(
+                f"[yellow]bronze {_ds} landed with schemaPatches: "
+                f"{', '.join(_cols)} (read-side; declared types restored + "
+                f"integrity-guarded)[/yellow]"
+            )
+
     # Recommendations footer: auto-correction by preflight emits one entry per
     # PVO whose schema diverged from the catalog. Operator should add these to
     # bundle.fusion.schemaOverrides to skip the discovery probe + WARN on
@@ -618,6 +849,17 @@ def status(
         ORDER BY layer, dataset_id
     """
 
+    # Run-level verdict banner (FR-15.8, design §9.2.5): a SEPARATE query
+    # over the reserved ``__…__`` rows only — the per-dataset query above
+    # stays byte-identical and keeps excluding them. Keyed on the latest
+    # reserved row of ANY kind (pre-feature runs and AIDPF-4022
+    # manifest-commit failures leave no manifest row).
+    reserved_query = f"""
+        SELECT run_id, dataset_id, status, error_message, last_run_at
+        FROM {state_table}
+        WHERE dataset_id LIKE '\\_\\_%\\_\\_'
+    """
+
     try:
         from pyspark.sql import SparkSession  # type: ignore[import-not-found]
     except ImportError:
@@ -628,6 +870,10 @@ def status(
             "Run this query inside an AIDP notebook session:\n"
             f"  [cyan]{latest_query.strip()}[/cyan]"
         )
+        console.print(
+            "For the run-level verdict, also run:\n"
+            f"  [cyan]{reserved_query.strip()}[/cyan]"
+        )
         return 0
 
     spark = SparkSession.builder.appName("aidp-fusion-autopilot-status").getOrCreate()
@@ -637,6 +883,8 @@ def status(
     except Exception as exc:
         console.print(f"[red]could not read {state_table}:[/red] {exc}")
         return 1
+
+    _render_run_banner(console, spark, reserved_query)
 
     if not rows:
         console.print(
@@ -666,6 +914,30 @@ def status(
         )
     console.print(table)
     return 0
+
+
+def _render_run_banner(console: Console, spark, reserved_query: str) -> None:
+    """Render the run-level verdict from the reserved rows (best-effort —
+    the per-dataset table must render even if this read fails, e.g. a
+    pre-feature state table without newer rows is simply banner-less)."""
+    from .run_reconcile import banner_verdict
+
+    try:
+        reserved = [r.asDict() for r in spark.sql(reserved_query).collect()]
+    except Exception:
+        return
+    banner = banner_verdict(reserved)
+    if banner is None:
+        return
+    style = {"COMPLETED": "green", "ABORTED": "red", "UNPROVEN": "yellow"}[
+        banner.label
+    ]
+    line = f"RUN {banner.run_id}: {banner.label}"
+    if banner.codes:
+        line += "  " + " ".join(banner.codes)
+    if banner.detail:
+        line += f"  — {banner.detail}"
+    console.print(f"[bold {style}]{line}[/bold {style}]")
 
 
 __all__ = ["run", "status"]

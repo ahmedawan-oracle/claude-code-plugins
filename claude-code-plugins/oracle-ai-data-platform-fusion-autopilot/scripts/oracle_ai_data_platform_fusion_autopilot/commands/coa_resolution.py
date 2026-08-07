@@ -24,9 +24,14 @@ Resolution ladder (precedence), per the feature diagnostic §6e:
    pin -- ``legacy_unverified`` (never silently a convention) + a remediation warning.
 6. Otherwise -- fail closed (:class:`CoaResolutionError`).
 
-``metadata_resolved`` (Fusion flexfield segment qualifiers) is reserved for a
-future spike and is intentionally not implemented here; nothing in this ladder
-depends on it.
+``metadata_resolved`` (Fusion flexfield segment qualifiers) is now a REAL
+rung (2.5) — populated by bootstrap exclusively from a Tier-B-VERIFIED arm
+(feature coa-mapping-auto-remediation), so provenance stays honest:
+auto-derived is only ever persisted as empirically verified. Per-chart
+``byChart`` arms are NOT a ladder rung — they merge additively via
+:func:`merge_metadata_arms` (existing arms always win; disagreements are
+recorded, never applied), which keeps the COA delta `additive` so a
+``--resume`` survives the drift check.
 """
 
 from __future__ import annotations
@@ -80,6 +85,15 @@ class CoaResolutionInput:
     accept_convention: bool = False
     accept_singleton: bool = False
     is_refresh: bool = False
+
+    # Tier 2.5 (feature coa-mapping-auto-remediation): a VERIFIED
+    # Fusion-metadata default — {role_token: column}. Bootstrap populates it
+    # EXCLUSIVELY from a Tier-B-verified arm (`select_default_arm`), so the
+    # rung is unreachable without verification evidence (FR-9). Below
+    # explicit config and an existing pin; above interactive/convention/
+    # legacy. The literal string `auto_resolve` remains absent everywhere.
+    metadata_default: dict | None = None
+    metadata_default_source: str | None = None
 
 
 @dataclass
@@ -158,6 +172,15 @@ def resolve_coa_roles(inp: CoaResolutionInput) -> CoaResolutionResult:
         else:
             mechanism = "config_resolved"
         source = "existing_profile"
+    elif inp.metadata_default:
+        # Tier 2.5 -- verified Fusion-metadata default (metadata_resolved).
+        # Only bootstrap can populate `metadata_default`, and it does so
+        # exclusively from an arm that passed the SAME Tier-B probe that
+        # gates the run — "auto-derived" is only ever persisted as
+        # "empirically verified".
+        mapping = dict(inp.metadata_default)
+        mechanism = "metadata_resolved"
+        source = inp.metadata_default_source or "fusion_metadata"
     elif (
         inp.existing_resolved_column
         and inp.existing_chart_of_accounts is None
@@ -295,3 +318,160 @@ __all__ = [
     "ROLE_FIELD",
     "ROLE_TO_LEGACY_COLUMN_KEY",
 ]
+
+
+# ---------------------------------------------------------------------------
+# byChart additive merge (feature coa-mapping-auto-remediation, design §7.5)
+# ---------------------------------------------------------------------------
+
+_BY_CHART_ROLE_KEYS = ("balancingSegment", "costCenterSegment",
+                       "naturalAccountSegment")
+_BY_CHART_ROLE_SHORT = {
+    "balancingSegment": "balancing",
+    "costCenterSegment": "cost_center",
+    "naturalAccountSegment": "natural_account",
+}
+
+
+@dataclass(frozen=True)
+class MetadataMergeReport:
+    """What the merge did — feeds the ledger + the ``metadataResolution``
+    provenance audit block."""
+
+    added: tuple[str, ...] = ()
+    kept: tuple[str, ...] = ()
+    disagreements: tuple[dict, ...] = ()
+    """{chart, role, existing, metadata} — metadata differed from an existing
+    pinned arm; the existing value WINS and the difference is only recorded."""
+
+    repinned: tuple[dict, ...] = ()
+    """{chart, role, existing, metadata} — the disagreement WAS applied
+    (``--repin-coa-from-metadata`` after explicit confirmation); the prior
+    column is also recorded per role in provenance ``repinnedFrom``."""
+
+
+def merge_metadata_arms(
+    chart_of_accounts: dict,
+    role_provenance: dict,
+    *,
+    verified_arms: "dict[str, dict[str, str]]",
+    verdicts: "dict[str, str]",
+    source: str = "fusion_metadata",
+    repin_charts: "frozenset[str]" = frozenset(),
+) -> "tuple[dict, dict, MetadataMergeReport]":
+    """Merge Tier-B-VERIFIED metadata arms into ``chartOfAccounts.byChart`` —
+    per chart, ADDITIVE-ONLY by default, pure (returns new dicts, never
+    mutates).
+
+    Rules (design §7.5, D-3 — additive-only is load-bearing, not stylistic:
+    it keeps the COA delta `additive` so ``check_identity_profile_drift``
+    permits ``--resume`` after remediation):
+
+    * an EXISTING arm always wins — a metadata disagreement is recorded in
+      the report, never applied;
+    * a chart with no arm gains one, with per-role provenance
+      ``{column, mechanism: metadata_resolved, source, verification}``;
+    * callers pass ONLY persistable arms (``verified``/``verified_weak``) —
+      the "no arm without proof" invariant is asserted by tests over the
+      emitted profile dict.
+
+    ``repin_charts`` (``--repin-coa-from-metadata``, design §10.1): for
+    EXACTLY these chart ids a disagreeing existing arm is OVERWRITTEN with
+    the metadata arm; each changed role's provenance records the prior
+    column under ``repinnedFrom`` and the change lands in
+    ``report.repinned``. The caller owns the confirmation (interactive
+    prompt, or refusal under ``--non-interactive``) — this function stays
+    pure and only ever repins what it is explicitly told to. A repin is a
+    MUTATING COA delta: the resume drift gate will refuse ``--resume`` and
+    force a fresh seed, by design.
+
+    Args:
+        chart_of_accounts: the resolved canonical block (post-ladder).
+        role_provenance: ``provenance.chartOfAccounts.roles`` (post-ladder).
+        verified_arms: chart_id -> byChart block
+            (``{balancingSegment: …, costCenterSegment: …,
+            naturalAccountSegment: …}``).
+        verdicts: chart_id -> ``verified`` | ``verified_weak``.
+        source: provenance source token.
+        repin_charts: chart ids whose disagreements are APPLIED (confirmed
+            upstream); empty (the default) = strictly additive.
+    """
+    new_coa = {k: (dict(v) if isinstance(v, dict) else v)
+               for k, v in (chart_of_accounts or {}).items()}
+    by_chart = dict(new_coa.get("byChart") or {})
+    new_prov = dict(role_provenance or {})
+    prov_by_chart = {
+        k: dict(v) for k, v in (new_prov.get("byChart") or {}).items()
+    }
+
+    added: list[str] = []
+    kept: list[str] = []
+    disagreements: list[dict] = []
+    repinned: list[dict] = []
+
+    for chart_id in sorted(verified_arms):
+        block = verified_arms[chart_id]
+        existing = by_chart.get(chart_id)
+        if existing is not None:
+            chart_diffs = [
+                {
+                    "chart": chart_id,
+                    "role": _BY_CHART_ROLE_SHORT[role_key],
+                    "existing": (existing or {}).get(role_key),
+                    "metadata": block.get(role_key),
+                }
+                for role_key in _BY_CHART_ROLE_KEYS
+                if (existing or {}).get(role_key) is not None
+                and block.get(role_key) is not None
+                and (existing or {}).get(role_key) != block.get(role_key)
+            ]
+            if chart_diffs and chart_id in repin_charts:
+                # Confirmed repin: the metadata arm replaces the chart's
+                # block; each CHANGED role records the prior column.
+                prior = {k: (existing or {}).get(k) for k in _BY_CHART_ROLE_KEYS}
+                by_chart[chart_id] = {k: block[k] for k in _BY_CHART_ROLE_KEYS}
+                prov_by_chart[chart_id] = {
+                    _BY_CHART_ROLE_SHORT[role_key]: {
+                        "column": block[role_key],
+                        "mechanism": "metadata_resolved",
+                        "source": source,
+                        "verification": verdicts.get(chart_id, "verified"),
+                        **(
+                            {"repinnedFrom": prior[role_key]}
+                            if prior[role_key] is not None
+                            and prior[role_key] != block[role_key]
+                            else {}
+                        ),
+                    }
+                    for role_key in _BY_CHART_ROLE_KEYS
+                }
+                repinned.extend(chart_diffs)
+                continue
+            kept.append(chart_id)
+            disagreements.extend(chart_diffs)
+            continue
+        by_chart[chart_id] = {k: block[k] for k in _BY_CHART_ROLE_KEYS}
+        prov_by_chart[chart_id] = {
+            _BY_CHART_ROLE_SHORT[role_key]: {
+                "column": block[role_key],
+                "mechanism": "metadata_resolved",
+                "source": source,
+                "verification": verdicts.get(chart_id, "verified"),
+            }
+            for role_key in _BY_CHART_ROLE_KEYS
+        }
+        added.append(chart_id)
+
+    if by_chart:
+        new_coa["byChart"] = by_chart
+    if prov_by_chart:
+        new_prov["byChart"] = prov_by_chart
+    return new_coa, new_prov, MetadataMergeReport(
+        added=tuple(added), kept=tuple(kept),
+        disagreements=tuple(disagreements),
+        repinned=tuple(repinned),
+    )
+
+
+__all__.append("MetadataMergeReport")
+__all__.append("merge_metadata_arms")

@@ -155,6 +155,39 @@ fingerprint says nothing about a newly active chart. Read it as:
 Never treat advisory lines as a bootstrap failure; they carry no exit code
 and no AIDPF code.
 
+#### COA metadata resolution ledger (`--resolve-coa-from-metadata`)
+
+With the flag, bootstrap derives `chartOfAccounts.byChart` from Fusion KFF
+segment qualifiers (BICC PVO transport — cluster dispatch only), verifies
+every derived arm with the Tier-B natural-account probe against landed
+`gl_coa`, and persists **only verified arms** (per-role provenance
+`mechanism: metadata_resolved` + the verification verdict). Read the ledger:
+
+- `chartsAdded` — new arms persisted this pass (verified / verified_weak).
+- `chartsKept` — the chart already had an arm; the existing arm always wins.
+- `chartsRejected` — the derivation is WRONG for that chart (AIDPF-2022
+  detail; failed Tier-B, duplicated a role, or named an out-of-domain
+  segment). Never persisted; never a transient to retry — route to
+  `/medallion-author`.
+- `chartsUnverified` — no probe evidence (gl_coa not landed / probe skipped);
+  never persisted.
+- `disagreements` — verified metadata differs from an existing pinned arm;
+  RECORDED, not applied (additive rule). Applying one is a **repin**:
+  `--repin-coa-from-metadata`, per-chart interactive confirmation required
+  (`--non-interactive` refuses), provenance records the prior column in
+  `repinnedFrom`, and the mutating COA delta **forces a fresh seed** —
+  `--resume` of prior runs will be refused.
+
+Two-pass reality on a FIRST bootstrap: `gl_coa` has not landed yet, so every
+arm is UNVERIFIED and nothing persists — expected, not a failure; the
+resolution lands on the post-seed `--refresh`. Exit-code honesty (FR-14a
+S5a/S5b): that first pass exits 0 only when the `default` mapping resolves
+through the existing ladder (refresh carry-forward, explicit config,
+interactive confirmation, or `--accept-coa-convention`); a fresh
+**non-interactive** bootstrap with no acceptance still fails closed with
+`AIDPF-2013` exactly as before — metadata never substitutes for a verified
+default, and that is not a regression.
+
 On failure, classify before recommending action:
 
 | Failure | Meaning | Route |
@@ -162,6 +195,9 @@ On failure, classify before recommending action:
 | `AIDPF-2010` | Required `columnAliases` variation point had no candidate on tenant bronze. | `/medallion-author` |
 | `AIDPF-2011` | Required `semanticVariants` variation point had no matching detector. | `/medallion-author` |
 | `AIDPF-1020` | Operator identity missing. | Re-run with `--operator` or fix `AIDP_OPERATOR` / `USER`. |
+| `AIDPF-2021` | COA metadata resolution could not run (source unreachable, missing creds, `FUN_GET_ENTERPRISE_STRUCTURES_REST_SERVICE_PRIV` denied, budget expired). | Fix the privilege/creds or pin `fusion.coaMetadata`; fall back to `/medallion-author` arms. |
+| `AIDPF-2022` | Warn-only detail: a derived arm was rejected, not persisted. | `/medallion-author` for that chart; coexists with exit 0 when the chart is inactive. |
+| `AIDPF-2023` | Active in-scope charts still unmapped after resolution (verified arms WERE persisted — monotonic). | Resolve the listed charts (privilege or authored arms); the AIDPF-2018 gate stays the seed-time enforcer. |
 | BICC auth/storage | Fusion or BICC external storage prerequisite missing. | Fix Fusion/BICC setup; do not author overlays. |
 | AIDP REST/IAM | Workspace/cluster/permission issue. | Fix config/IAM/cluster before rerun. |
 
@@ -188,6 +224,11 @@ Use `bootstrap --refresh` when:
 Refresh must not silently change pinned choices. If refresh wants to change a
 pinned value, surface the old value, proposed value, evidence, and ask the user
 before continuing. If a new candidate is needed, route to `/medallion-author`.
+
+Metadata resolution follows the same rule: it is **additive** and never
+silently changes a pinned arm — a disagreement is reported, not applied. A
+repin (`--repin-coa-from-metadata`) needs explicit per-chart confirmation and
+forces a fresh seed.
 
 For power-user refresh after known-good onboarding, `--skip-preonboarding-probes`
 is available only with local dispatch. Do not use it as the default demo or

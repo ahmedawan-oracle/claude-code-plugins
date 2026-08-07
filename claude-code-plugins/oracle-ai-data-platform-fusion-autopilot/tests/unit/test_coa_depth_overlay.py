@@ -167,3 +167,88 @@ def test_deep_segment_union_existence_blocks_when_unlanded() -> None:
     report = preflight_node(spark, node, merged, profile, ctx)
     assert not report.ok
     assert any(e.code == "AIDPF-2042" for e in report.errors)
+
+
+def test_coa_role_domains_base_and_overlay() -> None:
+    """`coa_role_domains` returns the per-role candidate domain the runtime
+    gate (checkpoint step 1b) and the metadata-arm verifier enforce: starter =
+    Segment1-6; deep overlay extends every role to Segment10."""
+    from oracle_ai_data_platform_fusion_autopilot.schema.coa_roles import (
+        SUPPORTED_COA_ROLES,
+        coa_role_domains,
+    )
+
+    base = coa_role_domains(load_pack(SHIPPED))
+    assert set(base) == set(SUPPORTED_COA_ROLES)
+    seg16 = {f"CodeCombinationSegment{i}" for i in range(1, 7)}
+    assert base["coa.cost_center"] == frozenset(seg16)
+
+    merged = coa_role_domains(
+        load_full_chain(EXAMPLE_OVERLAY, base_resolver=_resolver)
+    )
+    seg110 = {f"CodeCombinationSegment{i}" for i in range(1, 11)}
+    assert merged["coa.cost_center"] == frozenset(seg110)
+    assert "CodeCombinationSegment9" in merged["coa.natural_account"]
+
+
+def test_example_overlay_extends_dim_account_render_scope() -> None:
+    """The overlay MUST also replace silver/dim_account (guarded replaceNode):
+    candidates + outputSchema alone leave a landmine — a deep arm validates,
+    then rendering fails with UNRESOLVED_COLUMN because the starter's inner
+    projection stops at Segment6 (live-observed 2026-08-06, chart 41627 →
+    Segment9). The reads-more SQL also requires the replacement YAML to
+    declare Segment7-10 in requiredColumns (AIDPF-2084)."""
+    merged = load_full_chain(EXAMPLE_OVERLAY, base_resolver=_resolver)
+    node = merged.silver["dim_account"]
+    assert node.implementation.sql == "silver/dim_account.sql"
+    root = merged.root_for("silver/dim_account")
+    assert root == EXAMPLE_OVERLAY
+    sql = (root / node.implementation.sql).read_text()
+    inner = sql.split("FROM (", 1)[1]
+    for i in range(7, 11):
+        assert f"coa.CodeCombinationSegment{i}" in inner, f"Segment{i} missing"
+    # The output contract is untouched: no new segment_0N output aliases.
+    assert "AS segment_07" not in sql
+    # requiredColumns declare the deep reads (AIDPF-2084's demand).
+    req = set(node.required_columns["gl_coa"])
+    assert {f"CodeCombinationSegment{i}" for i in range(7, 11)} <= req
+
+
+def test_example_overlay_passes_run_start_full_validation() -> None:
+    """The RUN-START gate (AIDPF-1036 wraps `validate_pack_full`) must accept
+    the shipped example — this is exactly the gate that rejected the first
+    `sql:`-override draft live (AIDPF-5003 token-in-comment + AIDPF-2084
+    undeclared deep reads)."""
+    from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack_validators import (
+        validate_pack_full,
+    )
+
+    merged = load_full_chain(EXAMPLE_OVERLAY, base_resolver=_resolver)
+    report = validate_pack_full(merged)
+    assert not report.errors, [e.message for e in report.errors]
+
+
+def test_template_with_comment_fails_hygiene_offline(tmp_path) -> None:
+    """AIDPF-5010's design-time twin: a template containing `--` can never
+    render (the renderer rejects comment markers in rendered SQL), so
+    validation must fail OFFLINE — not cluster-side mid-run, which is where
+    the first draft of this overlay failed live (2026-08-06)."""
+    import shutil
+
+    from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack_validators import (
+        AIDPF_5010_POST_RENDER_REJECTED,
+        validate_sql_template_hygiene,
+    )
+
+    overlay = tmp_path / "coa-deep-overlay"
+    shutil.copytree(EXAMPLE_OVERLAY, overlay)
+    sql = overlay / "silver" / "dim_account.sql"
+    sql.write_text("-- explanatory header\n" + sql.read_text())
+
+    merged = load_full_chain(overlay, base_resolver=_resolver)
+    errs = validate_sql_template_hygiene(merged)
+    assert [e.code for e in errs] == [AIDPF_5010_POST_RENDER_REJECTED]
+    assert "silver/dim_account" in errs[0].message
+    # The shipped (comment-free) example stays clean.
+    clean = load_full_chain(EXAMPLE_OVERLAY, base_resolver=_resolver)
+    assert validate_sql_template_hygiene(clean) == []

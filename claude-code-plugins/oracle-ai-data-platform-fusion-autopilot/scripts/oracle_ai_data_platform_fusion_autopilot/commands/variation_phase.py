@@ -33,7 +33,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Literal
+from typing import TYPE_CHECKING, Any, Callable, Literal, Mapping
 
 import yaml
 from rich.console import Console
@@ -45,6 +45,7 @@ from .coa_resolution import (
     resolve_coa_roles,
 )
 from ..schema.bronze_fingerprint import ColumnInfo, compute_bronze_fingerprint
+from ..schema.coa_roles import coa_role_domains
 from ..schema.bronze_schema_snapshot import (
     BronzeSchemaSnapshotSchemaError,
     BronzeSchemaSnapshotV1,
@@ -146,6 +147,22 @@ class VariationPhaseOptions:
     ``profile.chartOfAccounts.singletonAccepted: true`` so the multi-COA preflight
     gate (AIDPF-2018) passes for a singleton mapping."""
 
+    resolve_coa_from_metadata: bool = False
+    """``--resolve-coa-from-metadata``: derive `chartOfAccounts.byChart` from
+    Fusion KFF segment qualifiers (BICC PVO transport, cluster dispatch
+    only), verify each arm with the Tier-B probe against landed gl_coa, and
+    persist ONLY verified arms (mechanism `metadata_resolved`). Outcome
+    semantics are normative in FR-14a; additive-only — existing arms always
+    win."""
+
+    repin_coa_from_metadata: bool = False
+    """``--repin-coa-from-metadata`` (design §10.1): also OVERWRITE an
+    existing arm that disagrees with verified metadata — per disagreeing
+    chart, only after an interactive confirmation; ``--non-interactive``
+    without one refuses (``RefreshRequiresConfirmation``). Provenance
+    records the prior column in ``repinnedFrom``. A repin is a MUTATING COA
+    delta: the resume drift gate forces a fresh seed."""
+
     # --- Cluster-side bootstrap dispatcher knobs ---
     dispatch_mode: Literal["cluster", "local"] = "local"
     """``"local"`` (default in this dataclass to keep existing test
@@ -182,6 +199,9 @@ class _ProbeResult:
     observed: dict[str, list[ColumnInfo]]
     fingerprint: str
     walker_results: dict[tuple[str, str], CandidateWalkResult]
+    coa_metadata: Any | None = None
+    """Marker-v2 ``coaMetadata`` section (cluster mode with
+    ``resolve_coa_from_metadata``); ``None`` otherwise."""
 
 
 @dataclass
@@ -369,48 +389,107 @@ def run_variation_phase(
                 bundle=bundle,
                 chart_of_accounts=prior_profile.profile.get("chartOfAccounts"),
             )
-            # Back-fill the snapshot if missing / desynced /
-            # hand-edited. This is the only path that exits the no-drift
-            # branch with a write — profile + evidence stay untouched so
-            # the back-fill is observably scoped (no audit-trail noise on
-            # the profile timeline for a snapshot-only repair). Without
-            # this, pre-3d profiles whose fingerprint never drifts could
-            # never recover via the documented `--refresh` remediation;
-            # the refresh would no-op forever and preflight would
-            # forever degrade to empty `datasetDeltas`.
-            now = _now()
-            fresh_snapshot = snapshot_from_observed(
-                tenant=tenant_name,
-                pinned_at=now,
-                fingerprint=fingerprint,
-                observed=observed,
+            # FR-14a on the no-drift path (design §10.2, round-2 finding 1):
+            # the early return decides only whether a profile WRITE happens —
+            # never the verdict. Metadata resolution classifies first; any
+            # NEW verified arm falls through to the full path (same probe,
+            # same fingerprint, so no variation-point value changes), while
+            # "nothing new" splits by cause: S1/S5 exit 0, S2/S3/S4 exit
+            # non-zero with the 2021/2023 diagnostics.
+            _nd_state = _precompute_coa_metadata(
+                probe_result.coa_metadata, options,
+                role_domains=coa_role_domains(pack),
             )
-            repair_reason = _snapshot_needs_repair(
-                bundle_path=bundle_path,
-                tenant_name=tenant_name,
-                live_fingerprint=fingerprint,
-            )
-            if repair_reason is None:
+            _nd_exit, _nd_diags = 0, []
+            _nd_fall_through = False
+            if _nd_state is not None:
+                _prior_arms = (
+                    (prior_profile.profile.get("chartOfAccounts") or {})
+                    .get("byChart") or {}
+                )
+                _prior_by_chart = set(_prior_arms)
+                _persistable = (
+                    _nd_state.outcome.persistable
+                    if _nd_state.outcome is not None else {}
+                )
+                _nd_fall_through = any(
+                    chart not in _prior_by_chart for chart in _persistable
+                )
+                # --repin-coa-from-metadata must also reach the full path on
+                # a no-drift refresh (the common repin scenario: NOTHING else
+                # changed) — a verified arm that DISAGREES with an existing
+                # pin is the repin's whole subject, invisible to the
+                # new-arm check above.
+                if not _nd_fall_through and options.repin_coa_from_metadata:
+                    _nd_fall_through = any(
+                        chart in _prior_by_chart
+                        and v.arm.as_by_chart_block() != {
+                            k: (_prior_arms.get(chart) or {}).get(k)
+                            for k in v.arm.as_by_chart_block()
+                        }
+                        for chart, v in _persistable.items()
+                    )
+                if _nd_fall_through:
+                    console.print(
+                        "[cyan]COA metadata resolution derived new verified "
+                        "arm(s) — proceeding to the full refresh path (the "
+                        "bronze fingerprint is unchanged; only "
+                        "chartOfAccounts gains arms — an additive COA "
+                        "delta).[/cyan]"
+                    )
+                else:
+                    _nd_exit, _nd_diags = _report_coa_metadata_outcome(
+                        _nd_state,
+                        chart_of_accounts=prior_profile.profile.get(
+                            "chartOfAccounts"
+                        ),
+                        workdir=workdir, run_id=run_id, console=console,
+                    )
+            if not _nd_fall_through:
+                # Back-fill the snapshot if missing / desynced /
+                # hand-edited. This is the only path that exits the no-drift
+                # branch with a write — profile + evidence stay untouched so
+                # the back-fill is observably scoped (no audit-trail noise on
+                # the profile timeline for a snapshot-only repair). Without
+                # this, pre-3d profiles whose fingerprint never drifts could
+                # never recover via the documented `--refresh` remediation;
+                # the refresh would no-op forever and preflight would
+                # forever degrade to empty `datasetDeltas`.
+                now = _now()
+                fresh_snapshot = snapshot_from_observed(
+                    tenant=tenant_name,
+                    pinned_at=now,
+                    fingerprint=fingerprint,
+                    observed=observed,
+                )
+                repair_reason = _snapshot_needs_repair(
+                    bundle_path=bundle_path,
+                    tenant_name=tenant_name,
+                    live_fingerprint=fingerprint,
+                )
+                if repair_reason is None:
+                    console.print(
+                        f"[green]No drift detected — fingerprint matches "
+                        f"{fingerprint[:24]}... — profile unchanged.[/green]"
+                    )
+                    return VariationPhaseOutcome(
+                        exit_code=_nd_exit,
+                        diagnostic_paths=list(_nd_diags),
+                        summary="bootstrap --refresh: no drift detected",
+                    )
+                write_bronze_schema_snapshot(workdir, tenant_name, fresh_snapshot)
                 console.print(
-                    f"[green]No drift detected — fingerprint matches "
-                    f"{fingerprint[:24]}... — profile unchanged.[/green]"
+                    f"[green]No drift detected — snapshot back-filled from "
+                    f"observed probe ({repair_reason}) — profile unchanged.[/green]"
                 )
                 return VariationPhaseOutcome(
-                    exit_code=0,
-                    summary="bootstrap --refresh: no drift detected",
+                    exit_code=_nd_exit,
+                    diagnostic_paths=list(_nd_diags),
+                    summary=(
+                        f"bootstrap --refresh: no drift; snapshot back-filled "
+                        f"({repair_reason})"
+                    ),
                 )
-            write_bronze_schema_snapshot(workdir, tenant_name, fresh_snapshot)
-            console.print(
-                f"[green]No drift detected — snapshot back-filled from "
-                f"observed probe ({repair_reason}) — profile unchanged.[/green]"
-            )
-            return VariationPhaseOutcome(
-                exit_code=0,
-                summary=(
-                    f"bootstrap --refresh: no drift; snapshot back-filled "
-                    f"({repair_reason})"
-                ),
-            )
 
     # --- Steps 6/7: walker results sourced from the probe (local
     # mode runs the walkers in-process; cluster mode receives them
@@ -572,6 +651,16 @@ def run_variation_phase(
         existing_profile=prior_profile,
         run_id=run_id,
     )
+    # COA metadata resolution (FR-14a) — precompute BEFORE the ladder so a
+    # Tier-B-verified arm can feed rung 2.5. S5b stays byte-for-byte: with
+    # gl_coa unprobed every arm is UNVERIFIED, metadata_default is None, and
+    # the unchanged ladder still fails closed (AIDPF-2013) on a fresh
+    # non-interactive run with no acceptance.
+    _coa_meta_state = _precompute_coa_metadata(
+        probe_result.coa_metadata, options,
+        role_domains=coa_role_domains(pack),
+    )
+
     # Resolve COA semantic roles from explicit config (NOT column existence) and
     # fold the derived columns + per-role provenance into the profile. Fails
     # closed (AIDPF-2013) in a non-interactive run with no accepted convention.
@@ -583,11 +672,34 @@ def run_variation_phase(
             prior_profile=prior_profile,
             tenant_name=tenant_name,
             console=console,
+            metadata_default=(
+                _coa_meta_state.metadata_default
+                if _coa_meta_state is not None else None
+            ),
+            metadata_default_source=(
+                _coa_meta_state.metadata_default_source
+                if _coa_meta_state is not None else None
+            ),
         )
     except CoaResolutionError as exc:
         console.print(f"[red]{exc}[/red]")
         return VariationPhaseOutcome(exit_code=1, summary=str(exc))
+    # Merge verified byChart arms (additive-only; existing arms win) + the
+    # metadataResolution audit block — BEFORE the profile write so verified
+    # progress is durable regardless of the completeness verdict (D-7).
+    _coa_meta_exit, _coa_meta_diags = 0, []
+    if _coa_meta_state is not None and _coa_meta_state.skip_reason is None:
+        _merge_coa_metadata_into_profile(
+            profile, _coa_meta_state, run_id=run_id, operator=operator,
+            now=_now(), options=options, console=console,
+        )
     _write_profile_yaml(profile_path, profile)
+    if _coa_meta_state is not None:
+        _coa_meta_exit, _coa_meta_diags = _report_coa_metadata_outcome(
+            _coa_meta_state,
+            chart_of_accounts=profile.profile.get("chartOfAccounts"),
+            workdir=workdir, run_id=run_id, console=console,
+        )
 
     # COA advisory against the freshly resolved profile (the full-path
     # twin of the no-drift call above). Runs AFTER the profile is durable
@@ -650,11 +762,322 @@ def run_variation_phase(
         f"{profile_path}, evidence {evidence_path}.[/green]"
     )
     return VariationPhaseOutcome(
-        exit_code=0,
+        exit_code=_coa_meta_exit,
         profile_path=profile_path,
         evidence_path=evidence_path,
-        summary="variation phase resolved",
+        diagnostic_paths=list(_coa_meta_diags),
+        summary=(
+            "variation phase resolved"
+            if _coa_meta_exit == 0
+            else "variation phase resolved; COA metadata resolution "
+                 "incomplete (see AIDPF-2021/2023 diagnostics)"
+        ),
     )
+
+
+
+# ---------------------------------------------------------------------------
+# COA metadata resolution (feature coa-mapping-auto-remediation; FR-14a)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class _CoaMetadataState:
+    """Precomputed metadata-resolution state (pure; from the v2 marker)."""
+
+    skip_reason: str | None = None
+    outcome: Any | None = None            # coa_metadata_resolution.VerificationOutcome
+    derive_rejects: tuple = ()
+    active_charts: dict | None = None
+    probe_note: str | None = None
+    coverage: str = "complete"
+    metadata_default: dict | None = None
+    metadata_default_source: str | None = None
+
+
+def _precompute_coa_metadata(
+    coa_meta: Any,
+    options: "VariationPhaseOptions",
+    *,
+    role_domains: Mapping[str, frozenset[str]] | None = None,
+):
+    """Marker section → verified arms + rung-2.5 default. ``None`` when the
+    feature is off (FR-14a S6). ``role_domains`` (from
+    ``coa_roles.coa_role_domains(pack)``) rejects derived arms binding
+    outside the contract-backed segment domain (design §7.3) — metadata may
+    truthfully name a segment the pack contract does not carry."""
+    if not options.resolve_coa_from_metadata:
+        return None
+    from .coa_metadata_resolution import (
+        AIDPF_2021_COA_METADATA_UNREACHABLE,
+        ArmReject,
+        CandidateArm,
+        select_default_arm,
+        verify_arms,
+    )
+    from ..orchestrator.coa_gate import ChartProbe
+
+    if coa_meta is None:
+        return _CoaMetadataState(skip_reason=(
+            f"{AIDPF_2021_COA_METADATA_UNREACHABLE}: COA metadata resolution "
+            f"requires cluster dispatch mode — the BICC KFF PVO source is "
+            f"cluster-only (FR-16 smoke, transport pivot)."
+        ))
+    if coa_meta.coverage == "skipped":
+        return _CoaMetadataState(skip_reason=(
+            f"{AIDPF_2021_COA_METADATA_UNREACHABLE}: {coa_meta.skip_reason}"
+        ))
+    candidates = {
+        m.chart_id: CandidateArm(
+            chart_id=m.chart_id,
+            balancing_segment=m.balancing_segment,
+            cost_center_segment=m.cost_center_segment,
+            natural_account_segment=m.natural_account_segment,
+        )
+        for m in coa_meta.candidates
+    }
+    probes = {
+        pm.chart_id: ChartProbe(
+            chart_id=pm.chart_id, active_row_count=pm.active_rows,
+            natural_account_distinct=pm.na_distinct,
+            natural_account_ambiguous=pm.na_ambiguous,
+        )
+        for pm in coa_meta.probes
+    }
+    outcome = verify_arms(candidates, probes, role_domains=role_domains)
+    selected = select_default_arm(outcome.persistable)
+    metadata_default = None
+    metadata_default_source = None
+    if selected is not None:
+        chart_id, arm = selected
+        metadata_default = {
+            "coa.balancing": arm.balancing_segment,
+            "coa.cost_center": arm.cost_center_segment,
+            "coa.natural_account": arm.natural_account_segment,
+        }
+        metadata_default_source = f"fusion_metadata:chart={chart_id}"
+    return _CoaMetadataState(
+        outcome=outcome,
+        derive_rejects=tuple(
+            ArmReject(chart_id=r.chart, reason=r.reason, detail=r.detail)  # type: ignore[arg-type]
+            for r in coa_meta.rejects
+        ),
+        active_charts=dict(coa_meta.active_charts),
+        probe_note=coa_meta.probe_note,
+        coverage=coa_meta.coverage,
+        metadata_default=metadata_default,
+        metadata_default_source=metadata_default_source,
+    )
+
+
+def _merge_coa_metadata_into_profile(
+    profile: TenantProfile,
+    state: "_CoaMetadataState",
+    *,
+    run_id: str,
+    operator: str,
+    now: datetime,
+    options: "VariationPhaseOptions | None" = None,
+    console: Console | None = None,
+) -> Any:
+    """Additive merge of persistable arms + the ``metadataResolution`` audit
+    block. Returns the :class:`MetadataMergeReport` (or ``None`` when there
+    is nothing to merge).
+
+    ``--repin-coa-from-metadata`` (design §10.1): a first additive pass
+    discovers disagreements; each disagreeing chart is then confirmed
+    per-chart (interactive y/N — decline keeps the existing arm, recorded
+    not applied). ``--non-interactive`` with disagreements REFUSES
+    (``RefreshRequiresConfirmation``) rather than silently overwriting a
+    pinned arm. Confirmed charts re-merge with ``repin_charts`` and land in
+    ``report.repinned`` with per-role ``repinnedFrom`` provenance."""
+    from .coa_resolution import merge_metadata_arms
+
+    if state.outcome is None:
+        return None
+    persistable = state.outcome.persistable
+    verified_blocks = {c: v.arm.as_by_chart_block() for c, v in persistable.items()}
+    verdicts = {c: v.verdict for c, v in persistable.items()}
+    coa = profile.profile.get("chartOfAccounts") or {}
+    coa_prov = profile.provenance.setdefault("chartOfAccounts", {})
+    new_coa, new_prov, report = merge_metadata_arms(
+        coa, {"byChart": coa_prov.get("byChart") or {}},
+        verified_arms=verified_blocks, verdicts=verdicts,
+        source="fusion_metadata",
+    )
+    if (
+        options is not None
+        and options.repin_coa_from_metadata
+        and report.disagreements
+    ):
+        if options.non_interactive:
+            raise RefreshRequiresConfirmation(
+                f"--repin-coa-from-metadata would change "
+                f"{len(report.disagreements)} pinned byChart role(s) "
+                f"({', '.join(sorted({d['chart'] for d in report.disagreements}))}); "
+                f"re-run without --non-interactive to confirm each chart. A "
+                f"repin is a MUTATING COA change and forces a fresh seed."
+            )
+        _console = console or Console()
+        accepted: set[str] = set()
+        for chart_id in sorted({d["chart"] for d in report.disagreements}):
+            diffs = [d for d in report.disagreements if d["chart"] == chart_id]
+            prior_txt = ", ".join(f"{d['role']}={d['existing']}" for d in diffs)
+            chosen_txt = ", ".join(f"{d['role']}={d['metadata']}" for d in diffs)
+            if _prompt_confirm_change(
+                name=f"byChart[{chart_id}]",
+                kind="chartOfAccounts",
+                prior=prior_txt,
+                chosen=chosen_txt,
+                console=_console,
+                input_fn=options.input_fn or input,
+            ):
+                accepted.add(chart_id)
+        if accepted:
+            new_coa, new_prov, report = merge_metadata_arms(
+                coa, {"byChart": coa_prov.get("byChart") or {}},
+                verified_arms=verified_blocks, verdicts=verdicts,
+                source="fusion_metadata",
+                repin_charts=frozenset(accepted),
+            )
+            _console.print(
+                f"[yellow]Repinned {len(accepted)} chart(s) from metadata "
+                f"({', '.join(sorted(accepted))}) — a MUTATING COA change: "
+                f"--resume of prior runs will be refused; run a fresh "
+                f"`--mode seed`.[/yellow]"
+            )
+    profile.profile["chartOfAccounts"] = new_coa
+    if new_prov.get("byChart"):
+        coa_prov["byChart"] = new_prov["byChart"]
+    coa_prov["metadataResolution"] = {
+        "resolvedAt": now.isoformat(),
+        "operator": operator,
+        "runId": run_id,
+        "source": "bicc-pvo",
+        "coverage": state.coverage,
+        "probeNote": state.probe_note,
+        "chartsAdded": list(report.added),
+        "chartsKept": list(report.kept),
+        "chartsRejected": [
+            {"chart": v.arm.chart_id, "reason": "AIDPF-2022", "detail": v.detail}
+            for v in state.outcome.rejected
+        ] + [
+            {"chart": r.chart_id, "reason": r.reason, "detail": r.detail}
+            for r in state.derive_rejects
+        ],
+        "chartsUnverified": [
+            {"chart": c, "reason": reason} for c, reason in state.outcome.unverified
+        ],
+        "disagreements": list(report.disagreements),
+        **(
+            {"repinned": list(report.repinned)}
+            if getattr(report, "repinned", ()) else {}
+        ),
+        "verification": {
+            "probe": "tier_b_natural_account",
+            "perChart": {
+                c: {
+                    "activeRows": v.active_rows, "naDistinct": v.na_distinct,
+                    "naAmbiguous": v.na_ambiguous, "verdict": v.verdict,
+                }
+                for c, v in persistable.items()
+            },
+        },
+    }
+    return report
+
+
+def _report_coa_metadata_outcome(
+    state: "_CoaMetadataState",
+    *,
+    chart_of_accounts: dict | None,
+    workdir: Path,
+    run_id: str,
+    console: Console,
+) -> "tuple[int, list[Path]]":
+    """FR-14a outcome classification → (exit contribution, diagnostic paths).
+
+    S1/S5a → 0; S2/S4 → non-zero + AIDPF-2023 (verified arms ALREADY
+    persisted by the caller — monotonic, D-7); S3 → non-zero + AIDPF-2021.
+    The post-extraction AIDPF-2018 gate remains the sole enforcer for the
+    subsequent seed; nothing here weakens it.
+    """
+    from ..schema.diagnostic_artifact import write_coa_metadata_diagnostic
+    from .coa_metadata_resolution import (
+        AIDPF_2021_COA_METADATA_UNREACHABLE,
+        AIDPF_2022_COA_ARM_REJECTED,
+        AIDPF_2023_COA_CHARTS_UNRESOLVED,
+        render_ledger,
+    )
+
+    diag_paths: list[Path] = []
+    if state.skip_reason is not None:  # S3
+        console.print(f"[yellow]{state.skip_reason}[/yellow]")
+        try:
+            diag_paths.append(write_coa_metadata_diagnostic(
+                workdir, run_id, AIDPF_2021_COA_METADATA_UNREACHABLE,
+                {"errorCode": AIDPF_2021_COA_METADATA_UNREACHABLE,
+                 "runId": run_id, "skipReason": state.skip_reason},
+            ))
+        except Exception:  # noqa: BLE001 — diagnostics are best-effort
+            pass
+        return 1, diag_paths
+
+    coa = chart_of_accounts or {}
+    mapped = set((coa.get("byChart") or {}))
+    singleton_accepted = coa.get("singletonAccepted") is True
+    active = {
+        c for c, n in (state.active_charts or {}).items() if int(n) >= 1
+    }
+    unresolved = sorted(active - mapped) if active else []
+    if active and len(active) == 1 and not mapped:
+        # A genuine singleton tenant: the default mapping governs; byChart
+        # is not required (the multi-COA gate never fires with one chart).
+        unresolved = []
+
+    for line in render_ledger(
+        state.outcome, state.derive_rejects,
+        unresolved_active=() if singleton_accepted else tuple(unresolved),
+    ):
+        console.print(f"[cyan]{line}[/cyan]")
+    if state.probe_note:  # FR-14a S5 — expected two-pass flow
+        console.print(
+            f"[yellow]COA metadata: {state.probe_note} — arms are UNVERIFIED "
+            f"and nothing was persisted; the resolution lands on the "
+            f"post-seed `bootstrap --refresh` (expected two-pass flow).[/yellow]"
+        )
+
+    exit_code = 0
+    if state.outcome is not None and state.outcome.rejected:
+        try:
+            diag_paths.append(write_coa_metadata_diagnostic(
+                workdir, run_id, AIDPF_2022_COA_ARM_REJECTED,
+                {"errorCode": AIDPF_2022_COA_ARM_REJECTED, "runId": run_id,
+                 "rejected": [
+                     {"chart": v.arm.chart_id, "detail": v.detail,
+                      "activeRows": v.active_rows, "naDistinct": v.na_distinct,
+                      "naAmbiguous": v.na_ambiguous}
+                     for v in state.outcome.rejected
+                 ]},
+            ))
+        except Exception:  # noqa: BLE001
+            pass
+    if unresolved and not singleton_accepted:  # S2 / S4
+        exit_code = 1
+        try:
+            diag_paths.append(write_coa_metadata_diagnostic(
+                workdir, run_id, AIDPF_2023_COA_CHARTS_UNRESOLVED,
+                {"errorCode": AIDPF_2023_COA_CHARTS_UNRESOLVED,
+                 "runId": run_id, "coverage": state.coverage,
+                 "unresolvedActiveCharts": unresolved,
+                 "unverified": [
+                     {"chart": c, "reason": r}
+                     for c, r in (state.outcome.unverified if state.outcome else ())
+                 ]},
+            ))
+        except Exception:  # noqa: BLE001
+            pass
+    return exit_code, diag_paths
 
 
 # ---------------------------------------------------------------------------
@@ -1085,6 +1508,8 @@ def _apply_coa_resolution(
     prior_profile: TenantProfile | None,
     tenant_name: str,
     console: Console,
+    metadata_default: dict | None = None,
+    metadata_default_source: str | None = None,
 ) -> TenantProfile:
     """Resolve COA semantic-role aliases and fold the result into ``profile``.
 
@@ -1132,6 +1557,8 @@ def _apply_coa_resolution(
         accept_convention=options.accept_coa_convention,
         accept_singleton=options.accept_singleton_coa,
         is_refresh=options.refresh,
+        metadata_default=metadata_default,
+        metadata_default_source=metadata_default_source,
     )
     result = resolve_coa_roles(inp)
 
@@ -1343,6 +1770,7 @@ def _acquire_probe_result(
             dispatch_config=options.dispatch_config,
             tenant=tenant,
             console=console,
+            resolve_coa_metadata=options.resolve_coa_from_metadata,
         )
         return _probe_result_from_marker(marker)
 
@@ -1446,6 +1874,7 @@ def _probe_result_from_marker(marker) -> _ProbeResult:
         observed=observed,
         fingerprint=marker.bronze_fingerprint,
         walker_results=walker_results,
+        coa_metadata=getattr(marker, "coa_metadata", None),
     )
 
 

@@ -623,3 +623,117 @@ def test_coa_consumer_unfinished_does_recheck_coa() -> None:
     # gl_coa succeeded, dim_account (consumer) unfinished.
     succeeded = {"gl_coa"}
     assert _landed_to_recheck(pack, plan, mart_only=False, succeeded=succeeded) == {"gl_coa"}
+
+
+# ---------------------------------------------------------------------------
+# Tier A' contract-domain gate (live incident 2026-08-06, chart 41627)
+# ---------------------------------------------------------------------------
+#
+# Bronze lands the FULL raw PVO, so a byChart arm binding Segment9 against the
+# starter pack's Segment1-6 candidate domain passes union EXISTENCE on the
+# landed table — and then explodes with UNRESOLVED_COLUMN inside dim_account,
+# whose projection carries only contract columns. The checkpoint's step 1b
+# must block it BEFORE any probe (and before extraction in structural_only).
+
+DEEP_ARM_COA = {
+    "default": {
+        "balancingSegment": "CodeCombinationSegment1",
+        "costCenterSegment": "CodeCombinationSegment2",
+        "naturalAccountSegment": "CodeCombinationSegment3",
+    },
+    "byChart": {
+        "101": {
+            "balancingSegment": "CodeCombinationSegment1",
+            "costCenterSegment": "CodeCombinationSegment2",
+            "naturalAccountSegment": "CodeCombinationSegment3",
+        },
+        "41627": {
+            "balancingSegment": "CodeCombinationSegment1",
+            "costCenterSegment": "CodeCombinationSegment9",  # out of domain
+            "naturalAccountSegment": "CodeCombinationSegment3",
+        },
+    },
+}
+
+
+def test_checkpoint_blocks_out_of_domain_arm_before_any_probe() -> None:
+    """Step 1b (contract-domain) blocks the Segment9 arm with AIDPF-2042 and
+    never reaches the data probes — even though the landed table WOULD contain
+    Segment9 (full raw PVO), i.e. existence alone would have passed."""
+    pack = load_pack(PACK_ROOT)
+    spark = MagicMock()  # must never be queried: domain check is pure
+    res = evaluate_coa_checkpoint(
+        spark, pack=pack, profile=_profile(DEEP_ARM_COA),
+        bronze_table_for_source=_tables(), coa_sources={"gl_coa"},
+        allow_unprovable=False, structural_only=False,
+    )
+    assert not res.ok
+    codes = {e.code for e in res.blocking}
+    assert codes == {"AIDPF-2042"}
+    assert any("41627" in e.message for e in res.blocking)
+    assert any("coa-deep-overlay" in e.message for e in res.blocking)
+    spark.sql.assert_not_called()
+
+
+def test_checkpoint_domain_gate_runs_pre_extraction_structural_only() -> None:
+    """The domain check needs no landed data, so the pre-extraction
+    (structural_only) checkpoint already blocks a doomed mapping — no bronze
+    extract is wasted on a run that could never render."""
+    pack = load_pack(PACK_ROOT)
+    spark = MagicMock()
+    res = evaluate_coa_checkpoint(
+        spark, pack=pack, profile=_profile(DEEP_ARM_COA),
+        bronze_table_for_source=_tables(), coa_sources={"gl_coa"},
+        allow_unprovable=False, structural_only=True,
+    )
+    assert not res.ok
+    assert {e.code for e in res.blocking} == {"AIDPF-2042"}
+    spark.sql.assert_not_called()
+
+
+def test_checkpoint_in_domain_deep_arm_passes_with_deep_overlay_domain() -> None:
+    """With the coa-deep overlay merged (domain extended to Segment10), the
+    same Segment9 arm is IN domain — step 1b passes, the data probes run, and
+    a landed table that DOES carry the deep segments (full raw PVO) passes
+    existence too."""
+    from oracle_ai_data_platform_fusion_autopilot.orchestrator.content_pack import (
+        load_full_chain,
+    )
+
+    repo = Path(__file__).resolve().parents[2]
+    merged = load_full_chain(
+        repo / "examples" / "coa-deep-overlay",
+        base_resolver=lambda ref: PACK_ROOT,
+    )
+    wide_columns = GL_COA_COLUMNS + [f"CodeCombinationSegment{i}" for i in range(7, 11)]
+    spark = MagicMock()
+
+    def _sql(query: str):
+        df = MagicMock()
+        q = " ".join(query.split())
+        if q.startswith("DESCRIBE TABLE"):
+            df.collect.return_value = [(c, "string", None) for c in wide_columns]
+        elif "GROUP BY CAST(CodeCombinationChartOfAccountsId AS STRING)" in q:
+            df.collect.return_value = [("101", 15000), ("41627", 9000)]
+        else:  # Tier-B natural-account aggregate
+            df.collect.return_value = [(500, 0)]
+        return df
+
+    spark.sql.side_effect = _sql
+    res = evaluate_coa_checkpoint(
+        spark, pack=merged, profile=_profile(DEEP_ARM_COA),
+        bronze_table_for_source=_tables(), coa_sources={"gl_coa"},
+        allow_unprovable=False, structural_only=False,
+    )
+    assert res.ok, [e.message for e in res.blocking]
+
+
+def test_backstop_blocks_out_of_domain_arm() -> None:
+    """The per-node backstop applies the same domain rule."""
+    pack = load_pack(PACK_ROOT)
+    spark = _fake_spark({"101": 15000, "41627": 9000})
+    errs = _check_coa_gate(
+        spark, _dim_account_node(pack), pack, _profile(DEEP_ARM_COA), _ctx()
+    )
+    assert "AIDPF-2042" in {e.code for e in errs}
+    assert any("41627" in e.message for e in errs)

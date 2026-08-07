@@ -831,7 +831,130 @@ __all__ = [
     "VariationPointFailure",
     "write_cluster_dispatch_diagnostic",
     "write_cluster_marker_diagnostic",
+    "write_coa_gate_diagnostic",
     "write_identity_diagnostic",
     "write_schema_drift_diagnostic",
     "write_variation_diagnostic",
+    "persist_run_diagnostics",
+    "write_coa_metadata_diagnostic",
 ]
+
+
+def write_coa_gate_diagnostic(
+    workdir: Path,
+    run_id: str,
+    payload: dict,
+) -> Path:
+    """Write the structured COA gate-abort diagnostic (FR-15.9).
+
+    Path = ``<workdir>/.aidp/diagnostics/<run_id>/AIDPF-<primary>__coa-gate.json``
+    — keyed on the checkpoint's ACTUAL primary code (``payload["errorCode"]``),
+    never a hard-coded 2018.
+
+    Raises:
+        UnsafePathSegmentError: ``run_id`` is not a safe filesystem segment.
+    """
+    from .path_segment import assert_within_root, validate_path_segment
+
+    validate_path_segment(run_id, field="run_id")
+    diag_dir = _diagnostics_dir(workdir, run_id).resolve()
+    code = str(payload.get("errorCode") or "AIDPF-0000")
+    target = diag_dir / f"{code}__coa-gate.json"
+    assert_within_root(target, diag_dir, field="errorCode")
+    _atomic_write_json(target, json.dumps(payload, indent=2) + "\n")
+    return target
+
+
+def write_schema_patch_provenance(
+    workdir: Path,
+    run_id: str,
+    applied: dict,
+) -> Path:
+    """Persist the run's EFFECTIVE ``schemaPatches`` provenance (feature
+    bronze-extract-schema-patch, FR-9).
+
+    Path = ``<workdir>/.aidp/diagnostics/<run_id>/schema-patches__<run_id>.json``
+    with the versioned shape
+    ``{"schemaVersion": 1, "runId": …, "generatedAt": …,
+    "appliedSchemaPatches": {dataset_id: [column, …]}}``.
+    """
+    from datetime import datetime, timezone
+
+    from .path_segment import assert_within_root, validate_path_segment
+
+    validate_path_segment(run_id, field="run_id")
+    diag_dir = _diagnostics_dir(workdir, run_id).resolve()
+    target = diag_dir / f"schema-patches__{run_id}.json"
+    assert_within_root(target, diag_dir, field="run_id")
+    payload = {
+        "schemaVersion": 1,
+        "runId": run_id,
+        "generatedAt": datetime.now(timezone.utc).isoformat(),
+        "appliedSchemaPatches": {k: list(v) for k, v in applied.items()},
+    }
+    _atomic_write_json(target, json.dumps(payload, indent=2) + "\n")
+    return target
+
+
+def persist_run_diagnostics(workdir: Path, summary, *, log=None) -> None:
+    """Persist ``RunSummary.diagnostics`` to ``.aidp/diagnostics/<run_id>/``.
+
+    THE shared persister for BOTH execution paths (design D-14): the
+    REST-dispatch path historically owned this loop while ``--inline`` runs
+    never wrote diagnostics at all — leaving the remediation loop's artifact
+    unreachable for inline aborts (a pre-existing gap for the 4071/4070
+    artifacts too). Best-effort per entry: a malformed diagnostic must never
+    mask the run's summary.
+    """
+    _log = log or (lambda msg: None)
+    # schemaPatches provenance (FR-9) — one artifact per run when any
+    # patched dataset landed (best-effort like every diagnostics write).
+    applied = getattr(summary, "applied_schema_patches", None)
+    if applied:
+        try:
+            path = write_schema_patch_provenance(
+                workdir, summary.run_id, dict(applied)
+            )
+            _log(f"wrote diagnostic {path}")
+        except Exception:  # noqa: BLE001 — best-effort
+            pass
+    for diag in getattr(summary, "diagnostics", ()) or ():
+        try:
+            code = diag.get("errorCode")
+            if diag.get("kind") == "coa-gate":
+                path = write_coa_gate_diagnostic(workdir, summary.run_id, dict(diag))
+            elif code == "AIDPF-4071":
+                artifact = BronzeSourceColumnMissingV1.model_validate(diag)
+                path = write_bronze_source_column_missing_diagnostic(
+                    workdir, summary.run_id, artifact
+                )
+            elif code == "AIDPF-4070":
+                artifact = BronzeTypeMismatchV1.model_validate(diag)
+                path = write_bronze_type_mismatch_diagnostic(
+                    workdir, summary.run_id, artifact
+                )
+            else:
+                continue
+            _log(f"wrote diagnostic {path}")
+        except Exception:  # noqa: BLE001 — diagnostic write is best-effort
+            continue
+
+
+def write_coa_metadata_diagnostic(
+    workdir: Path,
+    run_id: str,
+    code: str,
+    payload: dict,
+) -> Path:
+    """Write a COA metadata-resolution diagnostic (AIDPF-2021/2022/2023).
+
+    Path = ``<workdir>/.aidp/diagnostics/<run_id>/<code>__coa-metadata.json``.
+    """
+    from .path_segment import assert_within_root, validate_path_segment
+
+    validate_path_segment(run_id, field="run_id")
+    diag_dir = _diagnostics_dir(workdir, run_id).resolve()
+    target = diag_dir / f"{code}__coa-metadata.json"
+    assert_within_root(target, diag_dir, field="code")
+    _atomic_write_json(target, json.dumps(payload, indent=2) + "\n")
+    return target

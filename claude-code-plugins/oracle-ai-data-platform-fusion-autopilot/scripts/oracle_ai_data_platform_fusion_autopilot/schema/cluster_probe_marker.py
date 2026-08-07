@@ -171,6 +171,66 @@ class WalkerOutcomeMarker(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class CoaCandidateArmMarker(BaseModel):
+    """One metadata-derived candidate ``byChart`` arm (marker v2)."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    chart_id: str = Field(alias="chartId")
+    balancing_segment: str = Field(alias="balancingSegment")
+    cost_center_segment: str = Field(alias="costCenterSegment")
+    natural_account_segment: str = Field(alias="naturalAccountSegment")
+
+
+class CoaArmRejectMarker(BaseModel):
+    """A chart whose derivation was rejected (marker v2)."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    chart: str
+    reason: str
+    detail: str = ""
+
+
+class CoaChartProbeMarker(BaseModel):
+    """One chart's Tier-B probe stats, measured cluster-side against landed
+    ``gl_coa`` via the SAME ``coa_probe`` definition the runtime gate uses
+    (marker v2). The laptop maps verdicts from these via ``verify_arms`` —
+    thresholds live in ``coa_gate`` only."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    chart_id: str = Field(alias="chartId")
+    active_rows: int = Field(alias="activeRows")
+    na_distinct: int = Field(alias="naDistinct")
+    na_ambiguous: int = Field(alias="naAmbiguous")
+
+
+class CoaMetadataMarker(BaseModel):
+    """The COA-metadata section of a v2 bootstrap-probe marker.
+
+    ``coverage='skipped'`` + ``skipReason`` means the KFF PVO fetch failed
+    fail-soft (→ AIDPF-2021 phase outcome on the laptop). ``probes`` may be
+    empty even with candidates present — ``gl_coa`` not landed on a first
+    bootstrap (FR-14a S5): every arm is then UNVERIFIED and nothing
+    persists."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    source: Literal["bicc-pvo", "rest"] = "bicc-pvo"
+    coverage: Literal["complete", "partial", "skipped"] = "complete"
+    skip_reason: str | None = Field(default=None, alias="skipReason")
+    probe_note: str | None = Field(default=None, alias="probeNote")
+    candidates: list[CoaCandidateArmMarker] = Field(default_factory=list)
+    rejects: list[CoaArmRejectMarker] = Field(default_factory=list)
+    probes: list[CoaChartProbeMarker] = Field(default_factory=list)
+    active_charts: dict[str, int] = Field(
+        default_factory=dict, alias="activeCharts"
+    )
+    """chart_id → enabled gl_coa row count (the completeness input);
+    empty when gl_coa is not probeable."""
+
+
 class ClusterProbeMarker(BaseModel):
     """Inner happy-path payload — the cluster-side cell's success output.
 
@@ -180,12 +240,14 @@ class ClusterProbeMarker(BaseModel):
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
-    marker_version: Literal[1] = Field(default=1, alias="markerVersion")
-    """Bootstrap-probe marker schema version. ``Literal[1]`` (not
-    ``int = 1``) is what makes a future cluster emitting
-    ``markerVersion: 2`` raise a Pydantic validation error on the
-    laptop instead of silently coercing — same pattern as
-    :class:`schema.diagnostic_artifact.DiagnosticArtifactBase`."""
+    marker_version: Literal[1, 2] = Field(default=1, alias="markerVersion")
+    """Bootstrap-probe marker schema version. A pinned ``Literal`` (not
+    ``int``) is what makes a future cluster emitting an UNKNOWN version
+    raise a Pydantic validation error on the laptop instead of silently
+    coercing — same pattern as
+    :class:`schema.diagnostic_artifact.DiagnosticArtifactBase`. Version 2
+    adds the optional ``coaMetadata`` section (feature
+    coa-mapping-auto-remediation); v1 markers stay valid."""
 
     tenant: str
     """Tenant identifier — usually the Fusion pod short name."""
@@ -211,6 +273,13 @@ class ClusterProbeMarker(BaseModel):
     """Cluster-side wall-clock when the marker was emitted. Advisory
     (operator audit); not load-bearing — the laptop uses its own
     ``profile.pinned_at`` timestamp for the SOX trail."""
+
+    coa_metadata: CoaMetadataMarker | None = Field(
+        default=None, alias="coaMetadata"
+    )
+    """Marker-v2 COA metadata-resolution section — present only when the
+    probe was dispatched with ``resolve_coa_metadata=True``. v1 markers
+    (absent) deserialize to ``None``."""
 
 
 # ---------------------------------------------------------------------------

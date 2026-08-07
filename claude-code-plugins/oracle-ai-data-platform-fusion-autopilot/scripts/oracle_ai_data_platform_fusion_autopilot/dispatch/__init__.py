@@ -592,24 +592,13 @@ def dispatch_via_rest(
     # under the laptop's .aidp/diagnostics/<run_id>/ so `/medallion-author` can
     # resolve them. Best-effort: a malformed/partial diagnostic must never mask
     # a successful run's summary.
+    # ONE shared persister for both execution paths (design D-14) — the
+    # inline path calls the same helper, so the remediation loop's artifact
+    # is reachable regardless of how the run executed.
+    from ..schema.diagnostic_artifact import persist_run_diagnostics
+
     _workdir = bundle_path.resolve().parent
-    for _diag in summary.diagnostics:
-        try:
-            _code = _diag.get("errorCode")
-            if _code == "AIDPF-4071":
-                _artifact = BronzeSourceColumnMissingV1.model_validate(_diag)
-                _path = write_bronze_source_column_missing_diagnostic(
-                    _workdir, summary.run_id, _artifact
-                )
-                log(f"wrote diagnostic {_path}")
-            elif _code == "AIDPF-4070":
-                _artifact = BronzeTypeMismatchV1.model_validate(_diag)
-                _path = write_bronze_type_mismatch_diagnostic(
-                    _workdir, summary.run_id, _artifact
-                )
-                log(f"wrote diagnostic {_path}")
-        except Exception:  # noqa: BLE001 — diagnostic write is best-effort
-            continue
+    persist_run_diagnostics(_workdir, summary, log=log)
 
     log(f"orchestrator run_id={summary.run_id}")
     return summary

@@ -152,6 +152,11 @@ class NodeExecutionResult:
     error_message: str = ""
     plan_hash: str = ""
     diagnostic: dict | None = None
+    applied_schema_patches: tuple[str, ...] | None = None
+    """Effective schemaPatches columns the bronze adapter applied
+    (feature bronze-extract-schema-patch, FR-9) — the provenance source
+    for ``RunSummary.applied_schema_patches``. ``None``/empty for
+    non-bronze and unpatched nodes."""
 
 
 # ---------------------------------------------------------------------------
@@ -1617,7 +1622,7 @@ def _execute_bronze_extract_node(
     # post-write schema assertion describes the actual bronze table.
     target = target_override or _build_target_identifier(node, ctx, paths)
     try:
-        target_df, bronze_output_watermark = _bronze_adapter.run(
+        _adapter_result = _bronze_adapter.run(
             spark,
             node=node,
             pack=pack,
@@ -1626,8 +1631,23 @@ def _execute_bronze_extract_node(
             paths=paths,
             mode=mode,
         )
+        target_df = _adapter_result.df
+        bronze_output_watermark = _adapter_result.output_watermark
+        _applied_patches = _adapter_result.applied_patch_columns or None
     except Exception as exc:  # noqa: BLE001 — surface any adapter failure uniformly
+        from ..schema.bronze_schema_patch import (
+            classify_bronze_extract_error,
+            encode_failure_hint,
+            full_exception_text,
+        )
+
         message = f"bronze_extract_failed: {exc}"
+        # AIDPF-2093 classification runs over the FULL cause chain —
+        # str(exc) alone can carry only "An error occurred while calling
+        # o<N>.count." while the encode signature lives in the Java cause.
+        # The hint is PREPENDED: the RUN VERDICT renders the first line.
+        if classify_bronze_extract_error(full_exception_text(exc)):
+            message = f"{encode_failure_hint(node.id)} | {message}"
         _safe_write_strategy_failed_row(
             spark, paths, node=node, ctx=ctx, message=message, profile=profile,
             plan_hash=expected_plan_hash,
@@ -1716,4 +1736,5 @@ def _execute_bronze_extract_node(
         output_watermark=bronze_output_watermark,
         materialized_schema_hash=materialized_schema_hash,
         plan_hash=expected_plan_hash,
+        applied_schema_patches=_applied_patches,
     )
