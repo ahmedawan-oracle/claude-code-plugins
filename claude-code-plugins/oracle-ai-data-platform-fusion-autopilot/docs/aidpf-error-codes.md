@@ -32,6 +32,7 @@ older reports, ADRs, and tests can be interpreted without guessing.
 
 | Code | Area | Status | Meaning | Usual action |
 |---|---|---|---|---|
+| `AIDPF-0000` | Diagnostics | Active | Filename sentinel, never an error code: a persisted diagnostic payload carried no `errorCode`, so the artifact lands as `AIDPF-0000__<kind>.json` instead of dropping the payload. | Open the artifact — the payload content explains the abort. If it recurs, treat the missing `errorCode` as a diagnostics-plumbing bug. |
 | `AIDPF-1001` | Bundle config | Historical | Planned code for `bundle.yaml` schema version newer than the engine. | Upgrade the plugin/engine or downgrade/migrate the bundle schema. |
 | `AIDPF-1010` | Bundle config | Historical | Planned code for an unresolved required environment variable. | Set the env var or replace it with a supported secret reference. |
 | `AIDPF-1020` | Bootstrap / diagnostics | Active | Operator identity cannot be resolved. | Set `--operator`, `AIDP_OPERATOR`, or run from a shell where `USER` is set. |
